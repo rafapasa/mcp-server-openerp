@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # MCP Go Starter
 
 [![CI](https://github.com/SamMorrowDrums/mcp-go-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/SamMorrowDrums/mcp-go-starter/actions/workflows/ci.yml)
@@ -260,7 +259,3 @@ Contributions welcome! Please ensure your changes maintain feature parity with o
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
-=======
-# mcp-server-openerp
-Servidor MCP para Open ERP
->>>>>>> be068f1d2a1a62afd92d42a8693f69c3b178b50e
