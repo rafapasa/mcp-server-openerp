@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	
+
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
 

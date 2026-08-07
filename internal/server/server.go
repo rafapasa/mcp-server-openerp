@@ -12,49 +12,49 @@ import (
 
 // MCPServer é a struct principal
 type MCPServer struct {
-    *server.MCPServer
-    
-    // Serviços
-    cardapioService *service.CardapioService
-    pedidoService   *service.PedidoService
-    
-    // Clientes
-    llm   LLMClient
-    cache *redis.Client
+	*server.MCPServer
+
+	// Serviços
+	cardapioService *service.CardapioService
+	pedidoService   *service.PedidoService
+
+	// Clientes
+	llm   LLMClient
+	cache *redis.Client
 }
 
 // LLMClient interface para chamar diferentes provedores de IA
 type LLMClient interface {
-    Generate(prompt string) (string, error)
+	Generate(prompt string) (string, error)
 }
 
 // NewMCPServer cria uma nova instância do servidor
 func NewMCPServer(db *gorm.DB, cache *redis.Client, llm LLMClient) *MCPServer {
-    // Inicializa repositórios
-    tenantRepo := repository.NewTenantRepository(db)
-    produtoRepo := repository.NewProdutoRepository(db)
-    pedidoRepo := repository.NewPedidoRepository(db)
-    
-    // Inicializa serviços
-    cardapioService := service.NewCardapioService(produtoRepo, tenantRepo, cache)
-    pedidoService := service.NewPedidoService(pedidoRepo, cardapioService)
+	// Inicializa repositórios
+	tenantRepo := repository.NewTenantRepository(db)
+	produtoRepo := repository.NewProdutoRepository(db)
+	pedidoRepo := repository.NewPedidoRepository(db)
 
-    s := &MCPServer{
-        MCPServer: server.NewMCPServer(
-            "mcp-fastfood",
-            "1.0.0",
-            server.WithToolCapabilities(true),
-        ),
-        cardapioService: cardapioService,
-        pedidoService:   pedidoService,
-        llm:             llm,
-        cache:           cache,
-    }
+	// Inicializa serviços
+	cardapioService := service.NewCardapioService(produtoRepo, tenantRepo, cache)
+	pedidoService := service.NewPedidoService(pedidoRepo, cardapioService)
 
-    // Registra tools, resources e prompts
-    s.registerTools()
-    s.registerResources()
-    s.registerPrompts()
+	s := &MCPServer{
+		MCPServer: server.NewMCPServer(
+			"mcp-fastfood",
+			"1.0.0",
+			server.WithToolCapabilities(true),
+		),
+		cardapioService: cardapioService,
+		pedidoService:   pedidoService,
+		llm:             llm,
+		cache:           cache,
+	}
 
-    return s
+	// Registra tools, resources e prompts
+	s.registerTools()
+	s.registerResources()
+	s.registerPrompts()
+
+	return s
 }
