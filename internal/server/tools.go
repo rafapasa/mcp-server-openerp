@@ -1,677 +1,349 @@
-// tools.go — MCP tool definitions and handlers.
-//
-// Each tool demonstrates a different MCP capability:
-//   - hello:          Basic connectivity test (simplest possible tool)
-//   - get_weather:    Structured output with OutputSchema
-//   - long_task:      Progress reporting via NotifyProgress
-//   - ask_llm:        Sampling — asking the client's LLM a question
-//   - load_bonus_tool: Dynamic tool registration at runtime
-//   - confirm_action: Schema elicitation — structured user input forms
-//   - get_feedback:   URL elicitation — opening a web page for the user
+// internal/server/tools.go
 package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"math/rand"
-	"time"
+	"log"
+	"strings"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
 
-// Weather represents weather data returned by the get_weather tool.
-type Weather struct {
-	Location    string `json:"location"`
-	Temperature int    `json:"temperature"`
-	Unit        string `json:"unit"`
-	Conditions  string `json:"conditions"`
-	Humidity    int    `json:"humidity"`
+// registerTools registra todas as ferramentas do servidor
+func (s *MCPServer) registerTools() {
+	s.AddTool(whatsappTool(), s.whatsappHandler())
+	s.AddTool(processarPedidoTool(), s.processarPedidoHandler())
+	s.AddTool(consultarCardapioTool(), s.consultarCardapioHandler())
 }
 
-// Track if bonus tool is loaded (used by the dynamic tool loading demo).
-var bonusToolLoaded = false
+// ============================================
+// TOOL 1: processar_mensagem_whatsapp
+// ============================================
 
-// Tool input types — the Go SDK auto-generates JSON Schema from these structs.
-
-type helloInput struct {
-	Name string `json:"name" jsonschema:"Name of the person to greet"`
+func whatsappTool() mcp.Tool {
+	return mcp.NewTool("processar_mensagem_whatsapp",
+		mcp.WithDescription("Recebe uma mensagem de WhatsApp, extrai itens do pedido usando IA e processa"),
+		mcp.WithString("mensagem",
+			mcp.Required(),
+			mcp.Description("Mensagem enviada pelo cliente no WhatsApp"),
+		),
+		mcp.WithString("tenant_id",
+			mcp.Required(),
+			mcp.Description("ID do restaurante (tenant)"),
+		),
+		mcp.WithString("cliente_id",
+			mcp.Required(),
+			mcp.Description("ID do cliente no WhatsApp (número de telefone)"),
+		),
+		mcp.WithString("cliente_nome",
+			mcp.Description("Nome do cliente (opcional)"),
+		),
+	)
 }
 
-type weatherInput struct {
-	City string `json:"city" jsonschema:"City name to get weather for"`
+func (s *MCPServer) whatsappHandler() func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		// Converte argumentos
+		args, err := getArguments(request)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		// Extrai parâmetros
+		mensagem, _ := getString(args, "mensagem")
+		if mensagem == "" {
+			return mcp.NewToolResultError("mensagem é obrigatória"), nil
+		}
+
+		tenantID, err := getStringRequired(args, "tenant_id")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		clienteID, err := getStringRequired(args, "cliente_id")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		clienteNome, _ := getString(args, "cliente_nome")
+
+		log.Printf("[WhatsApp] Processando mensagem de %s (%s): %s", clienteID, tenantID, mensagem)
+
+		// Busca cardápio
+		cardapio, err := s.getCardapio(tenantID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar cardápio: %v", err)), nil
+		}
+
+		if len(cardapio) == 0 {
+			return mcp.NewToolResultError("Cardápio não encontrado para este restaurante"), nil
+		}
+
+		// Extrai pedido com IA
+		pedidoExtraido, err := s.extractOrderWithLLM(mensagem, cardapio)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Erro ao interpretar mensagem: %v", err)), nil
+		}
+
+		if len(pedidoExtraido.Itens) == 0 && len(pedidoExtraido.Bebidas) == 0 {
+			return mcp.NewToolResultError(
+				"Não foi possível identificar itens do pedido. Por favor, especifique os produtos desejados.",
+			), nil
+		}
+
+		// Processa pedido
+		pedidoConfirmado, err := s.processarPedido(tenantID, clienteID, clienteNome, pedidoExtraido)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Erro ao processar pedido: %v", err)), nil
+		}
+
+		// Monta resposta
+		resposta := s.formatarRespostaPedido(pedidoConfirmado)
+
+		return mcp.NewToolResultText(resposta), nil
+	}
 }
 
-type askLLMInput struct {
-	Prompt    string `json:"prompt" jsonschema:"The question or prompt to send to the LLM"`
-	MaxTokens int    `json:"maxTokens,omitempty" jsonschema:"Maximum tokens in response"`
+// ============================================
+// TOOL 2: processar_pedido_restaurante
+// ============================================
+
+func processarPedidoTool() mcp.Tool {
+	return mcp.NewTool("processar_pedido_restaurante",
+		mcp.WithDescription("Processa um pedido manualmente (usado pelo dashboard do restaurante)"),
+		mcp.WithString("tenant_id",
+			mcp.Required(),
+			mcp.Description("ID do restaurante"),
+		),
+		mcp.WithString("cliente_id",
+			mcp.Required(),
+			mcp.Description("ID do cliente"),
+		),
+		mcp.WithString("cliente_nome",
+			mcp.Description("Nome do cliente"),
+		),
+		mcp.WithArray("itens",
+			mcp.Required(),
+			mcp.Description("Lista de itens do pedido"),
+		),
+		mcp.WithString("observacoes",
+			mcp.Description("Observações gerais do pedido"),
+		),
+	)
 }
 
-type longTaskInput struct {
-	TaskName string `json:"taskName" jsonschema:"Name for this task"`
-	Steps    int    `json:"steps,omitempty" jsonschema:"Number of steps to simulate"`
+func (s *MCPServer) processarPedidoHandler() func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, err := getArguments(request)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		tenantID, err := getStringRequired(args, "tenant_id")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		clienteID, err := getStringRequired(args, "cliente_id")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		// Extrai itens
+		itens, err := getItems(args)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		clienteNome, _ := getString(args, "cliente_nome")
+		observacoes, _ := getString(args, "observacoes")
+
+		// Processa pedido
+		pedidoExtraido := &service.PedidoExtraido{
+			Itens:       itens,
+			Observacoes: observacoes,
+		}
+
+		pedidoConfirmado, err := s.processarPedido(tenantID, clienteID, clienteNome, pedidoExtraido)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Erro ao processar pedido: %v", err)), nil
+		}
+
+		return mcp.NewToolResultText(
+			fmt.Sprintf("✅ Pedido #%d processado com sucesso!\nTotal: R$ %.2f",
+				pedidoConfirmado.ID, pedidoConfirmado.Total),
+		), nil
+	}
 }
 
-type calculatorInput struct {
-	A         float64 `json:"a" jsonschema:"First number"`
-	B         float64 `json:"b" jsonschema:"Second number"`
-	Operation string  `json:"operation" jsonschema:"enum=add,enum=subtract,enum=multiply,enum=divide"`
+// ============================================
+// TOOL 3: consultar_cardapio
+// ============================================
+
+func consultarCardapioTool() mcp.Tool {
+	return mcp.NewTool("consultar_cardapio",
+		mcp.WithDescription("Consulta o cardápio de um restaurante"),
+		mcp.WithString("tenant_id",
+			mcp.Required(),
+			mcp.Description("ID do restaurante"),
+		),
+		mcp.WithString("categoria",
+			mcp.Description("Filtrar por categoria (ex: Lanches, Bebidas, Sobremesas)"),
+		),
+		mcp.WithBoolean("apenas_disponiveis",
+			mcp.Description("Mostrar apenas itens disponíveis"),
+			mcp.DefaultBool(true),
+		),
+	)
 }
 
-type confirmActionInput struct {
-	Action      string `json:"action" jsonschema:"Description of the action to confirm"`
-	Destructive bool   `json:"destructive,omitempty" jsonschema:"Whether the action is destructive"`
+func (s *MCPServer) consultarCardapioHandler() func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, err := getArguments(request)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		tenantID, err := getStringRequired(args, "tenant_id")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		categoria, _ := getString(args, "categoria")
+		apenasDisponiveis := true
+		if val, ok := args["apenas_disponiveis"].(bool); ok {
+			apenasDisponiveis = val
+		}
+
+		// Busca cardápio
+		cardapio, err := s.getCardapio(tenantID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar cardápio: %v", err)), nil
+		}
+
+		// Filtra
+		var filtrados []service.ProdutoItem
+		for _, item := range cardapio {
+			if apenasDisponiveis && !item.Disponivel {
+				continue
+			}
+			if categoria != "" && item.Categoria != categoria {
+				continue
+			}
+			filtrados = append(filtrados, item)
+		}
+
+		if len(filtrados) == 0 {
+			return mcp.NewToolResultText("Nenhum item encontrado no cardápio"), nil
+		}
+
+		// Formata resposta
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("📋 Cardápio (%d itens):\n\n", len(filtrados)))
+
+		for _, item := range filtrados {
+			status := "✅"
+			if !item.Disponivel {
+				status = "❌"
+			}
+			sb.WriteString(fmt.Sprintf("%s **%s** - R$ %.2f\n", status, item.Nome, item.Preco))
+			if item.Descricao != "" {
+				sb.WriteString(fmt.Sprintf("   %s\n", item.Descricao))
+			}
+			sb.WriteString("\n")
+		}
+
+		return mcp.NewToolResultText(sb.String()), nil
+	}
 }
 
-type feedbackInput struct {
-	Question string `json:"question" jsonschema:"The question to ask the user"`
+// ============================================
+// FUNÇÕES AUXILIARES
+// ============================================
+
+// getArguments converte os argumentos da request
+func getArguments(request mcp.CallToolRequest) (map[string]interface{}, error) {
+	args, ok := request.Params.Arguments.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("argumentos inválidos")
+	}
+	return args, nil
 }
 
-// =============================================================================
-// Tool Annotations - Every tool SHOULD have annotations for AI assistants
-//
-// WHY ANNOTATIONS MATTER:
-// Annotations enable MCP client applications to understand the risk level of
-// tool calls. Clients can use these hints to implement safety policies, such as:
-//   - Prompting users for confirmation before executing destructive operations
-//   - Auto-approving read-only tools while requiring approval for writes
-//   - Warning users when tools access external systems (openWorldHint)
-//   - Optimizing retry logic for idempotent operations
-//
-// ANNOTATION FIELDS:
-// - ReadOnlyHint: Tool only reads data, doesn't modify state (bool)
-// - DestructiveHint: Tool can permanently delete or modify data (*bool)
-// - IdempotentHint: Repeated calls with same args have same effect (bool)
-// - OpenWorldHint: Tool accesses external systems (web, APIs, etc.) (*bool)
-// =============================================================================
-
-// Helper to create a bool pointer for annotation fields that use *bool
-func boolPtr(b bool) *bool {
-	return &b
+// getString extrai uma string dos argumentos
+func getString(args map[string]interface{}, key string) (string, bool) {
+	val, ok := args[key].(string)
+	return val, ok
 }
 
-func registerTools(server *mcp.Server) {
-	// hello — The simplest tool. Use it to verify client↔server connectivity.
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "hello",
-		Description: "Say hello to a person",
-		InputSchema: map[string]interface{}{
-			"type":  "object",
-			"title": "HelloInput",
-			"properties": map[string]interface{}{
-				"name": map[string]interface{}{
-					"type":        "string",
-					"title":       "Name",
-					"description": "Name of the person to greet",
-				},
-			},
-			"required": []string{"name"},
-		},
-		Annotations: &mcp.ToolAnnotations{
-			ReadOnlyHint:    true,
-			DestructiveHint: boolPtr(false),
-			IdempotentHint:  true,
-			OpenWorldHint:   boolPtr(false),
-		},
-		Icons: []mcp.Icon{
-			{
-				Source:   WAVING_HAND_ICON,
-				MIMEType: "image/png",
-				Sizes:    []string{"256x256"},
-			},
-		},
-	}, helloHandler)
-
-	// get_weather — Demonstrates structured output with an OutputSchema.
-	// When OutputSchema is set, the second return value from the handler is
-	// validated against it, giving clients type-safe structured data.
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get_weather",
-		Description: "Get the current weather for a city",
-		InputSchema: map[string]interface{}{
-			"type":  "object",
-			"title": "WeatherInput",
-			"properties": map[string]interface{}{
-				"city": map[string]interface{}{
-					"type":        "string",
-					"title":       "City",
-					"description": "City name to get weather for",
-				},
-			},
-			"required": []string{"city"},
-		},
-		OutputSchema: map[string]interface{}{
-			"type":  "object",
-			"title": "Weather",
-			"properties": map[string]interface{}{
-				"location": map[string]interface{}{
-					"type":        "string",
-					"description": "Display name of location",
-				},
-				"temperature": map[string]interface{}{
-					"type":        "integer",
-					"description": "Temperature value",
-				},
-				"unit": map[string]interface{}{
-					"type":        "string",
-					"description": "Temperature unit",
-				},
-				"conditions": map[string]interface{}{
-					"type":        "string",
-					"description": "Weather conditions",
-				},
-				"humidity": map[string]interface{}{
-					"type":        "integer",
-					"description": "Humidity percentage",
-				},
-			},
-			"required": []string{"location", "temperature", "unit", "conditions", "humidity"},
-		},
-		Annotations: &mcp.ToolAnnotations{
-			ReadOnlyHint:    true,
-			DestructiveHint: boolPtr(false),
-			OpenWorldHint:   boolPtr(false), // Not real external call
-		},
-		Icons: []mcp.Icon{
-			{
-				Source:   SUN_BEHIND_CLOUD_ICON,
-				MIMEType: "image/png",
-				Sizes:    []string{"256x256"},
-			},
-		},
-	}, weatherHandler)
-
-	// ask_llm — Demonstrates MCP sampling: the server asks the *client's* LLM
-	// a question. This inverts the usual flow — instead of the AI calling a tool,
-	// the tool calls the AI. Useful for sub-queries and chain-of-thought.
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "ask_llm",
-		Description: "Ask the connected LLM a question using sampling",
-		InputSchema: map[string]interface{}{
-			"type":  "object",
-			"title": "AskLLMInput",
-			"properties": map[string]interface{}{
-				"prompt": map[string]interface{}{
-					"type":        "string",
-					"title":       "Prompt",
-					"description": "The question or prompt to send to the LLM",
-				},
-				"maxTokens": map[string]interface{}{
-					"type":        "integer",
-					"title":       "Max Tokens",
-					"description": "Maximum tokens in response",
-					"default":     100,
-				},
-			},
-			"required": []string{"prompt"},
-		},
-		Annotations: &mcp.ToolAnnotations{
-			ReadOnlyHint:    true,
-			DestructiveHint: boolPtr(false),
-			OpenWorldHint:   boolPtr(false),
-		},
-		Icons: []mcp.Icon{
-			{
-				Source:   ROBOT_ICON,
-				MIMEType: "image/png",
-				Sizes:    []string{"256x256"},
-			},
-		},
-	}, askLLMHandler)
-
-	// long_task — Demonstrates progress reporting. Sends incremental progress
-	// notifications so clients can display a progress bar or status updates.
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "long_task",
-		Description: "Simulate a long-running task with progress updates",
-		InputSchema: map[string]interface{}{
-			"type":  "object",
-			"title": "LongTaskInput",
-			"properties": map[string]interface{}{
-				"taskName": map[string]interface{}{
-					"type":        "string",
-					"title":       "Task Name",
-					"description": "Name for this task",
-				},
-				"steps": map[string]interface{}{
-					"type":        "integer",
-					"title":       "Steps",
-					"description": "Number of steps to simulate",
-					"default":     5,
-				},
-			},
-			"required": []string{"taskName"},
-		},
-		Annotations: &mcp.ToolAnnotations{
-			ReadOnlyHint:    true,
-			DestructiveHint: boolPtr(false),
-			IdempotentHint:  true,
-			OpenWorldHint:   boolPtr(false),
-		},
-		Icons: []mcp.Icon{
-			{
-				Source:   HOURGLASS_ICON,
-				MIMEType: "image/png",
-				Sizes:    []string{"256x256"},
-			},
-		},
-	}, longTaskHandler)
-
-	// load_bonus_tool — Demonstrates dynamic tool registration. Calling this
-	// adds "bonus_calculator" at runtime and notifies clients via tools/list_changed
-	// (enabled by ListChanged: true in server capabilities).
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "load_bonus_tool",
-		Description: "Dynamically register a new bonus tool",
-		InputSchema: map[string]interface{}{
-			"type":       "object",
-			"title":      "LoadBonusToolInput",
-			"properties": map[string]interface{}{},
-		},
-		Annotations: &mcp.ToolAnnotations{
-			DestructiveHint: boolPtr(false),
-			IdempotentHint:  true, // Safe to call multiple times
-			OpenWorldHint:   boolPtr(false),
-		},
-		Icons: []mcp.Icon{
-			{
-				Source:   PACKAGE_ICON,
-				MIMEType: "image/png",
-				Sizes:    []string{"256x256"},
-			},
-		},
-	}, loadBonusToolHandler)
-
-	// =============================================================================
-	// Elicitation Tools - Request user input during tool execution
-	//
-	// WHY ELICITATION MATTERS:
-	// Elicitation allows tools to request additional information from users
-	// mid-execution, enabling interactive workflows. This is essential for:
-	//   - Confirming destructive actions before they happen
-	//   - Gathering missing parameters that weren't provided upfront
-	//   - Implementing approval workflows for sensitive operations
-	//   - Collecting feedback or additional context during execution
-	//
-	// TWO ELICITATION MODES:
-	// - Form (schema): Display a structured form with typed fields in the client
-	// - URL: Open a web page (e.g., OAuth flow, feedback form, documentation)
-	// =============================================================================
-
-	// confirm_action — Schema elicitation: displays a structured form to the user.
-	// The client renders a dialog with typed fields based on the JSON schema.
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "confirm_action",
-		Description: "Request user confirmation before proceeding",
-		InputSchema: map[string]interface{}{
-			"type":  "object",
-			"title": "ConfirmActionInput",
-			"properties": map[string]interface{}{
-				"action": map[string]interface{}{
-					"type":        "string",
-					"title":       "Action",
-					"description": "Description of the action to confirm",
-				},
-				"destructive": map[string]interface{}{
-					"type":        "boolean",
-					"title":       "Destructive",
-					"description": "Whether the action is destructive",
-					"default":     false,
-				},
-			},
-			"required": []string{"action"},
-		},
-		Annotations: &mcp.ToolAnnotations{
-			ReadOnlyHint:    true,
-			DestructiveHint: boolPtr(false),
-			OpenWorldHint:   boolPtr(false),
-		},
-	}, confirmActionHandler)
-
-	// get_feedback — URL elicitation: opens a web page in the user's browser.
-	// Useful for OAuth flows, external forms, or documentation links.
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get_feedback",
-		Description: "Request feedback from the user",
-		InputSchema: map[string]interface{}{
-			"type":  "object",
-			"title": "FeedbackInput",
-			"properties": map[string]interface{}{
-				"question": map[string]interface{}{
-					"type":        "string",
-					"title":       "Question",
-					"description": "The question to ask the user",
-				},
-			},
-			"required": []string{"question"},
-		},
-		Annotations: &mcp.ToolAnnotations{
-			ReadOnlyHint:    true,
-			DestructiveHint: boolPtr(false),
-			OpenWorldHint:   boolPtr(true), // Opens external URL
-		},
-	}, getFeedbackHandler)
+// getStringRequired extrai uma string obrigatória
+func getStringRequired(args map[string]interface{}, key string) (string, error) {
+	val, ok := args[key].(string)
+	if !ok || val == "" {
+		return "", fmt.Errorf("'%s' é obrigatório", key)
+	}
+	return val, nil
 }
 
-func helloHandler(_ context.Context, _ *mcp.CallToolRequest, input helloInput) (*mcp.CallToolResult, any, error) {
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: fmt.Sprintf("Hello, %s! Welcome to MCP.", input.Name)},
-		},
-	}, nil, nil
-}
-
-func weatherHandler(_ context.Context, _ *mcp.CallToolRequest, input weatherInput) (*mcp.CallToolResult, any, error) {
-	conditions := []string{"sunny", "cloudy", "rainy", "windy"}
-	weather := Weather{
-		Location:    input.City,
-		Temperature: 15 + rand.Intn(20),
-		Unit:        "celsius",
-		Conditions:  conditions[rand.Intn(len(conditions))],
-		Humidity:    40 + rand.Intn(40),
+// getItems extrai e valida a lista de itens
+func getItems(args map[string]interface{}) ([]service.ItemPedidoInput, error) {
+	itensRaw, ok := args["itens"].([]interface{})
+	if !ok || len(itensRaw) == 0 {
+		return nil, fmt.Errorf("itens é obrigatório")
 	}
 
-	jsonBytes, _ := json.MarshalIndent(weather, "", "  ")
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: string(jsonBytes)},
-		},
-	}, weather, nil
-}
+	var itens []service.ItemPedidoInput
+	for _, itemRaw := range itensRaw {
+		itemMap, ok := itemRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
 
-// askLLMHandler uses MCP sampling: req.Session.CreateMessage sends a prompt
-// to the client's LLM and returns its response.
-func askLLMHandler(ctx context.Context, req *mcp.CallToolRequest, input askLLMInput) (*mcp.CallToolResult, any, error) {
-	maxTokens := input.MaxTokens
-	if maxTokens == 0 {
-		maxTokens = 100
-	}
+		nome, _ := itemMap["nome"].(string)
+		qtd, _ := itemMap["quantidade"].(float64)
+		obs, _ := itemMap["observacao"].(string)
 
-	result, err := req.Session.CreateMessage(ctx, &mcp.CreateMessageParams{
-		Messages: []*mcp.SamplingMessage{
-			{
-				Role:    "user",
-				Content: &mcp.TextContent{Text: input.Prompt},
-			},
-		},
-		MaxTokens: int64(maxTokens),
-	})
-	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Sampling not supported or failed: %v", err)},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	text := "[non-text response]"
-	if tc, ok := result.Content.(*mcp.TextContent); ok {
-		text = tc.Text
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: fmt.Sprintf("LLM Response: %s", text)},
-		},
-	}, nil, nil
-}
-
-// longTaskHandler sends progress notifications via req.Session.NotifyProgress.
-// The progressToken comes from the client's original request — if nil, the
-// client didn't request progress updates, so we skip notifications.
-func longTaskHandler(ctx context.Context, req *mcp.CallToolRequest, input longTaskInput) (*mcp.CallToolResult, any, error) {
-	steps := input.Steps
-	if steps == 0 {
-		steps = 5
-	}
-	progressToken := req.Params.GetProgressToken()
-
-	for i := 0; i < steps; i++ {
-		if progressToken != nil {
-			_ = req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
-				ProgressToken: progressToken,
-				Progress:      float64(i) / float64(steps),
-				Total:         1.0,
-				Message:       fmt.Sprintf("Step %d/%d", i+1, steps),
+		if nome != "" && qtd > 0 {
+			itens = append(itens, service.ItemPedidoInput{
+				Nome:       nome,
+				Quantidade: int(qtd),
+				Observacao: obs,
 			})
 		}
-		time.Sleep(1 * time.Second)
 	}
 
-	if progressToken != nil {
-		_ = req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
-			ProgressToken: progressToken,
-			Progress:      1.0,
-			Total:         1.0,
-			Message:       "Complete!",
-		})
+	if len(itens) == 0 {
+		return nil, fmt.Errorf("nenhum item válido encontrado")
 	}
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: fmt.Sprintf("Task %q completed successfully after %d steps!", input.TaskName, steps)},
-		},
-	}, nil, nil
+	return itens, nil
 }
 
-func loadBonusToolHandler(_ context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
-	if bonusToolLoaded {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Bonus tool is already loaded! Try calling 'bonus_calculator'."},
-			},
-		}, nil, nil
+// formatarRespostaPedido monta a mensagem de confirmação
+func (s *MCPServer) formatarRespostaPedido(pedido *service.PedidoConfirmado) string {
+	var sb strings.Builder
+	sb.WriteString("✅ **PEDIDO CONFIRMADO!**\n\n")
+	sb.WriteString(fmt.Sprintf("🧾 **Pedido #%d**\n", pedido.ID))
+	if pedido.ClienteNome != "" {
+		sb.WriteString(fmt.Sprintf("👤 **Cliente:** %s\n", pedido.ClienteNome))
 	}
+	sb.WriteString("---\n")
 
-	if globalServer != nil {
-		mcp.AddTool(globalServer, &mcp.Tool{
-			Name:        "bonus_calculator",
-			Description: "A calculator that was dynamically loaded",
-			InputSchema: map[string]interface{}{
-				"type":  "object",
-				"title": "CalculatorInput",
-				"properties": map[string]interface{}{
-					"a": map[string]interface{}{
-						"type":        "number",
-						"title":       "First Number",
-						"description": "First number",
-					},
-					"b": map[string]interface{}{
-						"type":        "number",
-						"title":       "Second Number",
-						"description": "Second number",
-					},
-					"operation": map[string]interface{}{
-						"type":        "string",
-						"title":       "Operation",
-						"description": "Operation to perform",
-						"enum":        []string{"add", "subtract", "multiply", "divide"},
-					},
-				},
-				"required": []string{"a", "b", "operation"},
-			},
-			Annotations: &mcp.ToolAnnotations{
-				ReadOnlyHint:    true, // Pure computation
-				DestructiveHint: boolPtr(false),
-				IdempotentHint:  true, // Same inputs = same outputs
-				OpenWorldHint:   boolPtr(false),
-			},
-			Icons: []mcp.Icon{
-				{
-					Source:   ABACUS_ICON,
-					MIMEType: "image/png",
-					Sizes:    []string{"256x256"},
-				},
-			},
-		}, calculatorHandler)
-	}
-	bonusToolLoaded = true
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: "Bonus tool 'bonus_calculator' has been loaded! The tools list has been updated."},
-		},
-	}, nil, nil
-}
-
-func calculatorHandler(_ context.Context, _ *mcp.CallToolRequest, input calculatorInput) (*mcp.CallToolResult, any, error) {
-	var result float64
-	switch input.Operation {
-	case "add":
-		result = input.A + input.B
-	case "subtract":
-		result = input.A - input.B
-	case "multiply":
-		result = input.A * input.B
-	case "divide":
-		if input.B != 0 {
-			result = input.A / input.B
-		} else {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "Error: division by zero"},
-				},
-				IsError: true,
-			}, nil, nil
+	for _, item := range pedido.Itens {
+		totalItem := item.PrecoUnitario * float64(item.Quantidade)
+		sb.WriteString(fmt.Sprintf("• %dx **%s** - R$ %.2f\n",
+			item.Quantidade, item.Nome, totalItem))
+		if item.Observacao != "" {
+			sb.WriteString(fmt.Sprintf("  _Obs: %s_\n", item.Observacao))
 		}
 	}
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: fmt.Sprintf("%v %s %v = %v", input.A, input.Operation, input.B, result)},
-		},
-	}, nil, nil
-}
+	sb.WriteString("---\n")
+	sb.WriteString(fmt.Sprintf("💰 **Total: R$ %.2f**\n", pedido.Total))
+	sb.WriteString(fmt.Sprintf("⏱️ **Tempo estimado:** %d minutos\n", pedido.TempoEstimado))
+	sb.WriteString("\n🙏 Obrigado pela preferência! Volte sempre! 🍔")
 
-// =============================================================================
-// Elicitation Handlers
-//
-// Elicitation requests return one of three actions:
-//   - "accept": User provided the requested information
-//   - "decline": User explicitly refused to provide information
-//   - "cancel": User dismissed the request without responding
-//
-// Always handle all three cases gracefully.
-// =============================================================================
-
-func confirmActionHandler(ctx context.Context, req *mcp.CallToolRequest, input confirmActionInput) (*mcp.CallToolResult, any, error) {
-	// Form elicitation: Display a structured form with typed fields
-	// The client renders this as a dialog/form based on the JSON schema
-	result, err := req.Session.Elicit(ctx, &mcp.ElicitParams{
-		Message: fmt.Sprintf("Please confirm: %s", input.Action),
-		RequestedSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"confirm": map[string]any{
-					"type":        "boolean",
-					"title":       "Confirm",
-					"description": "Confirm the action",
-				},
-				"reason": map[string]any{
-					"type":        "string",
-					"title":       "Reason",
-					"description": "Optional reason for your choice",
-				},
-			},
-			"required": []string{"confirm"},
-		},
-	})
-	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Elicitation not supported or failed: %v", err)},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	switch result.Action {
-	case "accept":
-		if confirmed, ok := result.Content["confirm"].(bool); ok && confirmed {
-			reason := "No reason provided"
-			if r, ok := result.Content["reason"].(string); ok && r != "" {
-				reason = r
-			}
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: fmt.Sprintf("Action confirmed: %s\nReason: %s", input.Action, reason)},
-				},
-			}, nil, nil
-		}
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Action declined by user: %s", input.Action)},
-			},
-		}, nil, nil
-	case "decline":
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("User declined to respond for: %s", input.Action)},
-			},
-		}, nil, nil
-	case "cancel":
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("User cancelled elicitation for: %s", input.Action)},
-			},
-		}, nil, nil
-	default:
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Unexpected elicitation response: %s", result.Action)},
-			},
-		}, nil, nil
-	}
-}
-
-func getFeedbackHandler(ctx context.Context, req *mcp.CallToolRequest, input feedbackInput) (*mcp.CallToolResult, any, error) {
-	// URL elicitation: Open a web page in the user's browser
-	// Useful for OAuth flows, external forms, documentation links, etc.
-	feedbackURL := "https://github.com/SamMorrowDrums/mcp-starters/issues/new?template=workshop-feedback.yml"
-	if input.Question != "" {
-		feedbackURL += "&title=" + input.Question
-	}
-
-	// Request user to visit URL via URL elicitation
-	result, err := req.Session.Elicit(ctx, &mcp.ElicitParams{
-		Mode:    "url",
-		Message: "Please provide feedback on MCP Starters by completing the form at the URL below:",
-		URL:     feedbackURL,
-	})
-	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("URL elicitation not supported or failed: %v", err)},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	switch result.Action {
-	case "accept":
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Thank you for providing feedback! Your input helps improve MCP Starters."},
-			},
-		}, nil, nil
-	case "decline":
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "No problem! Feel free to provide feedback anytime at: " + feedbackURL},
-			},
-		}, nil, nil
-	case "cancel":
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Feedback request cancelled."},
-			},
-		}, nil, nil
-	default:
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Feedback URL: " + feedbackURL},
-			},
-		}, nil, nil
-	}
+	return sb.String()
 }
