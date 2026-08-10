@@ -1,4 +1,4 @@
-// internal/repository/pedido_repo.go
+// Package repository contains repository implementations for the application.
 package repository
 
 import (
@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// PedidoRepository defines the contract for accessing and persisting pedidos.
 type PedidoRepository interface {
 	FindByID(ctx context.Context, id uint) (*models.Pedido, error)
 	FindByTenant(ctx context.Context, tenantID uint, limit, offset int) ([]models.Pedido, int64, error)
@@ -25,6 +26,7 @@ type pedidoRepository struct {
 	db *gorm.DB
 }
 
+// NewPedidoRepository creates a new pedido repository instance.
 func NewPedidoRepository(db *gorm.DB) PedidoRepository {
 	return &pedidoRepository{db: db}
 }

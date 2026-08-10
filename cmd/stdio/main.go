@@ -7,6 +7,7 @@ import (
 	mcp_server "github.com/mark3labs/mcp-go/server"
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
+	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 	"github.com/rafapasa/mcp-server-openerp/internal/server"
 )
 
@@ -28,10 +29,13 @@ func main() {
 	}
 
 	// Cliente OpenAI
-	llm := server.NewOpenAILLM()
+	llmClient, err := llm.NewLLMClientFromEnv()
+	if err != nil {
+		log.Fatalf("Erro ao caregar LLM: %v", err)
+	}
 
 	// Cria servidor MCP
-	mcpServer := server.NewMCPServer(db.GetDB(), redisClient.GetClient(), llm)
+	mcpServer := server.NewMCPServer(db.GetDB(), redisClient.GetClient(), llmClient)
 
 	// Inicia servidor (STDIO)
 	log.Println("Iniciando servidor MCP (STDIO)...")

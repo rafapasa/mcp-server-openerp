@@ -1,4 +1,4 @@
-// internal/repository/tenant_repo.go
+// Package repository contains persistence logic for the application repositories.
 package repository
 
 import (
@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// TenantRepository defines persistence operations for tenants.
 type TenantRepository interface {
 	FindByID(ctx context.Context, id uint) (*models.Tenant, error)
 	FindByCNPJ(ctx context.Context, cnpj string) (*models.Tenant, error)
@@ -20,6 +21,7 @@ type tenantRepository struct {
 	db *gorm.DB
 }
 
+// NewTenantRepository creates a repository for handling tenant persistence.
 func NewTenantRepository(db *gorm.DB) TenantRepository {
 	return &tenantRepository{db: db}
 }

@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// ProdutoRepository defines the data access contract for products.
 type ProdutoRepository interface {
 	FindByID(ctx context.Context, id uint) (*models.Produto, error)
 	FindByTenant(ctx context.Context, tenantID uint) ([]models.Produto, error)
@@ -22,6 +23,7 @@ type produtoRepository struct {
 	db *gorm.DB
 }
 
+// NewProdutoRepository creates a product repository backed by the provided database.
 func NewProdutoRepository(db *gorm.DB) ProdutoRepository {
 	return &produtoRepository{db: db}
 }

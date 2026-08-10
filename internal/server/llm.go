@@ -13,14 +13,14 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
 
-// OpenAILLM implementa LLMClient para OpenAI
+// OpenAILLM implementa LLMClient para OpenAI.
 type OpenAILLM struct {
 	apiKey  string
 	model   string
 	baseURL string
 }
 
-// NewOpenAILLM cria um novo cliente OpenAI
+// NewOpenAILLM cria um novo cliente OpenAI.
 func NewOpenAILLM() *OpenAILLM {
 	return &OpenAILLM{
 		apiKey:  os.Getenv("OPENAI_API_KEY"),
@@ -29,8 +29,11 @@ func NewOpenAILLM() *OpenAILLM {
 	}
 }
 
-// Generate envia um prompt para a OpenAI e retorna a resposta
+// Generate envia um prompt para a OpenAI e retorna a resposta.
 func (llm *OpenAILLM) Generate(prompt string) (string, error) {
+	if llm == nil {
+		return "", fmt.Errorf("llm nulo")
+	}
 	if llm.apiKey == "" {
 		return "", fmt.Errorf("OPENAI_API_KEY não configurada")
 	}
@@ -63,14 +66,16 @@ func (llm *OpenAILLM) Generate(prompt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close().Error()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("erro na API OpenAI: %d - %s", resp.StatusCode, string(body))
 	}
 
@@ -93,9 +98,8 @@ func (llm *OpenAILLM) Generate(prompt string) (string, error) {
 	return result.Choices[0].Message.Content, nil
 }
 
-// extractOrderWithLLM chama a IA para extrair o pedido da mensagem
+// extractOrderWithLLM chama a IA para extrair o pedido da mensagem.
 func (s *MCPServer) extractOrderWithLLM(mensagem string, cardapio []service.ProdutoItem) (*service.PedidoExtraido, error) {
-	// 1. Monta o prompt
 	cardapioStr := s.formatarCardapio(cardapio)
 
 	prompt := fmt.Sprintf(`
@@ -122,21 +126,20 @@ FORMATO DE RESPOSTA (JSON):
     {"nome": "Coca-Cola", "quantidade": 1, "observacao": "tamanho médio"}
   ],
   "observacoes": "cliente pediu para entregar às 20h"
-}`, cardapioStr, mensagem)
+}`,
+		cardapioStr,
+		mensagem,
+	)
 
-	// 2. Chama a IA
 	resposta, err := s.llm.Generate(prompt)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao chamar IA: %w", err)
 	}
 
-	// 3. Limpa a resposta (pode ter markdown)
 	resposta = cleanJSONResponse(resposta)
 
-	// 4. Parse do JSON
 	var pedido service.PedidoExtraido
 	if err := json.Unmarshal([]byte(resposta), &pedido); err != nil {
-		// Tenta extrair JSON da resposta
 		if jsonStr := extractJSONFromText(resposta); jsonStr != "" {
 			if err := json.Unmarshal([]byte(jsonStr), &pedido); err != nil {
 				return nil, fmt.Errorf("erro ao parsear resposta da IA: %v\nResposta: %s", err, resposta)
@@ -146,7 +149,6 @@ FORMATO DE RESPOSTA (JSON):
 		}
 	}
 
-	// 5. Valida e corrige os itens contra o cardápio
 	for i, item := range pedido.Itens {
 		existe, preco := s.itemExisteNoCardapio(cardapio, item.Nome)
 		if !existe {
@@ -162,7 +164,6 @@ FORMATO DE RESPOSTA (JSON):
 		}
 	}
 
-	// 6. Valida bebidas
 	for i, item := range pedido.Bebidas {
 		existe, preco := s.itemExisteNoCardapio(cardapio, item.Nome)
 		if !existe {
@@ -181,15 +182,17 @@ FORMATO DE RESPOSTA (JSON):
 	return &pedido, nil
 }
 
-// cleanJSONResponse limpa a resposta da IA
+// cleanJSONResponse limpa a resposta da IA.
 func cleanJSONResponse(resposta string) string {
-	// Remove markdown code blocks
-	resposta = strings.ReplaceAll(resposta, "```json", "")
-	resposta = strings.ReplaceAll(resposta, "```", "")
-	return strings.TrimSpace(resposta)
+	resposta = strings.TrimSpace(resposta)
+	resposta = strings.TrimPrefix(resposta, "```json")
+	resposta = strings.TrimPrefix(resposta, "```JSON")
+	resposta = strings.TrimSuffix(resposta, "```")
+	resposta = strings.TrimSpace(resposta)
+	return resposta
 }
 
-// extractJSONFromText extrai JSON de um texto que pode ter outros caracteres
+// extractJSONFromText extrai JSON de um texto que pode ter outros caracteres.
 func extractJSONFromText(text string) string {
 	start := strings.Index(text, "{")
 	end := strings.LastIndex(text, "}")

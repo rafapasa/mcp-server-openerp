@@ -1,3 +1,4 @@
+// internal/server/server.go
 package server
 
 import (
@@ -5,6 +6,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
@@ -17,18 +19,13 @@ type MCPServer struct {
 	cardapioService *service.CardapioService
 	pedidoService   *service.PedidoService
 
-	// Clients
-	llm   LLMClient
+	// Clientes
+	llm   llm.LLMClient // Agora usa a interface
 	cache *redis.Client
 }
 
-// LLMClient interface para chamar diferentes provedores de IA
-type LLMClient interface {
-	Generate(prompt string) (string, error)
-}
-
 // NewMCPServer cria uma nova instância do servidor
-func NewMCPServer(db *gorm.DB, cache *redis.Client, llm LLMClient) *MCPServer {
+func NewMCPServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *MCPServer {
 	// Inicializa repositórios
 	tenantRepo := repository.NewTenantRepository(db)
 	produtoRepo := repository.NewProdutoRepository(db)
@@ -46,7 +43,7 @@ func NewMCPServer(db *gorm.DB, cache *redis.Client, llm LLMClient) *MCPServer {
 		),
 		cardapioService: cardapioService,
 		pedidoService:   pedidoService,
-		llm:             llm,
+		llm:             llmClient,
 		cache:           cache,
 	}
 
