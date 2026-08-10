@@ -1,4 +1,3 @@
-// internal/server/tools.go
 package server
 
 import (
@@ -44,8 +43,8 @@ func whatsappTool() mcp.Tool {
 }
 
 func (s *MCPServer) whatsappHandler() func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Converte argumentos
+	return func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		// Converte arguments
 		args, err := getArguments(request)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -135,7 +134,7 @@ func processarPedidoTool() mcp.Tool {
 }
 
 func (s *MCPServer) processarPedidoHandler() func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := getArguments(request)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -200,7 +199,7 @@ func consultarCardapioTool() mcp.Tool {
 }
 
 func (s *MCPServer) consultarCardapioHandler() func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := getArguments(request)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -263,16 +262,16 @@ func (s *MCPServer) consultarCardapioHandler() func(ctx context.Context, request
 // FUNÇÕES AUXILIARES
 // ============================================
 
-// getArguments converte os argumentos da request
+// getArguments converte os arguments da request
 func getArguments(request mcp.CallToolRequest) (map[string]interface{}, error) {
 	args, ok := request.Params.Arguments.(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("argumentos inválidos")
+		return nil, fmt.Errorf("arguments inválidos")
 	}
 	return args, nil
 }
 
-// getString extrai uma string dos argumentos
+// getString extrai uma string dos arguments
 func getString(args map[string]interface{}, key string) (string, bool) {
 	val, ok := args[key].(string)
 	return val, ok

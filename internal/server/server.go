@@ -1,4 +1,3 @@
-// internal/server/server.go
 package server
 
 import (
@@ -18,7 +17,7 @@ type MCPServer struct {
 	cardapioService *service.CardapioService
 	pedidoService   *service.PedidoService
 
-	// Clientes
+	// Clients
 	llm   LLMClient
 	cache *redis.Client
 }

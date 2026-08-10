@@ -1,4 +1,3 @@
-// internal/server/llm.go
 package server
 
 import (
@@ -64,7 +63,7 @@ func (llm *OpenAILLM) Generate(prompt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close().Error()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

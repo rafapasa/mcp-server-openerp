@@ -1,4 +1,3 @@
-// internal/server/resources.go
 package server
 
 import (
@@ -22,7 +21,7 @@ func (s *MCPServer) registerResources() {
 }
 
 func (s *MCPServer) cardapioResourceHandler() func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	return func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	return func(_ context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		tenantID := request.Params.URI[12:] // "cardapio://tenant_id"
 
 		cardapio, err := s.getCardapio(tenantID)

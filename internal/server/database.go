@@ -1,3 +1,4 @@
+// Package server contains the MCP server handlers and business logic.
 package server
 
 import (

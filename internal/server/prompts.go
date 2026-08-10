@@ -1,4 +1,3 @@
-// internal/server/prompts.go
 package server
 
 import (
@@ -17,7 +16,7 @@ func (s *MCPServer) registerPrompts() {
 }
 
 func (s *MCPServer) promptAtendimentoHandler() func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	return func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+	return func(_ context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 		clienteNome := request.Params.Arguments["cliente_nome"]
 		pedido := request.Params.Arguments["pedido"]
 
