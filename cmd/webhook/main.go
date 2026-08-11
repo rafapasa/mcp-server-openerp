@@ -52,5 +52,5 @@ func main() {
 	}
 
 	log.Printf("🚀 Webhook server iniciado na porta %s", port)
-	log.Fatal(server.Start(":" + port))
+	log.Fatal(server.Start(":"+port, db.DB, redisClient.Client, llmClient))
 }

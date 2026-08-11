@@ -2,9 +2,11 @@
 package logger
 
 import (
+	"context"
 	"os"
 	"sync"
 
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/tracing"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -134,4 +136,47 @@ func Sync() error {
 		return instance.Sync()
 	}
 	return nil
+}
+
+// WithTracing adiciona campos de tracing ao logger
+func WithTracing(logger *zap.Logger, ctx context.Context) *zap.Logger {
+	traceID := TraceIDFromContext(ctx)
+	spanID := SpanIDFromContext(ctx)
+
+	fields := []zap.Field{}
+	if traceID != "" {
+		fields = append(fields, zap.String("trace_id", traceID))
+	}
+	if spanID != "" {
+		fields = append(fields, zap.String("span_id", spanID))
+	}
+
+	if len(fields) > 0 {
+		return logger.With(fields...)
+	}
+	return logger
+}
+
+// TraceIDFromContext retorna o trace_id do contexto
+func TraceIDFromContext(ctx context.Context) string {
+	if id, ok := ctx.Value(TraceIDKey).(string); ok {
+		return id
+	}
+	// Tenta obter do tracing
+	if id := tracing.TraceIDFromContext(ctx); id != "" {
+		return id
+	}
+	return ""
+}
+
+// SpanIDFromContext retorna o span_id do contexto
+func SpanIDFromContext(ctx context.Context) string {
+	if id, ok := ctx.Value(SpanIDKey).(string); ok {
+		return id
+	}
+	// Tenta obter do tracing
+	if id := tracing.SpanIDFromContext(ctx); id != "" {
+		return id
+	}
+	return ""
 }

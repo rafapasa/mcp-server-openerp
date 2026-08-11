@@ -5,6 +5,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/tracing"
 	"go.uber.org/zap"
 )
 
@@ -18,6 +19,31 @@ const (
 	// SpanIDKey é a chave para o span_id no contexto
 	SpanIDKey ctxKey = "span_id"
 )
+
+// WithTraceFromContext adiciona trace_id e span_id do contexto de tracing
+func WithTraceFromContext(ctx context.Context) context.Context {
+	traceID := tracing.TraceIDFromContext(ctx)
+	spanID := tracing.SpanIDFromContext(ctx)
+
+	if traceID != "" {
+		ctx = WithTraceID(ctx, traceID)
+	}
+	if spanID != "" {
+		ctx = WithSpanID(ctx, spanID)
+	}
+
+	return ctx
+}
+
+// NewContextWithTrace cria um contexto com trace_id e span_id do tracing
+func NewContextWithTrace(ctx context.Context, operation string) context.Context {
+	// Inicia um span (se tracing estiver ativo)
+	newCtx, span := tracing.StartSpan(ctx, operation)
+	defer span.End()
+
+	// Extrai IDs e adiciona ao logger
+	return WithTraceFromContext(newCtx)
+}
 
 // WithLogger adiciona um logger ao contexto
 func WithLogger(ctx context.Context, logger *zap.Logger) context.Context {

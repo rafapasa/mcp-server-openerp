@@ -5,7 +5,12 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/health"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/metrics"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/middleware"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/tracing"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 	"github.com/rafapasa/mcp-server-openerp/internal/server"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
@@ -46,8 +51,23 @@ func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *Serve
 }
 
 // Start inicia o servidor HTTP
-func (s *Server) Start(addr string) error {
+func (s *Server) Start(addr string, db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) error {
+	metrics.Init()
+
+	// Inicializa tracing
+	if err := tracing.Init(tracing.DefaultConfig()); err != nil {
+		println("Erro ao iniciar tracing: " + err.Error())
+	}
+
+	// Cria health checker com verificações padrão
+	hc := health.NewDefaultHealthChecker(db, cache, llmClient)
+
 	mux := http.NewServeMux()
+
+	// Health checks
+	mux.HandleFunc("GET /health", health.HealthHandler(hc))
+	mux.HandleFunc("GET /ready", health.ReadinessHandler(hc))
+	mux.HandleFunc("GET /status", health.StatusHandler(hc))
 
 	// Rotas do webhook
 	mux.HandleFunc("GET /webhook", s.handler.HandleVerifyWebhook)
@@ -60,9 +80,18 @@ func (s *Server) Start(addr string) error {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	mux.Handle("GET /metrics", promhttp.Handler())
+
+	// Aplica middlewares (logging + métricas + tracing)
+	handler := middleware.TracingMiddleware(
+		middleware.LoggingMiddleware(
+			middleware.MetricsMiddleware(mux),
+		),
+	)
+
 	s.httpServer = &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: handler,
 	}
 
 	log.Printf("✅ Webhook rodando em %s", addr)
