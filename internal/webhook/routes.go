@@ -2,12 +2,16 @@
 package webhook
 
 import (
-	"log"
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/health"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/metrics"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/middleware"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/tracing"
@@ -15,13 +19,18 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/server"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 // Server servidor webhook
 type Server struct {
-	httpServer *http.Server
-	handler    *WebhookHandler
+	httpServer  *http.Server
+	handler     *WebhookHandler
+	db          *gorm.DB
+	cache       *redis.Client
+	llmClient   llm.LLMClient
+	healthCheck *health.HealthChecker
 }
 
 // NewServer cria um novo servidor webhook
@@ -45,41 +54,56 @@ func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *Serve
 	// Cria handler
 	handler := NewWebhookHandler(mcpServer, whatsApp)
 
+	// Cria health checker
+	hc := health.NewDefaultHealthChecker(db, cache, llmClient)
+
 	return &Server{
-		handler: handler,
+		handler:     handler,
+		db:          db,
+		cache:       cache,
+		llmClient:   llmClient,
+		healthCheck: hc,
 	}
 }
 
 // Start inicia o servidor HTTP
-func (s *Server) Start(addr string, db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) error {
+func (s *Server) Start(addr string) error {
+
+	// Inicializa métricas
 	metrics.Init()
 
-	// Inicializa tracing
-	if err := tracing.Init(tracing.DefaultConfig()); err != nil {
-		println("Erro ao iniciar tracing: " + err.Error())
+	// Carrega configuração de tracing do .env
+	cfg := config.LoadConfigOrDefault()
+	tracingConfig := tracing.Config{
+		Enabled:      cfg.TracingEnabled,
+		Endpoint:     cfg.TracingEndpoint,
+		ServiceName:  cfg.TracingServiceName,
+		SamplingRate: cfg.TracingSamplingRate,
 	}
 
-	// Cria health checker com verificações padrão
-	hc := health.NewDefaultHealthChecker(db, cache, llmClient)
+	// Inicializa tracing
+	if err := tracing.Init(tracingConfig); err != nil {
+		logger.GetLogger().Warn("Erro ao iniciar tracing", zap.Error(err))
+	}
 
 	mux := http.NewServeMux()
 
-	// Health checks
-	mux.HandleFunc("GET /health", health.HealthHandler(hc))
-	mux.HandleFunc("GET /ready", health.ReadinessHandler(hc))
-	mux.HandleFunc("GET /status", health.StatusHandler(hc))
+	// Health checks (usando o healthChecker com contexto)
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		health.HealthHandler(s.healthCheck)(w, r)
+	})
+	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, r *http.Request) {
+		health.ReadinessHandler(s.healthCheck)(w, r)
+	})
+	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
+		health.StatusHandler(s.healthCheck)(w, r)
+	})
 
 	// Rotas do webhook
 	mux.HandleFunc("GET /webhook", s.handler.HandleVerifyWebhook)
 	mux.HandleFunc("POST /webhook", s.handler.HandleWebhook)
 
-	// Health check
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
-	})
-
+	// Métricas
 	mux.Handle("GET /metrics", promhttp.Handler())
 
 	// Aplica middlewares (logging + métricas + tracing)
@@ -90,14 +114,30 @@ func (s *Server) Start(addr string, db *gorm.DB, cache *redis.Client, llmClient 
 	)
 
 	s.httpServer = &http.Server{
-		Addr:    addr,
-		Handler: handler,
+		Addr:         addr,
+		Handler:      handler,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("✅ Webhook rodando em %s", addr)
-	log.Printf("   GET  /webhook - Verificação do WhatsApp")
-	log.Printf("   POST /webhook - Recebimento de mensagens")
-	log.Printf("   GET  /health  - Health check")
+	logger.GetLogger().Info("Webhook server configurado",
+		zap.String("addr", addr),
+		zap.Bool("tracing_enabled", tracingConfig.Enabled),
+	)
+	logger.GetLogger().Info("Rotas disponíveis",
+		zap.String("GET /webhook", "Verificação do WhatsApp"),
+		zap.String("POST /webhook", "Recebimento de mensagens"),
+		zap.String("GET /health", "Health check"),
+		zap.String("GET /ready", "Readiness check"),
+		zap.String("GET /status", "Status detalhado"),
+		zap.String("GET /metrics", "Métricas Prometheus"),
+	)
 
 	return s.httpServer.ListenAndServe()
+}
+
+// Shutdown finaliza o servidor gracefully
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.httpServer.Shutdown(ctx)
 }

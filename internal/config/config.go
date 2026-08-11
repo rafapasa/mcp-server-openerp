@@ -47,7 +47,11 @@ type Config struct {
 	// Timezone
 	TimeZone string
 
-	TracingEnabled     bool   `mapstructure:"TRACING_ENABLED"`
+	TracingEnabled      bool    `mapstructure:"TRACING_ENABLED"`
+	TracingEndpoint     string  `mapstructure:"TRACING_ENDPOINT"`
+	TracingServiceName  string  `mapstructure:"TRACING_SERVICE_NAME"`
+	TracingSamplingRate float64 `mapstructure:"TRACING_SAMPLING_RATE"`
+
 	JaegerEndpoint     string `mapstructure:"JAEGER_ENDPOINT"`
 	RateLimitEnabled   bool   `mapstructure:"RATE_LIMIT_ENABLED"`
 	RateLimitPerSecond int    `mapstructure:"RATE_LIMIT_PER_SECOND"`
@@ -56,6 +60,13 @@ type Config struct {
 	LlmModel    string `mapstructure:"MODEL"`
 	LlmBaseURL  string `mapstructure:"BASE_URL"`
 	LlmAPIKey   string `mapstructure:"API_KEY"`
+
+	// WhatsApp
+	WebhookPort         string `mapstructure:"WEBHOOK_PORT"`
+	WhatsAppAPIURL      string `mapstructure:"WHATSAPP_API_URL"`
+	WhatsAppAccessToken string `mapstructure:"WHATSAPP_ACCESS_TOKEN"`
+	WhatsAppPhoneNumber string `mapstructure:"WHATSAPP_PHONE_NUMBER"`
+	WhatsAppVerifyToken string `mapstructure:"WHATSAPP_VERIFY_TOKEN"`
 }
 
 // LoadConfig carrega as configurações do arquivo .env e variáveis de ambiente
@@ -110,15 +121,26 @@ func LoadConfig() *Config {
 		TimeZone: getEnv("TIME_ZONE", "America/Sao_Paulo"),
 
 		// Observability (com valores padrão)
-		TracingEnabled:     getEnvAsBool("TRACING_ENABLED", false),
+		TracingEnabled:      getEnvAsBool("TRACING_ENABLED", false),
+		TracingEndpoint:     getEnv("TRACING_ENDPOINT", "localhost:4317"),
+		TracingServiceName:  getEnv("TRACING_SERVICE_NAME", "mcp-server"),
+		TracingSamplingRate: float64(getEnvAsInt("TRACING_SAMPLING_RATE", 1) / 10),
+
+		// LLM getEnvAsBool("RATE_LIMIT_ENABLED", false),
+
 		JaegerEndpoint:     getEnv("JAEGER_ENDPOINT", "localhost:4317"),
 		RateLimitEnabled:   getEnvAsBool("RATE_LIMIT_ENABLED", false),
 		RateLimitPerSecond: getEnvAsInt("RATE_LIMIT_PER_SECOND", 100),
 
-		LlmProvider: getEnv("LLM_PROVIDER", ""),
-		LlmModel:    getEnv("LLM_MODEL", ""),
-		LlmBaseURL:  getEnv("LLM_BASE_URL", ""),
-		LlmAPIKey:   getEnv("LLM_API_KEY", ""),
+		LlmProvider:         getEnv("LLM_PROVIDER", ""),
+		LlmModel:            getEnv("LLM_MODEL", ""),
+		LlmBaseURL:          getEnv("LLM_BASE_URL", ""),
+		LlmAPIKey:           getEnv("LLM_API_KEY", ""),
+		WebhookPort:         getEnv("WEBHOOK_PORT", "8080"),
+		WhatsAppAPIURL:      getEnv("WHATSAPP_API_URL", ""),
+		WhatsAppAccessToken: getEnv("WHATSAPP_ACCESS_TOKEN", ""),
+		WhatsAppPhoneNumber: getEnv("WHATSAPP_PHONE_NUMBER", ""),
+		WhatsAppVerifyToken: getEnv("WHATSAPP_VERIFY_TOKEN", ""),
 	}
 }
 
@@ -163,4 +185,11 @@ func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
 		}
 	}
 	return defaultValue
+}
+
+// LoadConfigOrDefault carrega a configuração ou usa valores padrão
+func LoadConfigOrDefault() *Config {
+	cfg := LoadConfig()
+
+	return cfg
 }

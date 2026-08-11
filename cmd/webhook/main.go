@@ -16,6 +16,15 @@ func main() {
 	// Carrega configuração
 	cfg := config.LoadConfig()
 
+	// Inicializa logger
+	if err := logger.Init(logger.Config{
+		Level:    cfg.LogLevel,
+		Encoding: cfg.LogEncoding,
+	}); err != nil {
+		log.Fatalf("Erro ao inicializar logger: %v", err)
+	}
+	defer logger.Sync()
+
 	// Logger inicial
 	zapLogger := logger.GetLogger()
 	zapLogger.Info("Iniciando servidor webhook",
@@ -26,24 +35,24 @@ func main() {
 	// Conexão com banco de dados
 	db, err := database.NewMySQL(cfg, "")
 	if err != nil {
-		log.Fatalf("Erro ao conectar ao banco: %v", err)
+		zapLogger.Fatal("Erro ao conectar ao banco", zap.Error(err))
 	}
 	defer db.Close()
 
 	// Conexão com Redis
 	redisClient, err := database.NewRedis(cfg)
 	if err != nil {
-		log.Fatalf("Erro ao conectar ao Redis: %v", err)
+		zapLogger.Fatal("Erro ao conectar ao Redis", zap.Error(err))
 	}
 
 	// Cliente LLM
 	llmClient, err := llm.NewLLMClientFromEnv()
 	if err != nil {
-		log.Fatalf("Erro ao carregar LLM: %v", err)
+		zapLogger.Fatal("Erro ao carregar LLM", zap.Error(err))
 	}
 
 	// Cria servidor webhook
-	server := webhook.NewServer(db.DB, redisClient.Client, llmClient)
+	server := webhook.NewServer(db.GetDB(), redisClient.Client, llmClient)
 
 	// Inicia servidor HTTP
 	port := os.Getenv("WEBHOOK_PORT")
@@ -51,6 +60,11 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("🚀 Webhook server iniciado na porta %s", port)
-	log.Fatal(server.Start(":"+port, db.DB, redisClient.Client, llmClient))
+	zapLogger.Info("Webhook server iniciado",
+		zap.String("port", port),
+	)
+
+	if err := server.Start(":" + port); err != nil {
+		zapLogger.Fatal("Erro ao iniciar servidor", zap.Error(err))
+	}
 }
