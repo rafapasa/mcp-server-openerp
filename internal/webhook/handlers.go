@@ -3,14 +3,15 @@ package webhook
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/server"
+	"go.uber.org/zap"
 )
 
 // WebhookHandler gerencia as requisições do webhook
@@ -68,6 +69,13 @@ type WebhookResponse struct {
 
 // HandleWebhook processa as mensagens recebidas do WhatsApp
 func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	logger.Info(ctx, "Recebendo webhook do WhatsApp",
+		zap.String("method", r.Method),
+		zap.String("remote_addr", r.RemoteAddr),
+	)
+
 	// Verifica método
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -80,21 +88,21 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	// Lê o body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("[Webhook] Erro ao ler body: %v", err)
+		logger.Error(ctx, "Erro ao ler body do webhook", zap.Error(err), zap.String("remote_addr", r.RemoteAddr))
 		http.Error(w, "Erro ao ler body", http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
-	log.Printf("Body: %s", body)
+	logger.Debug(ctx, "Body do webhook recebido", zap.ByteString("body", body))
+
 	// Parse da requisição
 	var req WebhookRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		log.Printf("[Webhook] Erro ao parsear JSON: %v", err)
+		logger.Error(ctx, "Erro ao parsear JSON do webhook", zap.Error(err), zap.ByteString("body", body))
 		http.Error(w, "Erro ao parsear JSON", http.StatusBadRequest)
 		return
 	}
-
 	// Processa cada mensagem
 	for _, entry := range req.Entry {
 		for _, change := range entry.Changes {
@@ -114,7 +122,7 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 				tenantID := h.getTenantID(change.Value.Metadata.PhoneNumberID)
 
 				// Processa a mensagem
-				go h.processMessage(clienteID, clienteNome, tenantID, message.Text.Body)
+				go h.processMessage(ctx, clienteID, clienteNome, tenantID, message.Text.Body)
 			}
 		}
 	}
@@ -126,6 +134,8 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Message: "Mensagem processada com sucesso",
 	})
+
+	logger.Info(ctx, "Webhook processado com sucesso", zap.Int("Messages_count", len(req.Entry)))
 }
 
 // internal/webhook/handlers.go
@@ -153,32 +163,34 @@ func (h *WebhookHandler) HandleVerifyWebhook(w http.ResponseWriter, r *http.Requ
 }
 
 // processMessage processa uma mensagem do WhatsApp
-func (h *WebhookHandler) processMessage(clienteID, clienteNome, tenantID, mensagem string) {
-	log.Printf("[Webhook] Mensagem de %s (%s): %s", clienteID, tenantID, mensagem)
-
-	// Aqui chamamos a tool do MCP
-	// Como não temos acesso direto à tool, vamos usar o service
-	// ou criar uma função auxiliar
-
-	// Opção 1: Criar um método no MCPServer para processar mensagens
-	// Opção 2: Extrair a lógica da tool para um service comum
-	// Opção 3: Chamar a tool via HTTP (se o MCP Server estiver rodando)
-
-	// Implementação temporária - vamos processar diretamente
-	// Isso precisa ser refinado
-	ctx := context.Background()
+func (h *WebhookHandler) processMessage(ctx context.Context, clienteID, clienteNome, tenantID, mensagem string) {
+	logger.Info(ctx, "Mensagem recebida do WhatsApp",
+		zap.String("cliente_id", clienteID),
+		zap.String("tenant_id", tenantID),
+		zap.String("mensagem", mensagem),
+	)
 
 	// Busca cardápio
 	cardapio, err := h.mcpServer.GetCardapio(tenantID)
 	if err != nil {
-		log.Printf("[Webhook] Erro ao buscar cardápio: %v", err)
+		logger.Error(ctx, "Erro ao buscar cardápio",
+			zap.Error(err),
+			zap.String("tenant_id", tenantID),
+			zap.String("cliente_id", clienteID),
+			zap.String("mensagem", mensagem),
+		)
 		return
 	}
 
 	// Extrai intenção
-	intencao, err := h.mcpServer.ExtractIntent(mensagem, cardapio)
+	intencao, err := h.mcpServer.ExtractIntent(ctx, mensagem, cardapio)
 	if err != nil {
 		log.Printf("[Webhook] Erro ao extrair intenção: %v", err)
+		logger.Error(ctx, "Erro ao extrair intenção",
+			zap.Error(err),
+			zap.String("mensagem", mensagem),
+			zap.String("cliente_id", clienteID),
+		)
 		return
 	}
 
@@ -207,7 +219,11 @@ func (h *WebhookHandler) processMessage(clienteID, clienteNome, tenantID, mensag
 	case "finalizar", "confirmar":
 		pedido, err := h.mcpServer.FinalizarCarrinho(ctx, clienteID, tenantID, clienteNome)
 		if err != nil {
-			resposta = fmt.Sprintf("❌ Erro ao finalizar pedido: %v", err)
+			logger.Error(ctx, "Erro ao finalizar pedido",
+				zap.Error(err),
+				zap.String("cliente_id", clienteID),
+				zap.String("tenant_id", tenantID))
+			resposta = "❌ Erro ao finalizar pedido. Por favor, tente novamente."
 		} else {
 			resposta = h.mcpServer.FormatarRespostaPedido(ctx, pedido)
 		}
@@ -222,7 +238,10 @@ func (h *WebhookHandler) processMessage(clienteID, clienteNome, tenantID, mensag
 
 	// Envia resposta
 	if err := h.whatsApp.SendMessage(clienteID, resposta); err != nil {
-		log.Printf("[Webhook] Erro ao enviar mensagem: %v", err)
+		logger.Error(ctx, "Erro ao enviar resposta WhatsApp",
+			zap.Error(err),
+			zap.String("cliente_id", clienteID),
+			zap.String("resposta", resposta))
 	}
 }
 

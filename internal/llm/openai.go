@@ -7,12 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+	"go.uber.org/zap"
 )
 
 // OpenAILLM implementa LLMClient para OpenAI
@@ -24,7 +25,7 @@ type OpenAILLM struct {
 
 // NewOpenAILLM cria um novo cliente OpenAI
 func NewOpenAILLM(config *config.Config) LLMClient {
-	baseURL := config.BaseURL
+	baseURL := config.LlmBaseURL
 	if baseURL == "" {
 		baseURL = os.Getenv("OPENAI_BASE_URL")
 	}
@@ -32,7 +33,7 @@ func NewOpenAILLM(config *config.Config) LLMClient {
 		baseURL = "https://api.openai.com/v1/chat/completions"
 	}
 
-	model := config.Model
+	model := config.LlmModel
 	if model == "" {
 		model = os.Getenv("OPENAI_MODEL")
 	}
@@ -40,7 +41,7 @@ func NewOpenAILLM(config *config.Config) LLMClient {
 		model = "gpt-4o-mini"
 	}
 
-	apiKey := config.APIKey
+	apiKey := config.LlmAPIKey
 	if apiKey == "" {
 		apiKey = os.Getenv("OPENAI_API_KEY")
 	}
@@ -130,10 +131,10 @@ func (llm *OpenAILLM) GetProvider() string {
 }
 
 // ExtractIntent extrai a intenção do cliente da mensagem usando OpenAI
-func (llm *OpenAILLM) ExtractIntent(mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error) {
+func (llm *OpenAILLM) ExtractIntent(ctx context.Context, mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error) {
 	// A implementação é IDÊNTICA à do Gemini, apenas muda o cliente
 	// Poderíamos extrair para uma função comum, mas vamos manter por enquanto
-
+	logger.Debug(ctx, "Chamando LLM para extrair intenção", zap.String("provider", llm.GetProvider()), zap.String("model", llm.GetModel()), zap.Int("prompt_size", len(mensagem)))
 	if llm.apiKey == "" {
 		return nil, fmt.Errorf("OPENAI_API_KEY não configurada")
 	}
@@ -176,12 +177,16 @@ FORMATO DE RESPOSTA (JSON):
 }
 `, cardapioStr, mensagem)
 
-	resposta, err := llm.GenerateWithContext(context.Background(), prompt)
+	resposta, err := llm.GenerateWithContext(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao chamar OpenAI: %w", err)
 	}
 
 	resposta = cleanJSONResponse(resposta)
+	logger.Debug(ctx, "Resposta LLM recebida",
+		zap.String("provider", llm.GetProvider()),
+		zap.String("model", llm.GetModel()),
+		zap.Int("response_size", len(resposta)))
 
 	var intencao IntencaoCliente
 	if err := json.Unmarshal([]byte(resposta), &intencao); err != nil {
@@ -205,9 +210,10 @@ FORMATO DE RESPOSTA (JSON):
 			if !encontrou {
 				similar := encontrarItemSimilar(cardapio, item.Nome)
 				if similar != "" {
-					intencao.Itens[i].Nome = similar
-					log.Printf("[LLM] Item '%s' corrigido para '%s'", item.Nome, similar)
+					intencao.Itens[i].Nome = similar // Corrigido para usar o nome similar
+					logger.Info(ctx, "Item corrigido", zap.String("original", item.Nome), zap.String("corrigido", similar))
 				}
+				logger.Warn(ctx, "Item não encontrado no cardápio", zap.String("item_nome", item.Nome))
 			} else {
 				intencao.Itens[i].PrecoUnitario = preco
 			}
@@ -221,11 +227,11 @@ FORMATO DE RESPOSTA (JSON):
 		intencao.Itens = mergeItens(intencao.Itens)
 	}
 
-	log.Printf("[LLM] Intenção detectada: %s, %d itens", intencao.Acao, len(intencao.Itens))
+	logger.Info(ctx, "Intenção extraída", zap.String("acao", intencao.Acao), zap.Int("itens", len(intencao.Itens)))
 
 	return &intencao, nil
 }
 
-func (llm *OpenAILLM) CorrigirNomes(nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error) {
-	return llm.CorrigirNomes(nomesNaoEncontrados, produtosEncontrados)
+func (llm *OpenAILLM) CorrigirNomes(ctx context.Context, nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error) {
+	return CorrigirNomes(ctx, nomesNaoEncontrados, produtosEncontrados, llm.GenerateWithContext)
 }

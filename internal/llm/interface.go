@@ -13,8 +13,8 @@ type LLMClient interface {
 	GenerateWithContext(ctx context.Context, prompt string) (string, error)
 	GetModel() string
 	GetProvider() string
-	ExtractIntent(mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error)
-	CorrigirNomes(nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error)
+	ExtractIntent(ctx context.Context, mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error)
+	CorrigirNomes(ctx context.Context, nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error)
 }
 
 // IntencaoCliente representa a intenção extraída da mensagem

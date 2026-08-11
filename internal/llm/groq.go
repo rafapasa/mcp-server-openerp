@@ -23,7 +23,7 @@ type GroqLLM struct {
 
 // NewGroqLLM cria um novo cliente Groq
 func NewGroqLLM(config *config.Config) LLMClient {
-	baseURL := config.BaseURL
+	baseURL := config.LlmBaseURL
 	if baseURL == "" {
 		baseURL = os.Getenv("GROQ_BASE_URL")
 	}
@@ -31,7 +31,7 @@ func NewGroqLLM(config *config.Config) LLMClient {
 		baseURL = "https://api.groq.com/openai/v1/chat/completions"
 	}
 
-	model := config.Model
+	model := config.LlmModel
 	if model == "" {
 		model = os.Getenv("GROQ_MODEL")
 	}
@@ -39,7 +39,7 @@ func NewGroqLLM(config *config.Config) LLMClient {
 		model = "llama-3.3-70b-versatile"
 	}
 
-	apiKey := config.APIKey
+	apiKey := config.LlmAPIKey
 	if apiKey == "" {
 		apiKey = os.Getenv("GROQ_API_KEY")
 	}
@@ -129,11 +129,10 @@ func (llm *GroqLLM) GetProvider() string {
 	return "groq"
 }
 
-func (llm *GroqLLM) ExtractIntent(mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error) {
-	// prompt := fmt.Sprintf
+func (llm *GroqLLM) ExtractIntent(ctx context.Context, mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error) {
 	return nil, nil
 }
 
-func (llm *GroqLLM) CorrigirNomes(nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error) {
-	return llm.CorrigirNomes(nomesNaoEncontrados, produtosEncontrados)
+func (llm *GroqLLM) CorrigirNomes(ctx context.Context, nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error) {
+	return llm.CorrigirNomes(ctx, nomesNaoEncontrados, produtosEncontrados)
 }

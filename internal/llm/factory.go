@@ -11,7 +11,7 @@ import (
 
 // NewLLMClient cria um cliente LLM baseado na configuração
 func NewLLMClient(config *config.Config) (LLMClient, error) {
-	provider := strings.ToLower(config.Provider)
+	provider := strings.ToLower(config.LlmProvider)
 
 	log.Printf("[LLM] Inicializando provedor: %s", provider)
 

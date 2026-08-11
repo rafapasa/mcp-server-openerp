@@ -7,12 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+	"go.uber.org/zap"
 )
 
 // GeminiLLM implementa LLMClient para Google Gemini
@@ -24,7 +25,7 @@ type GeminiLLM struct {
 
 // NewGeminiLLM cria um novo cliente Gemini
 func NewGeminiLLM(config *config.Config) LLMClient {
-	model := config.Model
+	model := config.LlmModel
 	if model == "" {
 		model = os.Getenv("GEMINI_MODEL")
 	}
@@ -32,7 +33,7 @@ func NewGeminiLLM(config *config.Config) LLMClient {
 		model = "gemini-3.6-flash"
 	}
 
-	apiKey := config.APIKey
+	apiKey := config.LlmAPIKey
 	if apiKey == "" {
 		apiKey = os.Getenv("GEMINI_API_KEY")
 	}
@@ -128,7 +129,7 @@ func (llm *GeminiLLM) GetProvider() string {
 }
 
 // ExtractIntent extrai a intenção do cliente da mensagem usando Gemini
-func (llm *GeminiLLM) ExtractIntent(mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error) {
+func (llm *GeminiLLM) ExtractIntent(ctx context.Context, mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error) {
 	if llm.apiKey == "" {
 		return nil, fmt.Errorf("GEMINI_API_KEY não configurada")
 	}
@@ -180,7 +181,7 @@ EXEMPLOS:
 `, cardapioStr, mensagem)
 
 	// Chama a API Gemini
-	resposta, err := llm.GenerateWithContext(context.Background(), prompt)
+	resposta, err := llm.GenerateWithContext(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao chamar Gemini: %w", err)
 	}
@@ -190,6 +191,10 @@ EXEMPLOS:
 
 	// Parse do JSON
 	var intencao IntencaoCliente
+	logger.Debug(ctx, "Resposta LLM recebida",
+		zap.String("provider", llm.GetProvider()),
+		zap.String("model", llm.GetModel()),
+		zap.Int("response_size", len(resposta)))
 	if err := json.Unmarshal([]byte(resposta), &intencao); err != nil {
 		// Tenta extrair JSON do texto
 		if jsonStr := extractJSONFromText(resposta); jsonStr != "" {
@@ -217,9 +222,9 @@ EXEMPLOS:
 				similar := encontrarItemSimilar(cardapio, item.Nome)
 				if similar != "" {
 					intencao.Itens[i].Nome = similar
-					log.Printf("[LLM] Item '%s' corrigido para '%s'", item.Nome, similar)
+					logger.Info(ctx, "Item corrigido", zap.String("original", item.Nome), zap.String("corrigido", similar))
 				} else {
-					log.Printf("[LLM] Item '%s' não encontrado no cardápio", item.Nome)
+					logger.Warn(ctx, "Item não encontrado no cardápio", zap.String("item_nome", item.Nome))
 				}
 			} else {
 				intencao.Itens[i].PrecoUnitario = preco
@@ -237,11 +242,11 @@ EXEMPLOS:
 		intencao.Itens = mergeItens(intencao.Itens)
 	}
 
-	log.Printf("[LLM] Intenção detectada: %s, %d itens", intencao.Acao, len(intencao.Itens))
+	logger.Info(ctx, "Intenção extraída", zap.String("acao", intencao.Acao), zap.Int("itens", len(intencao.Itens)))
 
 	return &intencao, nil
 }
 
-func (llm *GeminiLLM) CorrigirNomes(nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error) {
-	return llm.CorrigirNomes(nomesNaoEncontrados, produtosEncontrados)
+func (llm *GeminiLLM) CorrigirNomes(ctx context.Context, nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error) {
+	return CorrigirNomes(ctx, nomesNaoEncontrados, produtosEncontrados, llm.GenerateWithContext)
 }

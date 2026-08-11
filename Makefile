@@ -9,6 +9,9 @@ build-stdio:
 build-http:
 	go build -o bin/http ./cmd/http
 
+build-wh:
+	go build -o bin/webhook ./cmd/webhook
+	
 # Run commands
 run-stdio:
 	go run ./cmd/stdio
@@ -16,6 +19,8 @@ run-stdio:
 run-http:
 	go run ./cmd/http
 
+run-wh:
+	go run ./cmd/webhook
 # Development with live reload (requires air: go install github.com/air-verse/air@latest)
 dev:
 	air

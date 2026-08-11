@@ -11,8 +11,10 @@ import (
 
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 const (
@@ -59,13 +61,17 @@ func (s *CarrinhoService) GetCarrinho(ctx context.Context, clienteID, tenantID s
 	data, err := s.cache.Get(ctx, key).Result()
 	if err == redis.Nil {
 		// Carrinho vazio
-		return &dto.Carrinho{
+		carrinho := &dto.Carrinho{
 			ClienteID: clienteID,
 			TenantID:  tenantID,
 			Itens:     []dto.ItemCarrinho{},
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
-		}, nil
+		}
+		logger.Debug(ctx, "Carrinho vazio recuperado",
+			zap.String("cliente_id", clienteID),
+			zap.String("tenant_id", tenantID))
+		return carrinho, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("erro ao buscar carrinho: %w", err)
@@ -75,6 +81,10 @@ func (s *CarrinhoService) GetCarrinho(ctx context.Context, clienteID, tenantID s
 	if err := json.Unmarshal([]byte(data), &carrinho); err != nil {
 		return nil, fmt.Errorf("erro ao desserializar carrinho: %w", err)
 	}
+	logger.Debug(ctx, "Carrinho recuperado",
+		zap.String("cliente_id", clienteID),
+		zap.String("tenant_id", tenantID),
+		zap.Int("itens_count", len(carrinho.Itens)))
 
 	return &carrinho, nil
 }
@@ -112,12 +122,23 @@ func (s *CarrinhoService) AdicionarItem(ctx context.Context, clienteID, tenantID
 			if item.Observacao != "" {
 				carrinho.Itens[i].Observacao = item.Observacao
 			}
+			logger.Info(ctx, "Item atualizado no carrinho",
+				zap.String("cliente_id", clienteID),
+				zap.String("tenant_id", tenantID),
+				zap.String("item_nome", item.Nome),
+				zap.Int("quantidade_nova", carrinho.Itens[i].Quantidade))
 			return s.saveCarrinho(carrinho)
 		}
 	}
 
 	// Adiciona novo item
 	carrinho.Itens = append(carrinho.Itens, item)
+	logger.Info(ctx, "Item adicionado ao carrinho",
+		zap.String("cliente_id", clienteID),
+		zap.String("tenant_id", tenantID),
+		zap.String("item_nome", item.Nome),
+		zap.Int("quantidade", item.Quantidade))
+
 	return s.saveCarrinho(carrinho)
 }
 
@@ -133,9 +154,18 @@ func (s *CarrinhoService) RemoverItem(ctx context.Context, clienteID, tenantID s
 			if quantidade == 0 || quantidade >= item.Quantidade {
 				// Remove o item completamente
 				carrinho.Itens = append(carrinho.Itens[:i], carrinho.Itens[i+1:]...)
+				logger.Info(ctx, "Item removido completamente do carrinho",
+					zap.String("cliente_id", clienteID),
+					zap.String("tenant_id", tenantID),
+					zap.String("item_nome", nome))
 			} else {
 				// Reduz a quantidade
 				carrinho.Itens[i].Quantidade -= quantidade
+				logger.Info(ctx, "Quantidade de item reduzida no carrinho",
+					zap.String("cliente_id", clienteID),
+					zap.String("tenant_id", tenantID),
+					zap.String("item_nome", nome),
+					zap.Int("quantidade_restante", carrinho.Itens[i].Quantidade))
 			}
 			return s.saveCarrinho(carrinho)
 		}
@@ -147,6 +177,10 @@ func (s *CarrinhoService) RemoverItem(ctx context.Context, clienteID, tenantID s
 // LimparCarrinho limpa todo o carrinho
 func (s *CarrinhoService) LimparCarrinho(ctx context.Context, clienteID, tenantID string) error {
 	key := s.getKey(clienteID, tenantID)
+	logger.Info(ctx, "Carrinho limpo",
+		zap.String("cliente_id", clienteID),
+		zap.String("tenant_id", tenantID))
+
 	return s.cache.Del(ctx, key).Err()
 }
 
@@ -206,7 +240,11 @@ func (s *CarrinhoService) FinalizarCarrinho(ctx context.Context, clienteID, tena
 
 	// Limpa o carrinho
 	if err := s.LimparCarrinho(ctx, clienteID, tenantID); err != nil {
-		log.Printf("[Carrinho] Erro ao limpar carrinho após finalizar: %v", err)
+		logger.Error(ctx, "Erro ao limpar carrinho após finalizar",
+			zap.Error(err),
+			zap.String("cliente_id", clienteID),
+			zap.String("tenant_id", tenantID),
+			zap.Int("pedido_id", pedidoConfirmado.ID))
 	}
 
 	return pedidoConfirmado, nil
@@ -218,19 +256,34 @@ func (s *CarrinhoService) FinalizarCarrinho(ctx context.Context, clienteID, tena
 
 // ProcessarMensagem processa uma mensagem usando a abordagem híbrida
 func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tenantID, mensagem string) (*dto.Carrinho, error) {
-	log.Printf("[Carrinho] Processando mensagem de %s: %s", clienteID, mensagem)
+	logger.Info(ctx, "[Carrinho] Processando mensagem",
+		zap.String("Client_id", clienteID),
+		zap.String("Tenant_id", tenantID),
+		zap.String("Mensagem", mensagem),
+	)
 
-	// 1. Pré-processamento
 	pp := s.preprocessor.Process(mensagem)
-	log.Printf("[Carrinho] Mensagem limpa: %s", pp.Cleaned)
+	logger.Debug(ctx, "Mensagem pré-processada para LLM",
+		zap.String("original", pp.Original),
+		zap.String("cleaned", pp.Cleaned),
+		zap.Strings("medidas", pp.Medidas),
+	)
 
+	// 1. LLM extrai intenção com mensagem limpa
 	// 2. LLM extrai intenção com mensagem limpa
-	intencao, err := s.llmClient.ExtractIntent(pp.Cleaned, []dto.ProdutoItem{})
+	intencao, err := s.llmClient.ExtractIntent(ctx, pp.Cleaned, []dto.ProdutoItem{})
 	if err != nil {
+		logger.Error(ctx, "Erro ao extrair intenção",
+			zap.Error(err),
+			zap.String("mensagem", mensagem),
+		)
 		return nil, fmt.Errorf("erro ao extrair intenção: %w", err)
 	}
 
-	log.Printf("[Carrinho] Intenção: %s, %d itens", intencao.Acao, len(intencao.Itens))
+	logger.Info(ctx, "Intenção detectada pelo LLM",
+		zap.String("acao", intencao.Acao),
+		zap.Int("itens_count", len(intencao.Itens)),
+	)
 
 	// Se não for adicionar, não precisa buscar produtos
 	if intencao.Acao != "adicionar" && intencao.Acao != "add" {
@@ -242,9 +295,19 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 	for i, item := range intencao.Itens {
 		nomesProdutos[i] = item.Nome
 	}
+	logger.Debug(ctx, "Buscando produtos no banco de dados",
+		zap.String("tenant_id", tenantID),
+		zap.Strings("nomes_produtos", nomesProdutos),
+		zap.Int("quantidade_nomes", len(nomesProdutos)))
 
 	produtosEncontrados, err := s.produtoRepo.BuscarProdutosLote(ctx, tenantID, nomesProdutos)
 	if err != nil {
+		logger.Error(ctx, "Erro ao buscar produtos",
+			zap.Error(err),
+			zap.String("tenant_id: ", tenantID),
+			zap.Strings("produtos", nomesProdutos),
+		)
+
 		return nil, fmt.Errorf("erro ao buscar produtos: %w", err)
 	}
 
@@ -259,12 +322,11 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 				Quantidade: item.Quantidade,
 				Observacao: item.Observacao,
 				Preco:      produto.Preco,
-			})
-			log.Printf("[Carrinho] Produto encontrado: %s -> %s (R$ %.2f)",
-				item.Nome, produto.Nome, produto.Preco)
+			}) // Adiciona o produto encontrado
+			logger.Info(ctx, "Produto encontrado no cardápio", zap.String("item_original", item.Nome), zap.String("produto_encontrado", produto.Nome), zap.Float64("preco", produto.Preco))
 		} else {
 			naoEncontrados = append(naoEncontrados, item.Nome)
-			log.Printf("[Carrinho] Produto não encontrado: %s", item.Nome)
+			logger.Warn(ctx, "Produto não encontrado no cardápio", zap.String("item_nome", item.Nome))
 		}
 	}
 
@@ -272,28 +334,28 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 	if len(naoEncontrados) > 0 && len(produtosEncontrados) > 0 {
 		log.Printf("[Carrinho] Tentando corrigir %d produtos não encontrados", len(naoEncontrados))
 
+		logger.Warn(ctx, "Produtos não encontrados, tentando corrigir", zap.Strings("nomes_nao_encontrados", naoEncontrados))
 		// Busca produtos similares no banco
 		similares, err := s.produtoRepo.BuscarProdutosLote(ctx, tenantID, naoEncontrados)
 		if err != nil {
-			log.Printf("[Carrinho] Erro ao buscar similares: %v", err)
+			logger.Error(ctx, "Erro ao buscar produtos similares para correção", zap.Error(err), zap.String("tenant_id", tenantID), zap.Strings("nomes_nao_encontrados", naoEncontrados))
 		}
 
 		// Se encontrou similares, pede LLM para corrigir
 		if len(similares) > 0 {
-			corrigidos, err := s.llmClient.CorrigirNomes(naoEncontrados, similares)
+			corrigidos, err := s.llmClient.CorrigirNomes(ctx, naoEncontrados, similares)
 			if err != nil {
-				log.Printf("[Carrinho] Erro ao corrigir nomes: %v", err)
+				logger.Error(ctx, "Erro ao corrigir nomes de produtos com LLM", zap.Error(err), zap.Strings("nomes_nao_encontrados", naoEncontrados))
 			} else {
 				// Adiciona os corrigidos ao carrinho
 				for _, item := range corrigidos {
 					if produto, ok := similares[item.Nome]; ok {
 						encontrados = append(encontrados, dto.ItemCarrinho{
 							Nome:       produto.Nome,
-							Quantidade: item.Quantidade,
 							Observacao: item.Observacao,
 							Preco:      produto.Preco,
 						})
-						log.Printf("[Carrinho] Produto corrigido: %s -> %s", item.Nome, produto.Nome)
+						logger.Info(ctx, "Produto corrigido e adicionado", zap.String("nome_original", item.Nome), zap.String("nome_corrigido", produto.Nome))
 					}
 				}
 			}
@@ -308,7 +370,7 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 
 	for _, item := range encontrados {
 		if err := s.AdicionarItem(ctx, clienteID, tenantID, item); err != nil {
-			log.Printf("[Carrinho] Erro ao adicionar item %s: %v", item.Nome, err)
+			logger.Error(ctx, "Erro ao adicionar item corrigido ao carrinho", zap.Error(err), zap.String("item_nome", item.Nome), zap.String("cliente_id", clienteID), zap.String("tenant_id", tenantID))
 		}
 	}
 

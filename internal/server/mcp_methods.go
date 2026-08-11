@@ -16,8 +16,8 @@ func (s *MCPServer) GetCardapio(tenantID string) ([]dto.ProdutoItem, error) {
 }
 
 // ExtractIntent extrai a intenção do cliente
-func (s *MCPServer) ExtractIntent(mensagem string, cardapio []dto.ProdutoItem) (*llm.IntencaoCliente, error) {
-	return s.llm.ExtractIntent(mensagem, cardapio)
+func (s *MCPServer) ExtractIntent(ctx context.Context, mensagem string, cardapio []dto.ProdutoItem) (*llm.IntencaoCliente, error) {
+	return s.llm.ExtractIntent(ctx, mensagem, cardapio)
 }
 
 // AdicionarItemCarrinho adiciona um item ao carrinho

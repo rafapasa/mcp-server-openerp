@@ -7,12 +7,21 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/webhook"
+	"go.uber.org/zap"
 )
 
 func main() {
 	// Carrega configuração
 	cfg := config.LoadConfig()
+
+	// Logger inicial
+	zapLogger := logger.GetLogger()
+	zapLogger.Info("Iniciando servidor webhook",
+		zap.String("log_level", cfg.LogLevel),
+		zap.String("log_encoding", cfg.LogEncoding),
+	)
 
 	// Conexão com banco de dados
 	db, err := database.NewMySQL(cfg, "")

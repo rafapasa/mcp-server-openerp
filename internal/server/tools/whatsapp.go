@@ -4,12 +4,13 @@ package tools
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+	"go.uber.org/zap"
 )
 
 // RegisterWhatsAppTools registra as tools relacionadas ao WhatsApp
@@ -62,7 +63,11 @@ func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
 
 		clienteNome, _ := GetString(args, "cliente_nome")
 
-		log.Printf("[WhatsApp] Processando mensagem de %s (%s): %s", clienteID, tenantID, mensagem)
+		logger.Info(ctx, "Processando mensagem de WhatsApp via tool",
+			zap.String("cliente_id", clienteID),
+			zap.String("tenant_id", tenantID),
+			zap.String("mensagem", mensagem),
+		)
 
 		// Busca cardápio
 		cardapio, err := deps.CardapioService.GetCardapio(ctx, tenantID)
@@ -75,7 +80,7 @@ func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
 		}
 
 		// Detecta intenção do cliente
-		intencao, err := deps.LLMClient.ExtractIntent(mensagem, cardapio)
+		intencao, err := deps.LLMClient.ExtractIntent(ctx, mensagem, cardapio)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao interpretar mensagem: %v", err)), nil
 		}

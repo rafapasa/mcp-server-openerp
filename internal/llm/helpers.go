@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -174,7 +175,7 @@ func mergeItens(itens []dto.ItemPedidoInput) []dto.ItemPedidoInput {
 }
 
 // CorrigirNomes corrige nomes de produtos não encontrados
-func CorrigirNomes(nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem, generator func(string) (string, error)) ([]dto.ItemPedidoInput, error) {
+func CorrigirNomes(ctx context.Context, nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem, generator func(context.Context, string) (string, error)) ([]dto.ItemPedidoInput, error) {
 	if len(nomesNaoEncontrados) == 0 || len(produtosEncontrados) == 0 {
 		return []dto.ItemPedidoInput{}, nil
 	}
@@ -210,7 +211,7 @@ FORMATO DE RESPOSTA:
 ]
 `, strings.Join(listaProdutos, "\n"), strings.Join(nomesNaoEncontrados, "\n"))
 
-	resposta, err := generator(prompt)
+	resposta, err := generator(ctx, prompt)
 	if err != nil {
 		return nil, err
 	}

@@ -7,10 +7,16 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/spf13/viper"
 )
 
 // Config armazena todas as configurações da aplicação
 type Config struct {
+	// Logger
+	LogLevel    string `mapstructure:"LOG_LEVEL"`
+	LogEncoding string `mapstructure:"LOG_ENCODING"`
+	LogOutput   string `mapstructure:"LOG_OUTPUT"`
+
 	// Database
 	DBHost     string
 	DBPort     string
@@ -38,10 +44,6 @@ type Config struct {
 	CORSAllowedMethods string
 	CORSAllowedHeaders string
 
-	// Logging
-	LogLevel  string
-	LogOutput string
-
 	// Timezone
 	TimeZone string
 
@@ -50,14 +52,16 @@ type Config struct {
 	RateLimitEnabled   bool   `mapstructure:"RATE_LIMIT_ENABLED"`
 	RateLimitPerSecond int    `mapstructure:"RATE_LIMIT_PER_SECOND"`
 
-	Provider string `mapstructure:"PROVIDER"`
-	Model    string `mapstructure:"MODEL"`
-	BaseURL  string `mapstructure:"BASE_URL"`
-	APIKey   string `mapstructure:"API_KEY"`
+	LlmProvider string `mapstructure:"PROVIDER"`
+	LlmModel    string `mapstructure:"MODEL"`
+	LlmBaseURL  string `mapstructure:"BASE_URL"`
+	LlmAPIKey   string `mapstructure:"API_KEY"`
 }
 
 // LoadConfig carrega as configurações do arquivo .env e variáveis de ambiente
 func LoadConfig() *Config {
+	viper.SetConfigFile(".env")
+	viper.AutomaticEnv()
 	// Carregar .env se existir
 	if err := godotenv.Load(); err != nil {
 		log.Println("Arquivo .env não encontrado, usando variáveis de ambiente do sistema")
@@ -111,8 +115,10 @@ func LoadConfig() *Config {
 		RateLimitEnabled:   getEnvAsBool("RATE_LIMIT_ENABLED", false),
 		RateLimitPerSecond: getEnvAsInt("RATE_LIMIT_PER_SECOND", 100),
 
-		Provider: getEnv("PROVIDER", ""),
-		Model:    getEnv("MODEL", ""),
+		LlmProvider: getEnv("LLM_PROVIDER", ""),
+		LlmModel:    getEnv("LLM_MODEL", ""),
+		LlmBaseURL:  getEnv("LLM_BASE_URL", ""),
+		LlmAPIKey:   getEnv("LLM_API_KEY", ""),
 	}
 }
 
