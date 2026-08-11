@@ -49,6 +49,11 @@ type Config struct {
 	JaegerEndpoint     string `mapstructure:"JAEGER_ENDPOINT"`
 	RateLimitEnabled   bool   `mapstructure:"RATE_LIMIT_ENABLED"`
 	RateLimitPerSecond int    `mapstructure:"RATE_LIMIT_PER_SECOND"`
+
+	Provider string `mapstructure:"PROVIDER"`
+	Model    string `mapstructure:"MODEL"`
+	BaseURL  string `mapstructure:"BASE_URL"`
+	APIKey   string `mapstructure:"API_KEY"`
 }
 
 // LoadConfig carrega as configurações do arquivo .env e variáveis de ambiente
@@ -105,6 +110,9 @@ func LoadConfig() *Config {
 		JaegerEndpoint:     getEnv("JAEGER_ENDPOINT", "localhost:4317"),
 		RateLimitEnabled:   getEnvAsBool("RATE_LIMIT_ENABLED", false),
 		RateLimitPerSecond: getEnvAsInt("RATE_LIMIT_PER_SECOND", 100),
+
+		Provider: getEnv("PROVIDER", ""),
+		Model:    getEnv("MODEL", ""),
 	}
 }
 

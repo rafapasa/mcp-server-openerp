@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log"
 	"strings"
+
+	"github.com/rafapasa/mcp-server-openerp/internal/config"
 )
 
 // NewLLMClient cria um cliente LLM baseado na configuração
-func NewLLMClient(config Config) (LLMClient, error) {
+func NewLLMClient(config *config.Config) (LLMClient, error) {
 	provider := strings.ToLower(config.Provider)
 
 	log.Printf("[LLM] Inicializando provedor: %s", provider)
@@ -27,6 +29,6 @@ func NewLLMClient(config Config) (LLMClient, error) {
 
 // NewLLMClientFromEnv cria um cliente LLM usando variáveis de ambiente
 func NewLLMClientFromEnv() (LLMClient, error) {
-	config := DefaultConfig()
+	config := config.LoadConfig()
 	return NewLLMClient(config)
 }

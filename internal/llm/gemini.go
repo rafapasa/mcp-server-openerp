@@ -11,7 +11,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/rafapasa/mcp-server-openerp/internal/service"
+	"github.com/rafapasa/mcp-server-openerp/internal/config"
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
 // GeminiLLM implementa LLMClient para Google Gemini
@@ -22,7 +23,7 @@ type GeminiLLM struct {
 }
 
 // NewGeminiLLM cria um novo cliente Gemini
-func NewGeminiLLM(config Config) LLMClient {
+func NewGeminiLLM(config *config.Config) LLMClient {
 	model := config.Model
 	if model == "" {
 		model = os.Getenv("GEMINI_MODEL")
@@ -127,7 +128,7 @@ func (llm *GeminiLLM) GetProvider() string {
 }
 
 // ExtractIntent extrai a intenção do cliente da mensagem usando Gemini
-func (llm *GeminiLLM) ExtractIntent(mensagem string, cardapio []service.ProdutoItem) (*IntencaoCliente, error) {
+func (llm *GeminiLLM) ExtractIntent(mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error) {
 	if llm.apiKey == "" {
 		return nil, fmt.Errorf("GEMINI_API_KEY não configurada")
 	}
@@ -239,4 +240,8 @@ EXEMPLOS:
 	log.Printf("[LLM] Intenção detectada: %s, %d itens", intencao.Acao, len(intencao.Itens))
 
 	return &intencao, nil
+}
+
+func (llm *GeminiLLM) CorrigirNomes(nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error) {
+	return llm.CorrigirNomes(nomesNaoEncontrados, produtosEncontrados)
 }

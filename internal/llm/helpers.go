@@ -1,10 +1,11 @@
 package llm
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
-	"github.com/rafapasa/mcp-server-openerp/internal/service"
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
 // ============================================
@@ -12,7 +13,7 @@ import (
 // ============================================
 
 // formatarCardapioParaPrompt formata o cardápio para o prompt da IA
-func formatarCardapioParaPrompt(cardapio []service.ProdutoItem) string {
+func formatarCardapioParaPrompt(cardapio []dto.ProdutoItem) string {
 	var sb strings.Builder
 	sb.WriteString("CARDÁPIO:\n")
 
@@ -64,7 +65,7 @@ func extractJSONFromText(text string) string {
 // ============================================
 
 // itemExisteNoCardapio verifica se um item existe e retorna seu preço
-func itemExisteNoCardapio(cardapio []service.ProdutoItem, nome string) (bool, float64) {
+func itemExisteNoCardapio(cardapio []dto.ProdutoItem, nome string) (bool, float64) {
 	nomeLower := strings.ToLower(strings.TrimSpace(nome))
 
 	for _, item := range cardapio {
@@ -81,7 +82,7 @@ func itemExisteNoCardapio(cardapio []service.ProdutoItem, nome string) (bool, fl
 }
 
 // encontrarItemSimilar tenta encontrar um item similar no cardápio
-func encontrarItemSimilar(cardapio []service.ProdutoItem, nome string) string {
+func encontrarItemSimilar(cardapio []dto.ProdutoItem, nome string) string {
 	nomeLower := strings.ToLower(strings.TrimSpace(nome))
 	bestMatch := ""
 	bestScore := 0
@@ -143,12 +144,12 @@ func normalizeAcao(acao string) string {
 }
 
 // mergeItens mescla itens com o mesmo nome (soma quantidades)
-func mergeItens(itens []service.ItemPedidoInput) []service.ItemPedidoInput {
+func mergeItens(itens []dto.ItemPedidoInput) []dto.ItemPedidoInput {
 	if len(itens) == 0 {
 		return itens
 	}
 
-	merged := make(map[string]*service.ItemPedidoInput)
+	merged := make(map[string]*dto.ItemPedidoInput)
 	for _, item := range itens {
 		if existing, ok := merged[item.Nome]; ok {
 			existing.Quantidade += item.Quantidade
@@ -156,7 +157,7 @@ func mergeItens(itens []service.ItemPedidoInput) []service.ItemPedidoInput {
 				existing.Observacao = item.Observacao
 			}
 		} else {
-			merged[item.Nome] = &service.ItemPedidoInput{
+			merged[item.Nome] = &dto.ItemPedidoInput{
 				Nome:          item.Nome,
 				Quantidade:    item.Quantidade,
 				Observacao:    item.Observacao,
@@ -165,9 +166,74 @@ func mergeItens(itens []service.ItemPedidoInput) []service.ItemPedidoInput {
 		}
 	}
 
-	result := make([]service.ItemPedidoInput, 0, len(merged))
+	result := make([]dto.ItemPedidoInput, 0, len(merged))
 	for _, item := range merged {
 		result = append(result, *item)
 	}
 	return result
+}
+
+// CorrigirNomes corrige nomes de produtos não encontrados
+func CorrigirNomes(nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem, generator func(string) (string, error)) ([]dto.ItemPedidoInput, error) {
+	if len(nomesNaoEncontrados) == 0 || len(produtosEncontrados) == 0 {
+		return []dto.ItemPedidoInput{}, nil
+	}
+
+	// Monta lista de produtos disponíveis
+	var listaProdutos []string
+	for nome := range produtosEncontrados {
+		listaProdutos = append(listaProdutos, nome)
+	}
+
+	prompt := fmt.Sprintf(`
+Você é um assistente especializado em corrigir nomes de produtos.
+
+PRODUTOS DISPONÍVEIS:
+%s
+
+NOMES NÃO ENCONTRADOS:
+%s
+
+INSTRUÇÕES:
+1. Para cada nome não encontrado, tente encontrar o produto mais similar na lista de disponíveis
+2. Considere:
+   - Typos (ex: "aroz" → "arroz")
+   - Sinônimos (ex: "feijão" → "feijão carioca")
+   - Abreviações (ex: "coca" → "coca-cola")
+   - Erros de digitação comuns
+3. Retorne APENAS o JSON com as correções
+
+FORMATO DE RESPOSTA:
+[
+    {"nome_original": "aroz", "nome_corrigido": "arroz", "quantidade": 1},
+    {"nome_original": "fejão", "nome_corrigido": "feijão carioca", "quantidade": 1}
+]
+`, strings.Join(listaProdutos, "\n"), strings.Join(nomesNaoEncontrados, "\n"))
+
+	resposta, err := generator(prompt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse da resposta
+	var correcoes []struct {
+		NomeOriginal  string `json:"nome_original"`
+		NomeCorrigido string `json:"nome_corrigido"`
+		Quantidade    int    `json:"quantidade"`
+	}
+
+	if err := json.Unmarshal([]byte(resposta), &correcoes); err != nil {
+		return nil, err
+	}
+
+	// Converte para ItemPedidoInput
+	var resultados []dto.ItemPedidoInput
+	for _, corr := range correcoes {
+		resultados = append(resultados, dto.ItemPedidoInput{
+			Nome:       corr.NomeCorrigido,
+			Quantidade: corr.Quantidade,
+		})
+	}
+
+	return resultados, nil
 }

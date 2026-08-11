@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/server"
-	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
 
 // WebhookHandler gerencia as requisições do webhook
@@ -188,36 +188,36 @@ func (h *WebhookHandler) processMessage(clienteID, clienteNome, tenantID, mensag
 	case "adicionar", "add":
 		// Adiciona ao carrinho
 		for _, item := range intencao.Itens {
-			carrinhoItem := service.ItemCarrinho{
+			carrinhoItem := dto.ItemCarrinho{
 				Nome:       item.Nome,
 				Quantidade: item.Quantidade,
 				Observacao: item.Observacao,
 				Preco:      item.PrecoUnitario,
 			}
-			h.mcpServer.AdicionarItemCarrinho(clienteID, tenantID, carrinhoItem)
+			h.mcpServer.AdicionarItemCarrinho(ctx, clienteID, tenantID, carrinhoItem)
 		}
-		resposta = h.mcpServer.FormatarResumoCarrinho(clienteID, tenantID)
+		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, clienteID, tenantID)
 
 	case "remover", "remove":
 		for _, item := range intencao.Itens {
-			h.mcpServer.RemoverItemCarrinho(clienteID, tenantID, item.Nome, item.Quantidade)
+			h.mcpServer.RemoverItemCarrinho(ctx, clienteID, tenantID, item.Nome, item.Quantidade)
 		}
-		resposta = h.mcpServer.FormatarResumoCarrinho(clienteID, tenantID)
+		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, clienteID, tenantID)
 
 	case "finalizar", "confirmar":
 		pedido, err := h.mcpServer.FinalizarCarrinho(ctx, clienteID, tenantID, clienteNome)
 		if err != nil {
 			resposta = fmt.Sprintf("❌ Erro ao finalizar pedido: %v", err)
 		} else {
-			resposta = h.mcpServer.FormatarRespostaPedido(pedido)
+			resposta = h.mcpServer.FormatarRespostaPedido(ctx, pedido)
 		}
 
 	case "limpar", "clear":
-		h.mcpServer.LimparCarrinho(clienteID, tenantID)
+		h.mcpServer.LimparCarrinho(ctx, clienteID, tenantID)
 		resposta = "🗑️ Carrinho limpo com sucesso!"
 
 	default:
-		resposta = h.mcpServer.FormatarResumoCarrinho(clienteID, tenantID)
+		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, clienteID, tenantID)
 	}
 
 	// Envia resposta

@@ -29,7 +29,7 @@ func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *Serve
 	// Inicializa serviços
 	cardapioService := service.NewCardapioService(produtoRepo, tenantRepo, cache)
 	pedidoService := service.NewPedidoService(pedidoRepo, cardapioService)
-	_ = service.NewCarrinhoService(cache, cardapioService, pedidoService)
+	_ = service.NewCarrinhoService(cache, cardapioService, pedidoService, produtoRepo, llmClient)
 
 	// Cria MCP Server (para reutilizar a lógica)
 	mcpServer := server.NewMCPServer(db, cache, llmClient)

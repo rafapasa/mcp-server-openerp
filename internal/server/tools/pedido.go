@@ -7,7 +7,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/rafapasa/mcp-server-openerp/internal/service"
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
 // RegisterPedidoTools registra as tools de pedido
@@ -64,7 +64,7 @@ func processarPedidoHandler(deps *Dependencies) server.ToolHandlerFunc {
 		clienteNome, _ := GetString(args, "cliente_nome")
 		observacoes, _ := GetString(args, "observacoes")
 
-		pedidoExtraido := &service.PedidoExtraido{
+		pedidoExtraido := &dto.PedidoExtraido{
 			Itens:       itens,
 			Observacoes: observacoes,
 		}

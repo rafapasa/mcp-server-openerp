@@ -10,7 +10,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/rafapasa/mcp-server-openerp/internal/service"
+	"github.com/rafapasa/mcp-server-openerp/internal/config"
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
 // GroqLLM implementa LLMClient para Groq
@@ -21,7 +22,7 @@ type GroqLLM struct {
 }
 
 // NewGroqLLM cria um novo cliente Groq
-func NewGroqLLM(config Config) LLMClient {
+func NewGroqLLM(config *config.Config) LLMClient {
 	baseURL := config.BaseURL
 	if baseURL == "" {
 		baseURL = os.Getenv("GROQ_BASE_URL")
@@ -128,7 +129,11 @@ func (llm *GroqLLM) GetProvider() string {
 	return "groq"
 }
 
-func (llm *GroqLLM) ExtractIntent(mensagem string, cardapio []service.ProdutoItem) (*IntencaoCliente, error) {
+func (llm *GroqLLM) ExtractIntent(mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error) {
 	// prompt := fmt.Sprintf
-	return nil, nil;
+	return nil, nil
+}
+
+func (llm *GroqLLM) CorrigirNomes(nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error) {
+	return llm.CorrigirNomes(nomesNaoEncontrados, produtosEncontrados)
 }

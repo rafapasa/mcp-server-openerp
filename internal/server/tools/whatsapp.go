@@ -8,8 +8,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
-	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
 
 // RegisterWhatsAppTools registra as tools relacionadas ao WhatsApp
@@ -83,40 +83,40 @@ func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
 		// Processa baseado na intenção
 		switch intencao.Acao {
 		case "adicionar", "add":
-			return processarAdicionar(clienteID, tenantID, intencao, deps)
+			return processarAdicionar(ctx, clienteID, tenantID, intencao, deps)
 		case "remover", "remove":
-			return processarRemover(clienteID, tenantID, intencao, deps)
+			return processarRemover(ctx, clienteID, tenantID, intencao, deps)
 		case "finalizar", "confirmar", "fechar":
 			return processarFinalizar(ctx, clienteID, tenantID, clienteNome, deps)
 		case "limpar", "clear":
-			return processarLimpar(clienteID, tenantID, deps)
+			return processarLimpar(ctx, clienteID, tenantID, deps)
 		default:
 			// Visualizar carrinho
-			return processarVisualizar(clienteID, tenantID, deps)
+			return processarVisualizar(ctx, clienteID, tenantID, deps)
 		}
 	}
 }
 
 // processarAdicionar adiciona itens ao carrinho
-func processarAdicionar(clienteID, tenantID string, intencao *llm.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
+func processarAdicionar(ctx context.Context, clienteID, tenantID string, intencao *llm.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
 	if len(intencao.Itens) == 0 {
 		return mcp.NewToolResultError("Não foi possível identificar itens para adicionar ao carrinho"), nil
 	}
 
 	for _, item := range intencao.Itens {
-		carrinhoItem := service.ItemCarrinho{
+		carrinhoItem := dto.ItemCarrinho{
 			Nome:       item.Nome,
 			Quantidade: item.Quantidade,
 			Observacao: item.Observacao,
 			Preco:      item.PrecoUnitario,
 		}
-		if err := deps.CarrinhoService.AdicionarItem(clienteID, tenantID, carrinhoItem); err != nil {
+		if err := deps.CarrinhoService.AdicionarItem(ctx, clienteID, tenantID, carrinhoItem); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao adicionar item: %v", err)), nil
 		}
 	}
 
 	// Busca carrinho atualizado
-	carrinho, err := deps.CarrinhoService.GetCarrinho(clienteID, tenantID)
+	carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
 	}
@@ -131,19 +131,19 @@ func processarAdicionar(clienteID, tenantID string, intencao *llm.IntencaoClient
 }
 
 // processarRemover remove itens do carrinho
-func processarRemover(clienteID, tenantID string, intencao *llm.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
+func processarRemover(ctx context.Context, clienteID, tenantID string, intencao *llm.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
 	if len(intencao.Itens) == 0 {
 		return mcp.NewToolResultError("Não foi possível identificar itens para remover"), nil
 	}
 
 	for _, item := range intencao.Itens {
-		if err := deps.CarrinhoService.RemoverItem(clienteID, tenantID, item.Nome, item.Quantidade); err != nil {
+		if err := deps.CarrinhoService.RemoverItem(ctx, clienteID, tenantID, item.Nome, item.Quantidade); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao remover item: %v", err)), nil
 		}
 	}
 
 	// Busca carrinho atualizado
-	carrinho, err := deps.CarrinhoService.GetCarrinho(clienteID, tenantID)
+	carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
 	}
@@ -158,8 +158,8 @@ func processarRemover(clienteID, tenantID string, intencao *llm.IntencaoCliente,
 }
 
 // processarVisualizar mostra o carrinho atual
-func processarVisualizar(clienteID, tenantID string, deps *Dependencies) (*mcp.CallToolResult, error) {
-	carrinho, err := deps.CarrinhoService.GetCarrinho(clienteID, tenantID)
+func processarVisualizar(ctx context.Context, clienteID, tenantID string, deps *Dependencies) (*mcp.CallToolResult, error) {
+	carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
 	}
@@ -183,8 +183,8 @@ func processarFinalizar(ctx context.Context, clienteID, tenantID, clienteNome st
 }
 
 // processarLimpar limpa o carrinho
-func processarLimpar(clienteID, tenantID string, deps *Dependencies) (*mcp.CallToolResult, error) {
-	if err := deps.CarrinhoService.LimparCarrinho(clienteID, tenantID); err != nil {
+func processarLimpar(ctx context.Context, clienteID, tenantID string, deps *Dependencies) (*mcp.CallToolResult, error) {
+	if err := deps.CarrinhoService.LimparCarrinho(ctx, clienteID, tenantID); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao limpar carrinho: %v", err)), nil
 	}
 

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"gorm.io/gorm"
 )
@@ -17,6 +18,8 @@ type ProdutoRepository interface {
 	Create(ctx context.Context, produto *models.Produto) error
 	Update(ctx context.Context, produto *models.Produto) error
 	Delete(ctx context.Context, id uint) error
+	BuscarProdutosPorNome(ctx context.Context, tenantID string, nome string, limit int) ([]dto.ProdutoItem, error)
+	BuscarProdutosLote(ctx context.Context, tenantID string, nomes []string) (map[string]dto.ProdutoItem, error)
 }
 
 type produtoRepository struct {
@@ -93,4 +96,12 @@ func (r *produtoRepository) Update(ctx context.Context, produto *models.Produto)
 
 func (r *produtoRepository) Delete(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Delete(&models.Produto{}, id).Error
+}
+
+func (r *produtoRepository) BuscarProdutosPorNome(ctx context.Context, tenantID string, nome string, limit int) ([]dto.ProdutoItem, error) {
+	panic("implementar")
+}
+
+func (r *produtoRepository) BuscarProdutosLote(ctx context.Context, tenantID string, nomes []string) (map[string]dto.ProdutoItem, error) {
+	panic("implementar")
 }

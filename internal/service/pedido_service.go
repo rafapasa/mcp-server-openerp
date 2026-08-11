@@ -8,6 +8,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 )
@@ -28,40 +29,12 @@ func NewPedidoService(
 	}
 }
 
-// ItemPedidoInput representa um item do pedido (entrada)
-type ItemPedidoInput struct {
-	Nome          string  `json:"nome"`
-	Quantidade    int     `json:"quantidade"`
-	Observacao    string  `json:"observacao"`
-	PrecoUnitario float64 `json:"preco_unitario,omitempty"`
-}
-
-// PedidoExtraido representa o pedido extraído pela IA
-type PedidoExtraido struct {
-	Itens       []ItemPedidoInput `json:"itens"`
-	Bebidas     []ItemPedidoInput `json:"bebidas,omitempty"`
-	Observacoes string            `json:"observacoes,omitempty"`
-}
-
-// PedidoConfirmado representa o pedido após processamento
-type PedidoConfirmado struct {
-	ID            int               `json:"id"`
-	TenantID      string            `json:"tenant_id"`
-	ClienteID     string            `json:"cliente_id"`
-	ClienteNome   string            `json:"cliente_nome"`
-	Itens         []ItemPedidoInput `json:"itens"`
-	Total         float64           `json:"total"`
-	TempoEstimado int               `json:"tempo_estimado"`
-	Status        string            `json:"status"`
-	CriadoEm      string            `json:"criado_em"`
-}
-
 // ProcessarPedido processa e salva um pedido
 func (s *PedidoService) ProcessarPedido(
 	ctx context.Context,
 	tenantID, clienteID, clienteNome string,
-	pedidoExtraido *PedidoExtraido,
-) (*PedidoConfirmado, error) {
+	pedidoExtraido *dto.PedidoExtraido,
+) (*dto.PedidoConfirmado, error) {
 
 	// 1. Busca cardápio para validar e calcular preços
 	cardapio, err := s.cardapioService.GetCardapio(ctx, tenantID)
@@ -73,7 +46,7 @@ func (s *PedidoService) ProcessarPedido(
 	todosItens := append(pedidoExtraido.Itens, pedidoExtraido.Bebidas...)
 
 	// 3. Valida e calcula preços
-	var itensComPreco []ItemPedidoInput
+	var itensComPreco []dto.ItemPedidoInput
 	total := 0.0
 
 	for _, item := range todosItens {
@@ -124,7 +97,7 @@ func (s *PedidoService) ProcessarPedido(
 	}
 
 	// 7. Monta resposta
-	pedidoConfirmado := &PedidoConfirmado{
+	pedidoConfirmado := &dto.PedidoConfirmado{
 		ID:            int(pedido.ID),
 		TenantID:      tenantID,
 		ClienteID:     clienteID,
@@ -143,7 +116,7 @@ func (s *PedidoService) ProcessarPedido(
 }
 
 // calcularTempoEstimado calcula o tempo estimado baseado nos itens
-func (s *PedidoService) CalcularTempoEstimado(itens []ItemPedidoInput) int {
+func (s *PedidoService) CalcularTempoEstimado(itens []dto.ItemPedidoInput) int {
 	tempoBase := 15 // minutos
 	tempoPorItem := 5
 

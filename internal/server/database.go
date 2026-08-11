@@ -4,29 +4,29 @@ package server
 import (
 	"context"
 
-	"github.com/rafapasa/mcp-server-openerp/internal/service"
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
 // getCardapio busca o cardápio do restaurante
-func (s *MCPServer) getCardapio(tenantID string) ([]service.ProdutoItem, error) {
+func (s *MCPServer) getCardapio(tenantID string) ([]dto.ProdutoItem, error) {
 	return s.cardapioService.GetCardapio(context.Background(), tenantID)
 }
 
 // itemExisteNoCardapio verifica se um item existe e retorna seu preço
-func (s *MCPServer) itemExisteNoCardapio(cardapio []service.ProdutoItem, nome string) (bool, float64) {
+func (s *MCPServer) itemExisteNoCardapio(cardapio []dto.ProdutoItem, nome string) (bool, float64) {
 	return s.cardapioService.ItemExisteNoCardapio(cardapio, nome)
 }
 
 // encontrarItemSimilar tenta encontrar um item similar no cardápio
-func (s *MCPServer) encontrarItemSimilar(cardapio []service.ProdutoItem, nome string) string {
+func (s *MCPServer) encontrarItemSimilar(cardapio []dto.ProdutoItem, nome string) string {
 	return s.cardapioService.EncontrarItemSimilar(cardapio, nome)
 }
 
 // processarPedido salva o pedido no banco e retorna o pedido confirmado
 func (s *MCPServer) processarPedido(
 	tenantID, clienteID, clienteNome string,
-	pedidoExtraido *service.PedidoExtraido,
-) (*service.PedidoConfirmado, error) {
+	pedidoExtraido *dto.PedidoExtraido,
+) (*dto.PedidoConfirmado, error) {
 	return s.pedidoService.ProcessarPedido(
 		context.Background(),
 		tenantID,
@@ -37,6 +37,6 @@ func (s *MCPServer) processarPedido(
 }
 
 // formatarCardapio formata o cardápio para enviar no prompt da IA
-func (s *MCPServer) formatarCardapio(cardapio []service.ProdutoItem) string {
+func (s *MCPServer) formatarCardapio(cardapio []dto.ProdutoItem) string {
 	return s.cardapioService.FormatarCardapio(cardapio)
 }

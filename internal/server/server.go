@@ -37,7 +37,13 @@ func NewMCPServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *MC
 	// Inicializa serviços
 	cardapioService := service.NewCardapioService(produtoRepo, tenantRepo, cache)
 	pedidoService := service.NewPedidoService(pedidoRepo, cardapioService)
-	carrinhoService := service.NewCarrinhoService(cache, cardapioService, pedidoService)
+	carrinhoService := service.NewCarrinhoService(
+		cache,
+		cardapioService,
+		pedidoService,
+		produtoRepo,
+		llmClient,
+	)
 
 	s := &MCPServer{
 		MCPServer: server.NewMCPServer(

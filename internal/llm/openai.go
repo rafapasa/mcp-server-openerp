@@ -11,7 +11,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/rafapasa/mcp-server-openerp/internal/service"
+	"github.com/rafapasa/mcp-server-openerp/internal/config"
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
 // OpenAILLM implementa LLMClient para OpenAI
@@ -22,7 +23,7 @@ type OpenAILLM struct {
 }
 
 // NewOpenAILLM cria um novo cliente OpenAI
-func NewOpenAILLM(config Config) LLMClient {
+func NewOpenAILLM(config *config.Config) LLMClient {
 	baseURL := config.BaseURL
 	if baseURL == "" {
 		baseURL = os.Getenv("OPENAI_BASE_URL")
@@ -129,7 +130,7 @@ func (llm *OpenAILLM) GetProvider() string {
 }
 
 // ExtractIntent extrai a intenção do cliente da mensagem usando OpenAI
-func (llm *OpenAILLM) ExtractIntent(mensagem string, cardapio []service.ProdutoItem) (*IntencaoCliente, error) {
+func (llm *OpenAILLM) ExtractIntent(mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error) {
 	// A implementação é IDÊNTICA à do Gemini, apenas muda o cliente
 	// Poderíamos extrair para uma função comum, mas vamos manter por enquanto
 
@@ -223,4 +224,8 @@ FORMATO DE RESPOSTA (JSON):
 	log.Printf("[LLM] Intenção detectada: %s, %d itens", intencao.Acao, len(intencao.Itens))
 
 	return &intencao, nil
+}
+
+func (llm *OpenAILLM) CorrigirNomes(nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error) {
+	return llm.CorrigirNomes(nomesNaoEncontrados, produtosEncontrados)
 }

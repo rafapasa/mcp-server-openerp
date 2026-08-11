@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/rafapasa/mcp-server-openerp/internal/service"
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
 // GetArguments converte os arguments da request
@@ -34,13 +34,13 @@ func GetStringRequired(args map[string]interface{}, key string) (string, error) 
 }
 
 // GetItems extrai e valida a lista de itens
-func GetItems(args map[string]interface{}) ([]service.ItemPedidoInput, error) {
+func GetItems(args map[string]interface{}) ([]dto.ItemPedidoInput, error) {
 	itensRaw, ok := args["itens"].([]interface{})
 	if !ok || len(itensRaw) == 0 {
 		return nil, fmt.Errorf("itens é obrigatório")
 	}
 
-	var itens []service.ItemPedidoInput
+	var itens []dto.ItemPedidoInput
 	for _, itemRaw := range itensRaw {
 		itemMap, ok := itemRaw.(map[string]interface{})
 		if !ok {
@@ -52,7 +52,7 @@ func GetItems(args map[string]interface{}) ([]service.ItemPedidoInput, error) {
 		obs, _ := itemMap["observacao"].(string)
 
 		if nome != "" && qtd > 0 {
-			itens = append(itens, service.ItemPedidoInput{
+			itens = append(itens, dto.ItemPedidoInput{
 				Nome:       nome,
 				Quantidade: int(qtd),
 				Observacao: obs,
@@ -68,7 +68,7 @@ func GetItems(args map[string]interface{}) ([]service.ItemPedidoInput, error) {
 }
 
 // FormatResumoCarrinho formata a mensagem de resumo do carrinho
-func FormatResumoCarrinho(itens []service.ItemCarrinho, total float64, tempoEstimado int) string {
+func FormatResumoCarrinho(itens []dto.ItemCarrinho, total float64, tempoEstimado int) string {
 	var sb strings.Builder
 	sb.WriteString("🛒 **SEU CARRINHO**\n\n")
 
@@ -101,7 +101,7 @@ func FormatResumoCarrinho(itens []service.ItemCarrinho, total float64, tempoEsti
 }
 
 // FormatRespostaPedido monta a mensagem de confirmação
-func FormatRespostaPedido(pedido *service.PedidoConfirmado) string {
+func FormatRespostaPedido(pedido *dto.PedidoConfirmado) string {
 	var sb strings.Builder
 	sb.WriteString("✅ **PEDIDO CONFIRMADO!**\n\n")
 	sb.WriteString(fmt.Sprintf("🧾 **Pedido #%d**\n", pedido.ID))

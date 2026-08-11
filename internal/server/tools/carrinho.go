@@ -7,7 +7,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/rafapasa/mcp-server-openerp/internal/service"
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
 // RegisterCarrinhoTools registra as tools de gerenciamento de carrinho
@@ -94,18 +94,18 @@ func adicionarAoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 			}
 		}
 
-		item := service.ItemCarrinho{
+		item := dto.ItemCarrinho{
 			Nome:       itemNome,
 			Quantidade: quantidade,
 			Observacao: observacao,
 			Preco:      preco,
 		}
 
-		if err := deps.CarrinhoService.AdicionarItem(clienteID, tenantID, item); err != nil {
+		if err := deps.CarrinhoService.AdicionarItem(ctx, clienteID, tenantID, item); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao adicionar item: %v", err)), nil
 		}
 
-		carrinho, err := deps.CarrinhoService.GetCarrinho(clienteID, tenantID)
+		carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
 		}
@@ -147,7 +147,7 @@ func removerDoCarrinhoTool() mcp.Tool {
 }
 
 func removerDoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
-	return func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := GetArguments(request)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -173,11 +173,11 @@ func removerDoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 			quantidade = int(qtd)
 		}
 
-		if err := deps.CarrinhoService.RemoverItem(clienteID, tenantID, itemNome, quantidade); err != nil {
+		if err := deps.CarrinhoService.RemoverItem(ctx, clienteID, tenantID, itemNome, quantidade); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao remover item: %v", err)), nil
 		}
 
-		carrinho, err := deps.CarrinhoService.GetCarrinho(clienteID, tenantID)
+		carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
 		}
@@ -211,7 +211,7 @@ func visualizarCarrinhoTool() mcp.Tool {
 }
 
 func visualizarCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
-	return func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := GetArguments(request)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -227,7 +227,7 @@ func visualizarCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		carrinho, err := deps.CarrinhoService.GetCarrinho(clienteID, tenantID)
+		carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
 		}
@@ -309,7 +309,7 @@ func limparCarrinhoTool() mcp.Tool {
 }
 
 func limparCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
-	return func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := GetArguments(request)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -325,7 +325,7 @@ func limparCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		if err := deps.CarrinhoService.LimparCarrinho(clienteID, tenantID); err != nil {
+		if err := deps.CarrinhoService.LimparCarrinho(ctx, clienteID, tenantID); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao limpar carrinho: %v", err)), nil
 		}
 

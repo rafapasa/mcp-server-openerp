@@ -8,7 +8,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/rafapasa/mcp-server-openerp/internal/service"
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
 // RegisterCardapioTools registra as tools de cardápio
@@ -56,7 +56,7 @@ func consultarCardapioHandler(deps *Dependencies) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar cardápio: %v", err)), nil
 		}
 
-		var filtrados []service.ProdutoItem
+		var filtrados []dto.ProdutoItem
 		for _, item := range cardapio {
 			if apenasDisponiveis && !item.Disponivel {
 				continue
