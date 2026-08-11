@@ -86,6 +86,7 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	log.Printf("Body: %s", body)
 	// Parse da requisição
 	var req WebhookRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -127,24 +128,24 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleVerifyWebhook verifica o webhook (Meta/WhatsApp)
+// internal/webhook/handlers.go
 func (h *WebhookHandler) HandleVerifyWebhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Meta/WhatsApp envia esses parâmetros para verificação
+	// Pega os parâmetros da query string
 	mode := r.URL.Query().Get("hub.mode")
 	token := r.URL.Query().Get("hub.verify_token")
 	challenge := r.URL.Query().Get("hub.challenge")
 
-	// Verifica o token (configurar no .env)
+	// Verifica o token
 	expectedToken := os.Getenv("WHATSAPP_VERIFY_TOKEN")
 	if mode == "subscribe" && token == expectedToken {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(challenge))
+		w.Write([]byte(challenge)) // ← Retorna o challenge
 		return
 	}
 
