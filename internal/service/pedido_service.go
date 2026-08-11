@@ -15,13 +15,13 @@ import (
 // PedidoService gerencia as operações de pedidos
 type PedidoService struct {
 	pedidoRepo      repository.PedidoRepository
-	cardapioService *CardapioService
+	cardapioService CardapioServiceInterface
 }
 
 func NewPedidoService(
 	pedidoRepo repository.PedidoRepository,
-	cardapioService *CardapioService,
-) *PedidoService {
+	cardapioService CardapioServiceInterface,
+) PedidoServiceInterface {
 	return &PedidoService{
 		pedidoRepo:      pedidoRepo,
 		cardapioService: cardapioService,

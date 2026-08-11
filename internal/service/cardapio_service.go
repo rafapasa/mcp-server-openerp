@@ -13,7 +13,7 @@ import (
 )
 
 // CardapioService gerencia as operações do cardápio
-type CardapioService struct {
+type cardapioService struct {
 	produtoRepo repository.ProdutoRepository
 	tenantRepo  repository.TenantRepository
 	cache       *redis.Client
@@ -23,8 +23,8 @@ func NewCardapioService(
 	produtoRepo repository.ProdutoRepository,
 	tenantRepo repository.TenantRepository,
 	cache *redis.Client,
-) *CardapioService {
-	return &CardapioService{
+) CardapioServiceInterface {
+	return &cardapioService{
 		produtoRepo: produtoRepo,
 		tenantRepo:  tenantRepo,
 		cache:       cache,
@@ -43,7 +43,7 @@ type ProdutoItem struct {
 }
 
 // GetCardapio busca o cardápio do restaurante (com cache)
-func (s *CardapioService) GetCardapio(ctx context.Context, tenantID string) ([]ProdutoItem, error) {
+func (s *cardapioService) GetCardapio(ctx context.Context, tenantID string) ([]ProdutoItem, error) {
 	// 1. Tenta buscar do cache
 	cacheKey := fmt.Sprintf("cardapio:%s", tenantID)
 
@@ -98,7 +98,7 @@ func (s *CardapioService) GetCardapio(ctx context.Context, tenantID string) ([]P
 }
 
 // BuscarProdutoPorNome busca um produto pelo nome (case insensitive)
-func (s *CardapioService) BuscarProdutoPorNome(ctx context.Context, tenantID string, nome string) (*ProdutoItem, error) {
+func (s *cardapioService) BuscarProdutoPorNome(ctx context.Context, tenantID string, nome string) (*ProdutoItem, error) {
 	var tenantIDUint uint
 	if _, err := fmt.Sscan(tenantID, &tenantIDUint); err != nil {
 		return nil, fmt.Errorf("tenant_id inválido: %w", err)
@@ -126,7 +126,7 @@ func (s *CardapioService) BuscarProdutoPorNome(ctx context.Context, tenantID str
 }
 
 // ItemExisteNoCardapio verifica se um item existe e retorna seu preço
-func (s *CardapioService) ItemExisteNoCardapio(cardapio []ProdutoItem, nome string) (bool, float64) {
+func (s *cardapioService) ItemExisteNoCardapio(cardapio []ProdutoItem, nome string) (bool, float64) {
 	nomeLower := strings.ToLower(strings.TrimSpace(nome))
 
 	for _, item := range cardapio {
@@ -145,7 +145,7 @@ func (s *CardapioService) ItemExisteNoCardapio(cardapio []ProdutoItem, nome stri
 }
 
 // EncontrarItemSimilar tenta encontrar um item similar no cardápio
-func (s *CardapioService) EncontrarItemSimilar(cardapio []ProdutoItem, nome string) string {
+func (s *cardapioService) EncontrarItemSimilar(cardapio []ProdutoItem, nome string) string {
 	nomeLower := strings.ToLower(strings.TrimSpace(nome))
 	bestMatch := ""
 	bestScore := 0
@@ -185,7 +185,7 @@ func similarityScore(a, b string) int {
 }
 
 // FormatarCardapio formata o cardápio para enviar no prompt da IA
-func (s *CardapioService) FormatarCardapio(cardapio []ProdutoItem) string {
+func (s *cardapioService) FormatarCardapio(cardapio []ProdutoItem) string {
 	var sb strings.Builder
 	sb.WriteString("CARDÁPIO:\n")
 

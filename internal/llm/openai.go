@@ -1,4 +1,4 @@
-// internal/llm/openai.go
+// Package llm provides language model clients and integrations.
 package llm
 
 import (
@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
+
+	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
 
 // OpenAILLM implementa LLMClient para OpenAI
@@ -19,7 +22,7 @@ type OpenAILLM struct {
 }
 
 // NewOpenAILLM cria um novo cliente OpenAI
-func NewOpenAILLM(config Config) *OpenAILLM {
+func NewOpenAILLM(config Config) LLMClient {
 	baseURL := config.BaseURL
 	if baseURL == "" {
 		baseURL = os.Getenv("OPENAI_BASE_URL")
@@ -123,4 +126,101 @@ func (llm *OpenAILLM) GetModel() string {
 
 func (llm *OpenAILLM) GetProvider() string {
 	return "openai"
+}
+
+// ExtractIntent extrai a intenção do cliente da mensagem usando OpenAI
+func (llm *OpenAILLM) ExtractIntent(mensagem string, cardapio []service.ProdutoItem) (*IntencaoCliente, error) {
+	// A implementação é IDÊNTICA à do Gemini, apenas muda o cliente
+	// Poderíamos extrair para uma função comum, mas vamos manter por enquanto
+
+	if llm.apiKey == "" {
+		return nil, fmt.Errorf("OPENAI_API_KEY não configurada")
+	}
+
+	cardapioStr := formatarCardapioParaPrompt(cardapio)
+
+	prompt := fmt.Sprintf(`
+Você é um assistente de atendimento especializado em interpretar pedidos de clientes para estabelecimentos comerciais (restaurantes, mercados, farmácias).
+
+CARDÁPIO DISPONÍVEL:
+%s
+
+MENSAGEM DO CLIENTE:
+"%s"
+
+INSTRUÇÕES:
+1. Identifique a INTENÇÃO do cliente com base na mensagem:
+   - "adicionar" ou "add": cliente quer adicionar itens ao carrinho
+   - "remover" ou "remove": cliente quer remover itens do carrinho
+   - "finalizar" ou "confirmar" ou "fechar": cliente quer finalizar o pedido
+   - "limpar" ou "clear": cliente quer limpar todo o carrinho
+   - "visualizar": cliente quer ver o carrinho atual (padrão)
+
+2. Se a intenção for "adicionar" ou "remover", extraia os itens mencionados:
+   - nome: nome do item (use o nome exato do cardápio quando possível)
+   - quantidade: número de unidades (padrão: 1)
+   - observacao: observações como "sem cebola", "bem passado", etc.
+
+3. Para "finalizar", "limpar" ou "visualizar", a lista de itens deve estar vazia.
+
+4. Retorne APENAS o JSON, sem texto adicional.
+
+FORMATO DE RESPOSTA (JSON):
+{
+  "acao": "adicionar",
+  "itens": [
+    {"nome": "X-Bacon", "quantidade": 2, "observacao": "sem cebola"}
+  ],
+  "mensagem": "quero um x-bacon e uma coca"
+}
+`, cardapioStr, mensagem)
+
+	resposta, err := llm.GenerateWithContext(context.Background(), prompt)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao chamar OpenAI: %w", err)
+	}
+
+	resposta = cleanJSONResponse(resposta)
+
+	var intencao IntencaoCliente
+	if err := json.Unmarshal([]byte(resposta), &intencao); err != nil {
+		if jsonStr := extractJSONFromText(resposta); jsonStr != "" {
+			if err := json.Unmarshal([]byte(jsonStr), &intencao); err != nil {
+				return nil, fmt.Errorf("erro ao parsear resposta da IA: %v\nResposta: %s", err, resposta)
+			}
+		} else {
+			return nil, fmt.Errorf("erro ao parsear resposta da IA: %v\nResposta: %s", err, resposta)
+		}
+	}
+
+	intencao.Acao = normalizeAcao(intencao.Acao)
+	if intencao.Acao == "" {
+		intencao.Acao = "visualizar"
+	}
+
+	if intencao.Acao == "adicionar" || intencao.Acao == "remover" {
+		for i, item := range intencao.Itens {
+			encontrou, preco := itemExisteNoCardapio(cardapio, item.Nome)
+			if !encontrou {
+				similar := encontrarItemSimilar(cardapio, item.Nome)
+				if similar != "" {
+					intencao.Itens[i].Nome = similar
+					log.Printf("[LLM] Item '%s' corrigido para '%s'", item.Nome, similar)
+				}
+			} else {
+				intencao.Itens[i].PrecoUnitario = preco
+			}
+			if intencao.Itens[i].Quantidade <= 0 {
+				intencao.Itens[i].Quantidade = 1
+			}
+		}
+	}
+
+	if intencao.Acao == "adicionar" {
+		intencao.Itens = mergeItens(intencao.Itens)
+	}
+
+	log.Printf("[LLM] Intenção detectada: %s, %d itens", intencao.Acao, len(intencao.Itens))
+
+	return &intencao, nil
 }

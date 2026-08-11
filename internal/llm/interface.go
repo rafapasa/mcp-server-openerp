@@ -1,9 +1,10 @@
-// internal/llm/interface.go
 package llm
 
 import (
 	"context"
 	"os"
+
+	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
 
 // LLMClient é a interface que todos os provedores de LLM devem implementar
@@ -19,6 +20,16 @@ type LLMClient interface {
 
 	// GetProvider retorna o nome do provedor (openai, groq, gemini, etc)
 	GetProvider() string
+
+	// ExtractIntent extrai a intenção do cliente da mensagem
+	ExtractIntent(mensagem string, cardapio []service.ProdutoItem) (*IntencaoCliente, error)
+}
+
+// IntencaoCliente representa a intenção extraída da mensagem
+type IntencaoCliente struct {
+	Acao     string                    `json:"acao"` // adicionar, remover, finalizar, visualizar, limpar
+	Itens    []service.ItemPedidoInput `json:"itens,omitempty"`
+	Mensagem string                    `json:"mensagem,omitempty"`
 }
 
 // Config contém as configurações comuns para todos os LLMs

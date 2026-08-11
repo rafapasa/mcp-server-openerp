@@ -1,4 +1,4 @@
-// internal/llm/groq.go
+// Package llm provides LLM client implementations and shared configuration.
 package llm
 
 import (
@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
 
 // GroqLLM implementa LLMClient para Groq
@@ -19,7 +21,7 @@ type GroqLLM struct {
 }
 
 // NewGroqLLM cria um novo cliente Groq
-func NewGroqLLM(config Config) *GroqLLM {
+func NewGroqLLM(config Config) LLMClient {
 	baseURL := config.BaseURL
 	if baseURL == "" {
 		baseURL = os.Getenv("GROQ_BASE_URL")
@@ -116,10 +118,17 @@ func (llm *GroqLLM) GenerateWithContext(ctx context.Context, prompt string) (str
 	return result.Choices[0].Message.Content, nil
 }
 
+// GetModel retorna o modelo configurado do cliente Groq.
 func (llm *GroqLLM) GetModel() string {
 	return llm.model
 }
 
+// GetProvider retorna o provedor de LLM.
 func (llm *GroqLLM) GetProvider() string {
 	return "groq"
+}
+
+func (llm *GroqLLM) ExtractIntent(mensagem string, cardapio []service.ProdutoItem) (*IntencaoCliente, error) {
+	// prompt := fmt.Sprintf
+	return nil, nil;
 }
