@@ -41,6 +41,12 @@ func VerifySignature(r *http.Request, body []byte) error {
 		return nil
 	}
 
+	logger.GetLogger().Info("Validação de Assinatura de requisição",
+		zap.String("secret", secret),
+		zap.String("signature", signature),
+		zap.ByteString("body", body),
+	)
+
 	// 4. Calcula a assinatura esperada
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
@@ -74,6 +80,10 @@ func VerifyWebhookRequest(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "Erro ao ler body", http.StatusBadRequest)
 			return
 		}
+
+		logger.Info(r.Context(), "Verificando assinatura do webhook",
+			zap.ByteString("body", body),
+		)
 
 		// Restaura o body para uso posterior
 		r.Body = io.NopCloser(bytes.NewReader(body))
