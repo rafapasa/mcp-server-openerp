@@ -59,6 +59,8 @@ type ClienteServiceInterface interface {
 
 	// Utilitários
 	ConverterParaDTO(cliente *models.Cliente) *dto.ClienteDTO
+	ListWithFilters(ctx context.Context, tenantID uint, nome, telefone string, page, limit int) ([]dto.ClienteDTO, int64, error)
+	CountByTenant(ctx context.Context, tenantID uint) (int64, error)
 }
 
 // ClienteService implementa o serviço de clientes
@@ -675,4 +677,37 @@ func (s *ClienteService) compararNomes(nome1, nome2 string) bool {
 	threshold := 0.80 // 80% de similaridade
 
 	return float64(similarity) >= threshold
+}
+
+// internal/service/cliente_service.go
+// Adicione estes métodos à struct ClienteService
+
+// ============================================
+// DASHBOARD METHODS
+// ============================================
+
+// CountByTenant conta clientes de um tenant
+func (s *ClienteService) CountByTenant(ctx context.Context, tenantID uint) (int64, error) {
+	return s.clienteRepo.CountByTenant(ctx, fmt.Sprintf("%d", tenantID))
+}
+
+// ============================================
+// LIST METHODS
+// ============================================
+
+// ListWithFilters lista clientes com filtros e paginação
+func (s *ClienteService) ListWithFilters(ctx context.Context, tenantID uint, nome, telefone string, page, limit int) ([]dto.ClienteDTO, int64, error) {
+	offset := (page - 1) * limit
+
+	clientes, total, err := s.clienteRepo.FindWithFilters(ctx, tenantID, nome, telefone, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]dto.ClienteDTO, len(clientes))
+	for i, c := range clientes {
+		result[i] = *s.ConverterParaDTO(&c)
+	}
+
+	return result, total, nil
 }

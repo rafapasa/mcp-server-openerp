@@ -194,3 +194,71 @@ func (s *cardapioService) FormatarCardapio(cardapio []dto.ProdutoItem) string {
 
 	return sb.String()
 }
+
+// internal/service/cardapio_service.go
+// Adicione estes métodos à struct cardapioService
+
+// ============================================
+// LIST METHODS
+// ============================================
+
+// ListWithFilters lista produtos com filtros e paginação
+func (s *cardapioService) ListWithFilters(ctx context.Context, tenantID uint, categoriaID *uint, disponivel *bool, nome string, page, limit int) ([]dto.ProdutoDTO, int64, error) {
+	offset := (page - 1) * limit
+
+	produtos, total, err := s.produtoRepo.FindWithFilters(ctx, tenantID, categoriaID, disponivel, nome, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]dto.ProdutoDTO, len(produtos))
+	for i, p := range produtos {
+		categoriaNome := ""
+		if p.Categoria != nil {
+			categoriaNome = p.Categoria.Nome
+		}
+
+		result[i] = dto.ProdutoDTO{
+			ID:            p.ID,
+			TenantID:      p.TenantID,
+			CategoriaID:   p.CategoriaID,
+			CategoriaNome: categoriaNome,
+			Nome:          p.Nome,
+			Descricao:     p.Descricao,
+			Preco:         p.Preco,
+			Disponivel:    p.Disponivel,
+			CreatedAt:     p.CreatedAt,
+			UpdatedAt:     p.UpdatedAt,
+		}
+	}
+
+	return result, total, nil
+}
+
+// FindByID busca um produto por ID
+func (s *cardapioService) FindByID(ctx context.Context, id uint) (*dto.ProdutoDTO, error) {
+	produto, err := s.produtoRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	categoriaNome := ""
+	if produto.Categoria != nil {
+		categoriaNome = produto.Categoria.Nome
+	}
+
+	return &dto.ProdutoDTO{
+		ID:            produto.ID,
+		TenantID:      produto.TenantID,
+		CategoriaID:   produto.CategoriaID,
+		CategoriaNome: categoriaNome,
+		Nome:          produto.Nome,
+		Descricao:     produto.Descricao,
+		Preco:         produto.Preco,
+		Disponivel:    produto.Disponivel,
+		CreatedAt:     produto.CreatedAt,
+		UpdatedAt:     produto.UpdatedAt,
+	}, nil
+}
+
+

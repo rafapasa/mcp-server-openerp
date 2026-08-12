@@ -20,6 +20,7 @@ type ProdutoRepository interface {
 	Delete(ctx context.Context, id uint) error
 	BuscarProdutosPorNome(ctx context.Context, tenantID string, nome string, limit int) ([]dto.ProdutoItem, error)
 	BuscarProdutosLote(ctx context.Context, tenantID string, nomes []string) (map[string]dto.ProdutoItem, error)
+	FindWithFilters(ctx context.Context, tenantID uint, categoriaID *uint, disponivel *bool, nome string, limit, offset int) ([]models.Produto, int64, error)
 }
 
 type produtoRepository struct {
@@ -104,4 +105,38 @@ func (r *produtoRepository) BuscarProdutosPorNome(ctx context.Context, tenantID 
 
 func (r *produtoRepository) BuscarProdutosLote(ctx context.Context, tenantID string, nomes []string) (map[string]dto.ProdutoItem, error) {
 	panic("implementar")
+}
+
+// internal/repository/produto_repo.go
+// Adicione estes métodos ao ProdutoRepository
+
+// FindWithFilters busca produtos com filtros e paginação
+func (r *produtoRepository) FindWithFilters(ctx context.Context, tenantID uint, categoriaID *uint, disponivel *bool, nome string, limit, offset int) ([]models.Produto, int64, error) {
+	var produtos []models.Produto
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.Produto{}).Where("tenant_id = ?", tenantID)
+
+	if categoriaID != nil && *categoriaID > 0 {
+		query = query.Where("categoria_id = ?", *categoriaID)
+	}
+	if disponivel != nil {
+		query = query.Where("disponivel = ?", *disponivel)
+	}
+	if nome != "" {
+		query = query.Where("nome LIKE ?", "%"+nome+"%")
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err := query.
+		Preload("Categoria").
+		Order("nome ASC").
+		Limit(limit).
+		Offset(offset).
+		Find(&produtos).Error
+
+	return produtos, total, err
 }

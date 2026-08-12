@@ -30,6 +30,7 @@ type ClienteRepositoryInterface interface {
 
 	// Transações
 	WithTx(tx *gorm.DB) ClienteRepositoryInterface
+	FindWithFilters(ctx context.Context, tenantID uint, nome, telefone string, limit, offset int) ([]models.Cliente, int64, error)
 }
 
 // ClienteRepository implementa o repositório de clientes
@@ -165,4 +166,37 @@ func (r *ClienteRepository) CountByStatus(ctx context.Context, tenantID string, 
 		Where("tenant_id = ? AND status = ?", tenantID, status).
 		Count(&count).Error
 	return count, err
+}
+
+// internal/repository/cliente_repo.go
+// Adicione estes métodos ao ClienteRepository
+
+// FindWithFilters busca clientes com filtros e paginação
+func (r *ClienteRepository) FindWithFilters(ctx context.Context, tenantID uint, nome, telefone string, limit, offset int) ([]models.Cliente, int64, error) {
+	var clientes []models.Cliente
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.Cliente{}).Where("tenant_id = ?", tenantID)
+
+	if nome != "" {
+		query = query.Where("nome LIKE ?", "%"+nome+"%")
+	}
+	if telefone != "" {
+		query = query.Where("telefone LIKE ?", "%"+telefone+"%")
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err := query.
+		Preload("Enderecos", func(db *gorm.DB) *gorm.DB {
+			return db.Where("deleted_at IS NULL")
+		}).
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&clientes).Error
+
+	return clientes, total, err
 }
