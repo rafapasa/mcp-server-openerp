@@ -51,12 +51,12 @@ func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
 			return mcp.NewToolResultError("mensagem é obrigatória"), nil
 		}
 
-		tenantID, err := GetStringRequired(args, "tenant_id")
+		tenantID, err := GetUintRequired(args, "tenant_id")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		clienteID, err := GetStringRequired(args, "cliente_id")
+		clienteID, err := GetUintRequired(args, "cliente_id")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -64,8 +64,8 @@ func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
 		clienteNome, _ := GetString(args, "cliente_nome")
 
 		logger.Info(ctx, "Processando mensagem de WhatsApp via tool",
-			zap.String("cliente_id", clienteID),
-			zap.String("tenant_id", tenantID),
+			zap.Uint("cliente_id", clienteID),
+			zap.Uint("tenant_id", tenantID),
 			zap.String("mensagem", mensagem),
 		)
 
@@ -103,7 +103,7 @@ func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
 }
 
 // processarAdicionar adiciona itens ao carrinho
-func processarAdicionar(ctx context.Context, clienteID, tenantID string, intencao *llm.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
+func processarAdicionar(ctx context.Context, clienteID, tenantID uint, intencao *llm.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
 	if len(intencao.Itens) == 0 {
 		return mcp.NewToolResultError("Não foi possível identificar itens para adicionar ao carrinho"), nil
 	}
@@ -136,7 +136,7 @@ func processarAdicionar(ctx context.Context, clienteID, tenantID string, intenca
 }
 
 // processarRemover remove itens do carrinho
-func processarRemover(ctx context.Context, clienteID, tenantID string, intencao *llm.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
+func processarRemover(ctx context.Context, clienteID, tenantID uint, intencao *llm.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
 	if len(intencao.Itens) == 0 {
 		return mcp.NewToolResultError("Não foi possível identificar itens para remover"), nil
 	}
@@ -163,7 +163,7 @@ func processarRemover(ctx context.Context, clienteID, tenantID string, intencao 
 }
 
 // processarVisualizar mostra o carrinho atual
-func processarVisualizar(ctx context.Context, clienteID, tenantID string, deps *Dependencies) (*mcp.CallToolResult, error) {
+func processarVisualizar(ctx context.Context, clienteID, tenantID uint, deps *Dependencies) (*mcp.CallToolResult, error) {
 	carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
@@ -177,7 +177,7 @@ func processarVisualizar(ctx context.Context, clienteID, tenantID string, deps *
 }
 
 // processarFinalizar finaliza o pedido
-func processarFinalizar(ctx context.Context, clienteID, tenantID, clienteNome string, deps *Dependencies) (*mcp.CallToolResult, error) {
+func processarFinalizar(ctx context.Context, clienteID, tenantID uint, clienteNome string, deps *Dependencies) (*mcp.CallToolResult, error) {
 	pedidoConfirmado, err := deps.CarrinhoService.FinalizarCarrinho(ctx, clienteID, tenantID, clienteNome)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao finalizar pedido: %v", err)), nil
@@ -188,7 +188,7 @@ func processarFinalizar(ctx context.Context, clienteID, tenantID, clienteNome st
 }
 
 // processarLimpar limpa o carrinho
-func processarLimpar(ctx context.Context, clienteID, tenantID string, deps *Dependencies) (*mcp.CallToolResult, error) {
+func processarLimpar(ctx context.Context, clienteID, tenantID uint, deps *Dependencies) (*mcp.CallToolResult, error) {
 	if err := deps.CarrinhoService.LimparCarrinho(ctx, clienteID, tenantID); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao limpar carrinho: %v", err)), nil
 	}

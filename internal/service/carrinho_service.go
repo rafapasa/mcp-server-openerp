@@ -55,22 +55,22 @@ func (s *CarrinhoService) getKey(clienteID, tenantID string) string {
 }
 
 // GetCarrinho busca o carrinho do cliente
-func (s *CarrinhoService) GetCarrinho(ctx context.Context, clienteID, tenantID string) (*dto.Carrinho, error) {
-	key := s.getKey(clienteID, tenantID)
+func (s *CarrinhoService) GetCarrinho(ctx context.Context, clienteID, tenantID uint) (*dto.Carrinho, error) {
+	key := s.getKey(fmt.Sprint(clienteID), fmt.Sprint(tenantID))
 
 	data, err := s.cache.Get(ctx, key).Result()
 	if err == redis.Nil {
 		// Carrinho vazio
 		carrinho := &dto.Carrinho{
-			ClienteID: clienteID,
-			TenantID:  tenantID,
+			ClienteID: fmt.Sprint(clienteID),
+			TenantID:  fmt.Sprint(tenantID),
 			Itens:     []dto.ItemCarrinho{},
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
 		logger.Debug(ctx, "Carrinho vazio recuperado",
-			zap.String("cliente_id", clienteID),
-			zap.String("tenant_id", tenantID))
+			zap.Uint("cliente_id", clienteID),
+			zap.Uint("tenant_id", tenantID))
 		return carrinho, nil
 	}
 	if err != nil {
@@ -82,8 +82,8 @@ func (s *CarrinhoService) GetCarrinho(ctx context.Context, clienteID, tenantID s
 		return nil, fmt.Errorf("erro ao desserializar carrinho: %w", err)
 	}
 	logger.Debug(ctx, "Carrinho recuperado",
-		zap.String("cliente_id", clienteID),
-		zap.String("tenant_id", tenantID),
+		zap.Uint("cliente_id", clienteID),
+		zap.Uint("tenant_id", tenantID),
 		zap.Int("itens_count", len(carrinho.Itens)))
 
 	return &carrinho, nil
@@ -108,7 +108,7 @@ func (s *CarrinhoService) saveCarrinho(carrinho *dto.Carrinho) error {
 }
 
 // AdicionarItem adiciona um item ao carrinho
-func (s *CarrinhoService) AdicionarItem(ctx context.Context, clienteID, tenantID string, item dto.ItemCarrinho) error {
+func (s *CarrinhoService) AdicionarItem(ctx context.Context, clienteID, tenantID uint, item dto.ItemCarrinho) error {
 	carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return err
@@ -123,8 +123,8 @@ func (s *CarrinhoService) AdicionarItem(ctx context.Context, clienteID, tenantID
 				carrinho.Itens[i].Observacao = item.Observacao
 			}
 			logger.Info(ctx, "Item atualizado no carrinho",
-				zap.String("cliente_id", clienteID),
-				zap.String("tenant_id", tenantID),
+				zap.Uint("cliente_id", clienteID),
+				zap.Uint("tenant_id", tenantID),
 				zap.String("item_nome", item.Nome),
 				zap.Int("quantidade_nova", carrinho.Itens[i].Quantidade))
 			return s.saveCarrinho(carrinho)
@@ -134,8 +134,8 @@ func (s *CarrinhoService) AdicionarItem(ctx context.Context, clienteID, tenantID
 	// Adiciona novo item
 	carrinho.Itens = append(carrinho.Itens, item)
 	logger.Info(ctx, "Item adicionado ao carrinho",
-		zap.String("cliente_id", clienteID),
-		zap.String("tenant_id", tenantID),
+		zap.Uint("cliente_id", clienteID),
+		zap.Uint("tenant_id", tenantID),
 		zap.String("item_nome", item.Nome),
 		zap.Int("quantidade", item.Quantidade))
 
@@ -143,7 +143,7 @@ func (s *CarrinhoService) AdicionarItem(ctx context.Context, clienteID, tenantID
 }
 
 // RemoverItem remove um item do carrinho
-func (s *CarrinhoService) RemoverItem(ctx context.Context, clienteID, tenantID string, nome string, quantidade int) error {
+func (s *CarrinhoService) RemoverItem(ctx context.Context, clienteID, tenantID uint, nome string, quantidade int) error {
 	carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return err
@@ -155,15 +155,15 @@ func (s *CarrinhoService) RemoverItem(ctx context.Context, clienteID, tenantID s
 				// Remove o item completamente
 				carrinho.Itens = append(carrinho.Itens[:i], carrinho.Itens[i+1:]...)
 				logger.Info(ctx, "Item removido completamente do carrinho",
-					zap.String("cliente_id", clienteID),
-					zap.String("tenant_id", tenantID),
+					zap.Uint("cliente_id", clienteID),
+					zap.Uint("tenant_id", tenantID),
 					zap.String("item_nome", nome))
 			} else {
 				// Reduz a quantidade
 				carrinho.Itens[i].Quantidade -= quantidade
 				logger.Info(ctx, "Quantidade de item reduzida no carrinho",
-					zap.String("cliente_id", clienteID),
-					zap.String("tenant_id", tenantID),
+					zap.Uint("cliente_id", clienteID),
+					zap.Uint("tenant_id", tenantID),
 					zap.String("item_nome", nome),
 					zap.Int("quantidade_restante", carrinho.Itens[i].Quantidade))
 			}
@@ -175,11 +175,11 @@ func (s *CarrinhoService) RemoverItem(ctx context.Context, clienteID, tenantID s
 }
 
 // LimparCarrinho limpa todo o carrinho
-func (s *CarrinhoService) LimparCarrinho(ctx context.Context, clienteID, tenantID string) error {
-	key := s.getKey(clienteID, tenantID)
+func (s *CarrinhoService) LimparCarrinho(ctx context.Context, clienteID, tenantID uint) error {
+	key := s.getKey(fmt.Sprint(clienteID), fmt.Sprint(tenantID))
 	logger.Info(ctx, "Carrinho limpo",
-		zap.String("cliente_id", clienteID),
-		zap.String("tenant_id", tenantID))
+		zap.Uint("cliente_id", clienteID),
+		zap.Uint("tenant_id", tenantID))
 
 	return s.cache.Del(ctx, key).Err()
 }
@@ -211,7 +211,7 @@ func (s *CarrinhoService) CalcularTempoEstimado(carrinho *dto.Carrinho) int {
 }
 
 // FinalizarCarrinho finaliza o pedido
-func (s *CarrinhoService) FinalizarCarrinho(ctx context.Context, clienteID, tenantID, clienteNome string) (*dto.PedidoConfirmado, error) {
+func (s *CarrinhoService) FinalizarCarrinho(ctx context.Context, clienteID, tenantID uint, clienteNome string) (*dto.PedidoConfirmado, error) {
 	carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return nil, err
@@ -242,8 +242,8 @@ func (s *CarrinhoService) FinalizarCarrinho(ctx context.Context, clienteID, tena
 	if err := s.LimparCarrinho(ctx, clienteID, tenantID); err != nil {
 		logger.Error(ctx, "Erro ao limpar carrinho após finalizar",
 			zap.Error(err),
-			zap.String("cliente_id", clienteID),
-			zap.String("tenant_id", tenantID),
+			zap.Uint("cliente_id", clienteID),
+			zap.Uint("tenant_id", tenantID),
 			zap.Int("pedido_id", pedidoConfirmado.ID))
 	}
 
@@ -255,10 +255,10 @@ func (s *CarrinhoService) FinalizarCarrinho(ctx context.Context, clienteID, tena
 // ============================================
 
 // ProcessarMensagem processa uma mensagem usando a abordagem híbrida
-func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tenantID, mensagem string) (*dto.Carrinho, error) {
+func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tenantID uint, mensagem string) (*dto.Carrinho, error) {
 	logger.Info(ctx, "[Carrinho] Processando mensagem",
-		zap.String("Client_id", clienteID),
-		zap.String("Tenant_id", tenantID),
+		zap.Uint("Client_id", clienteID),
+		zap.Uint("Tenant_id", tenantID),
 		zap.String("Mensagem", mensagem),
 	)
 
@@ -296,15 +296,15 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 		nomesProdutos[i] = item.Nome
 	}
 	logger.Debug(ctx, "Buscando produtos no banco de dados",
-		zap.String("tenant_id", tenantID),
+		zap.Uint("tenant_id", tenantID),
 		zap.Strings("nomes_produtos", nomesProdutos),
 		zap.Int("quantidade_nomes", len(nomesProdutos)))
 
-	produtosEncontrados, err := s.produtoRepo.BuscarProdutosLote(ctx, tenantID, nomesProdutos)
+	produtosEncontrados, err := s.produtoRepo.BuscarProdutosLote(ctx, fmt.Sprint(tenantID), nomesProdutos)
 	if err != nil {
 		logger.Error(ctx, "Erro ao buscar produtos",
 			zap.Error(err),
-			zap.String("tenant_id: ", tenantID),
+			zap.Uint("tenant_id: ", tenantID),
 			zap.Strings("produtos", nomesProdutos),
 		)
 
@@ -336,9 +336,9 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 
 		logger.Warn(ctx, "Produtos não encontrados, tentando corrigir", zap.Strings("nomes_nao_encontrados", naoEncontrados))
 		// Busca produtos similares no banco
-		similares, err := s.produtoRepo.BuscarProdutosLote(ctx, tenantID, naoEncontrados)
+		similares, err := s.produtoRepo.BuscarProdutosLote(ctx, fmt.Sprint(tenantID), naoEncontrados)
 		if err != nil {
-			logger.Error(ctx, "Erro ao buscar produtos similares para correção", zap.Error(err), zap.String("tenant_id", tenantID), zap.Strings("nomes_nao_encontrados", naoEncontrados))
+			logger.Error(ctx, "Erro ao buscar produtos similares para correção", zap.Error(err), zap.Uint("tenant_id", tenantID), zap.Strings("nomes_nao_encontrados", naoEncontrados))
 		}
 
 		// Se encontrou similares, pede LLM para corrigir
@@ -370,7 +370,11 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 
 	for _, item := range encontrados {
 		if err := s.AdicionarItem(ctx, clienteID, tenantID, item); err != nil {
-			logger.Error(ctx, "Erro ao adicionar item corrigido ao carrinho", zap.Error(err), zap.String("item_nome", item.Nome), zap.String("cliente_id", clienteID), zap.String("tenant_id", tenantID))
+			logger.Error(ctx, "Erro ao adicionar item corrigido ao carrinho",
+				zap.Error(err),
+				zap.String("item_nome", item.Nome),
+				zap.Uint("cliente_id", clienteID),
+				zap.Uint("tenant_id", tenantID))
 		}
 	}
 

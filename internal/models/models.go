@@ -1,3 +1,4 @@
+// internal/models/models.go
 package models
 
 import (
@@ -5,10 +6,6 @@ import (
 	"encoding/json"
 	"time"
 )
-
-// ============================================
-// JSON Custom Types para GORM
-// ============================================
 
 // JSONArray para campos como ingredientes
 type JSONArray []string
@@ -49,10 +46,10 @@ func (j *JSONMap) Scan(value interface{}) error {
 }
 
 // ============================================
-// MODELS
+// MODELS EXISTENTES
 // ============================================
 
-// Tenant representa um restaurante
+// Tenant representa um estabelecimento
 type Tenant struct {
 	ID        uint      `gorm:"primaryKey"`
 	Nome      string    `gorm:"size:100;not null"`
@@ -66,6 +63,7 @@ type Tenant struct {
 	Categorias []Categoria `gorm:"foreignKey:TenantID"`
 	Produtos   []Produto   `gorm:"foreignKey:TenantID"`
 	Pedidos    []Pedido    `gorm:"foreignKey:TenantID"`
+	Clientes   []Cliente   `gorm:"foreignKey:TenantID"`
 }
 
 func (Tenant) TableName() string {
@@ -81,7 +79,6 @@ type Categoria struct {
 	Ativo     bool      `gorm:"default:true"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 
-	// Relacionamentos
 	Tenant   Tenant    `gorm:"foreignKey:TenantID"`
 	Produtos []Produto `gorm:"foreignKey:CategoriaID"`
 }
@@ -94,7 +91,7 @@ func (Categoria) TableName() string {
 type Produto struct {
 	ID           uint      `gorm:"primaryKey"`
 	TenantID     uint      `gorm:"not null;index"`
-	CategoriaID  *uint     `gorm:"index"` // Pode ser nulo
+	CategoriaID  *uint     `gorm:"index"`
 	Nome         string    `gorm:"size:100;not null"`
 	Descricao    string    `gorm:"size:255"`
 	Preco        float64   `gorm:"type:decimal(10,2);not null"`
@@ -104,7 +101,6 @@ type Produto struct {
 	CreatedAt    time.Time `gorm:"autoCreateTime"`
 	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
 
-	// Relacionamentos
 	Tenant    Tenant     `gorm:"foreignKey:TenantID"`
 	Categoria *Categoria `gorm:"foreignKey:CategoriaID"`
 }
@@ -124,22 +120,25 @@ type ItemPedido struct {
 
 // Pedido representa um pedido feito pelo WhatsApp
 type Pedido struct {
-	ID              uint            `gorm:"primaryKey"`
-	TenantID        uint            `gorm:"not null;index"`
-	ClienteID       string          `gorm:"size:50;index"`
-	ClienteNome     string          `gorm:"size:100"`
-	ClienteTelefone string          `gorm:"size:20"`
-	Itens           json.RawMessage `gorm:"type:json;not null"` // Array de ItemPedido
-	Total           float64         `gorm:"type:decimal(10,2);not null"`
-	Status          string          `gorm:"type:enum('pendente','confirmado','preparando','entregue','cancelado');default:'pendente'"`
-	Observacoes     string          `gorm:"type:text"`
-	TempoEstimado   int             `gorm:"default:0"`
-	Origem          string          `gorm:"type:enum('whatsapp','dashboard','api');default:'whatsapp'"`
-	CreatedAt       time.Time       `gorm:"autoCreateTime;index:idx_pedidos_tenant_created,priority:2"`
-	UpdatedAt       time.Time       `gorm:"autoUpdateTime"`
+	ID                uint            `gorm:"primaryKey"`
+	TenantID          uint            `gorm:"not null;index"`
+	ClienteID         *uint           `gorm:"index:idx_pedidos_cliente_id"`
+	EnderecoEntregaID *uint           `gorm:"index:idx_pedidos_endereco_entrega"`
+	ClienteIDExterno  string          `gorm:"type:varchar(50);index;comment:ID externo (legado)"`
+	ClienteNome       string          `gorm:"size:100"`
+	ClienteTelefone   string          `gorm:"size:20"`
+	Itens             json.RawMessage `gorm:"type:json;not null"`
+	Total             float64         `gorm:"type:decimal(10,2);not null"`
+	Status            string          `gorm:"type:enum('pendente','confirmado','preparando','entregue','cancelado');default:'pendente'"`
+	Observacoes       string          `gorm:"type:text"`
+	TempoEstimado     int             `gorm:"default:0"`
+	Origem            string          `gorm:"type:enum('whatsapp','dashboard','api');default:'whatsapp'"`
+	CreatedAt         time.Time       `gorm:"autoCreateTime;index:idx_pedidos_tenant_created,priority:2"`
+	UpdatedAt         time.Time       `gorm:"autoUpdateTime"`
 
-	// Relacionamentos
-	Tenant Tenant `gorm:"foreignKey:TenantID"`
+	Tenant          Tenant    `gorm:"foreignKey:TenantID"`
+	Cliente         *Cliente  `gorm:"foreignKey:ClienteID"`
+	EnderecoEntrega *Endereco `gorm:"foreignKey:EnderecoEntregaID"`
 }
 
 func (Pedido) TableName() string {
@@ -150,6 +149,7 @@ func (Pedido) TableName() string {
 // CONSTANTES
 // ============================================
 
+// Status do pedido
 const (
 	StatusPendente   = "pendente"
 	StatusConfirmado = "confirmado"
@@ -158,8 +158,30 @@ const (
 	StatusCancelado  = "cancelado"
 )
 
+// Origem do pedido
 const (
 	OrigemWhatsApp  = "whatsapp"
 	OrigemDashboard = "dashboard"
 	OrigemAPI       = "api"
+)
+
+// Status do cliente
+const (
+	StatusClienteAtivo    = "ativo"
+	StatusClienteInativo  = "inativo"
+	StatusClientePendente = "pendente_validacao"
+)
+
+// Tipo de endereço
+const (
+	TipoEnderecoResidencial = "residencial"
+	TipoEnderecoComercial   = "comercial"
+	TipoEnderecoEntrega     = "entrega"
+	TipoEnderecoCobranca    = "cobranca"
+)
+
+// Tipos de pessoa
+const (
+	TipoPessoaFisica   = "fisica"
+	TipoPessoaJuridica = "juridica"
 )

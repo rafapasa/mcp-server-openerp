@@ -3,6 +3,7 @@ package tools
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -31,6 +32,19 @@ func GetStringRequired(args map[string]interface{}, key string) (string, error) 
 		return "", fmt.Errorf("'%s' é obrigatório", key)
 	}
 	return val, nil
+}
+
+// GetStringRequired extrai uma string obrigatória
+func GetUintRequired(args map[string]interface{}, key string) (uint, error) {
+	val, ok := args[key].(string)
+	if !ok || val == "" {
+		return 0, fmt.Errorf("'%s' é obrigatório", key)
+	}
+	uintVal, err := strconv.ParseUint(val, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("'%s' deve ser um número válido", key)
+	}
+	return uint(uintVal), nil
 }
 
 // GetItems extrai e valida a lista de itens

@@ -34,22 +34,22 @@ func NewCardapioService(
 }
 
 // GetCardapio busca o cardápio do restaurante (com cache)
-func (s *cardapioService) GetCardapio(ctx context.Context, tenantID string) ([]dto.ProdutoItem, error) {
+func (s *cardapioService) GetCardapio(ctx context.Context, tenantID uint) ([]dto.ProdutoItem, error) {
 	// 1. Tenta buscar do cache
-	cacheKey := fmt.Sprintf("cardapio:%s", tenantID)
+	cacheKey := fmt.Sprintf("cardapio:%d", tenantID)
 
 	cached, err := s.cache.Get(ctx, cacheKey).Result()
 	if err == nil {
 		var cardapio []dto.ProdutoItem
 		if err := json.Unmarshal([]byte(cached), &cardapio); err == nil {
-			log.Printf("[Cache] Cardápio encontrado no cache para tenant %s", tenantID)
+			log.Printf("[Cache] Cardápio encontrado no cache para tenant %d", tenantID)
 			return cardapio, nil
 		}
 	}
 
 	// 2. Converte tenantID para uint
 	var tenantIDUint uint
-	if _, err := fmt.Sscan(tenantID, &tenantIDUint); err != nil {
+	if _, err := fmt.Sscan(fmt.Sprint(tenantID), &tenantIDUint); err != nil {
 		return nil, fmt.Errorf("tenant_id inválido: %w", err)
 	}
 
@@ -82,7 +82,7 @@ func (s *cardapioService) GetCardapio(ctx context.Context, tenantID string) ([]d
 	if len(cardapio) > 0 {
 		data, _ := json.Marshal(cardapio)
 		s.cache.Set(ctx, cacheKey, data, time.Hour)
-		log.Printf("[Cache] Cardápio cacheado para tenant %s (%d itens)", tenantID, len(cardapio))
+		log.Printf("[Cache] Cardápio cacheado para tenant %d (%d itens)", tenantID, len(cardapio))
 	}
 
 	return cardapio, nil

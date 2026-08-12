@@ -43,6 +43,10 @@ func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *Serve
 	// Inicializa serviços
 	cardapioService := service.NewCardapioService(produtoRepo, tenantRepo, cache)
 	pedidoService := service.NewPedidoService(pedidoRepo, cardapioService)
+	clienteRepo := repository.NewClienteRepository(db)
+	cliEndRepo := repository.NewEnderecoRepository(db)
+	clienteService := service.NewClienteService(clienteRepo, cliEndRepo)
+
 	_ = service.NewCarrinhoService(cache, cardapioService, pedidoService, produtoRepo, llmClient)
 
 	// Cria MCP Server (para reutilizar a lógica)
@@ -52,7 +56,7 @@ func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *Serve
 	whatsApp := NewWhatsAppClient()
 
 	// Cria handler
-	handler := NewWebhookHandler(mcpServer, whatsApp)
+	handler := NewWebhookHandler(mcpServer, whatsApp, clienteService)
 
 	// Cria health checker
 	hc := health.NewDefaultHealthChecker(db, cache, llmClient)
@@ -86,6 +90,23 @@ func (s *Server) Start(addr string) error {
 		logger.GetLogger().Warn("Erro ao iniciar tracing", zap.Error(err))
 	}
 
+	// Cria rate limiter
+	rateLimiter := middleware.NewRateLimiterFromEnv()
+
+	// Cria rate limiter com cleanup periódico
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			rateLimiter.Cleanup()
+		}
+	}()
+
+	// Define os extractors
+	tenantExtractor := middleware.TenantKeyExtractor // Por tenant
+	// clientExtractor := middleware.ClientKeyExtractor      // Por tenant+cliente
+	// ipExtractor := middleware.IPKeyExtractor              // Por IP
+
 	mux := http.NewServeMux()
 
 	// Health checks (usando o healthChecker com contexto)
@@ -101,15 +122,23 @@ func (s *Server) Start(addr string) error {
 
 	// Rotas do webhook
 	mux.HandleFunc("GET /webhook", s.handler.HandleVerifyWebhook)
-	mux.HandleFunc("POST /webhook", s.handler.HandleWebhook)
+	mux.HandleFunc("POST /webhook", VerifyWebhookRequest(s.handler.HandleWebhook))
 
 	// Métricas
 	mux.Handle("GET /metrics", promhttp.Handler())
 
-	// Aplica middlewares (logging + métricas + tracing)
-	handler := middleware.TracingMiddleware(
-		middleware.LoggingMiddleware(
-			middleware.MetricsMiddleware(mux),
+	// Cria handler com todos os middlewares
+	handler := middleware.SecurityHeadersMiddleware(
+		middleware.SanitizeMiddleware(
+			middleware.RateLimitMiddleware(rateLimiter, tenantExtractor)(
+				middleware.APIHeadersMiddleware(
+					middleware.TracingMiddleware(
+						middleware.LoggingMiddleware(
+							middleware.MetricsMiddleware(mux),
+						),
+					),
+				),
+			),
 		),
 	)
 
@@ -121,17 +150,9 @@ func (s *Server) Start(addr string) error {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	logger.GetLogger().Info("Webhook server configurado",
+	logger.GetLogger().Info("Webhook server configurado com segurança",
 		zap.String("addr", addr),
-		zap.Bool("tracing_enabled", tracingConfig.Enabled),
-	)
-	logger.GetLogger().Info("Rotas disponíveis",
-		zap.String("GET /webhook", "Verificação do WhatsApp"),
-		zap.String("POST /webhook", "Recebimento de mensagens"),
-		zap.String("GET /health", "Health check"),
-		zap.String("GET /ready", "Readiness check"),
-		zap.String("GET /status", "Status detalhado"),
-		zap.String("GET /metrics", "Métricas Prometheus"),
+		zap.Bool("hsts_enabled", middleware.IsProduction()),
 	)
 
 	return s.httpServer.ListenAndServe()

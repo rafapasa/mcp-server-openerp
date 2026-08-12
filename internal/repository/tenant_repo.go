@@ -1,4 +1,3 @@
-// Package repository contains persistence logic for the application repositories.
 package repository
 
 import (

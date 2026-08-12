@@ -1,30 +1,39 @@
+// internal/webhook/handlers.go
 package webhook
 
 import (
 	"context"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/security"
 	"github.com/rafapasa/mcp-server-openerp/internal/server"
+	"github.com/rafapasa/mcp-server-openerp/internal/service"
 	"go.uber.org/zap"
 )
 
 // WebhookHandler gerencia as requisições do webhook
 type WebhookHandler struct {
-	mcpServer *server.MCPServer
-	whatsApp  *WhatsAppClient
+	mcpServer      *server.MCPServer
+	whatsApp       *WhatsAppClient
+	clienteService service.ClienteServiceInterface
 }
 
 // NewWebhookHandler cria um novo handler
-func NewWebhookHandler(mcpServer *server.MCPServer, whatsApp *WhatsAppClient) *WebhookHandler {
+func NewWebhookHandler(
+	mcpServer *server.MCPServer,
+	whatsApp *WhatsAppClient,
+	clienteService service.ClienteServiceInterface,
+) *WebhookHandler {
 	return &WebhookHandler{
-		mcpServer: mcpServer,
-		whatsApp:  whatsApp,
+		mcpServer:      mcpServer,
+		whatsApp:       whatsApp,
+		clienteService: clienteService,
 	}
 }
 
@@ -82,13 +91,10 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verifica assinatura (implementar com a lib do WhatsApp)
-	// ... verifySignature(r) ...
-
 	// Lê o body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.Error(ctx, "Erro ao ler body do webhook", zap.Error(err), zap.String("remote_addr", r.RemoteAddr))
+		logger.Error(ctx, "Erro ao ler body do webhook", zap.Error(err))
 		http.Error(w, "Erro ao ler body", http.StatusBadRequest)
 		return
 	}
@@ -99,30 +105,83 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	// Parse da requisição
 	var req WebhookRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		logger.Error(ctx, "Erro ao parsear JSON do webhook", zap.Error(err), zap.ByteString("body", body))
+		logger.Error(ctx, "Erro ao parsear JSON do webhook", zap.Error(err))
 		http.Error(w, "Erro ao parsear JSON", http.StatusBadRequest)
 		return
 	}
+
 	// Processa cada mensagem
 	for _, entry := range req.Entry {
 		for _, change := range entry.Changes {
+			// Processa apenas mensagens
+			if change.Field != "messages" {
+				continue
+			}
+
 			for _, message := range change.Value.Messages {
-				// Extrai dados do cliente
-				clienteID := message.From
-				clienteNome := ""
+				// 1. Extrai dados
+				userPhoneNumber := message.From
+				userProfileName := ""
 				for _, contact := range change.Value.Contacts {
-					if contact.WaID == clienteID {
-						clienteNome = contact.Profile.Name
+					if contact.WaID == userPhoneNumber {
+						userProfileName = contact.Profile.Name
 						break
 					}
 				}
 
-				// O tenant_id precisa ser identificado de alguma forma
-				// Pode vir do número de telefone do estabelecimento
-				tenantID := h.getTenantID(change.Value.Metadata.PhoneNumberID)
+				tenantPhoneNumber := change.Value.Metadata.DisplayPhoneNumber
+				tenantPhoneNumberID := change.Value.Metadata.PhoneNumberID
 
-				// Processa a mensagem
-				go h.processMessage(ctx, clienteID, clienteNome, tenantID, message.Text.Body)
+				// 2. VALIDA os números
+				if err := security.ValidatePhoneNumberID(userPhoneNumber); err != nil {
+					logger.Warn(ctx, "Número do usuário inválido",
+						zap.String("userPhoneNumber", userPhoneNumber),
+						zap.Error(err))
+					continue
+				}
+
+				if err := security.ValidatePhoneNumberID(tenantPhoneNumber); err != nil {
+					logger.Warn(ctx, "Número do tenant inválido",
+						zap.String("tenantPhoneNumber", tenantPhoneNumber),
+						zap.Error(err))
+					continue
+				}
+
+				// 3. Busca o tenant pelo número de telefone
+				tenantID, err := h.getTenantID(ctx, tenantPhoneNumber, tenantPhoneNumberID)
+				if err != nil {
+					logger.Warn(ctx, "Tenant não encontrado",
+						zap.String("tenantPhoneNumber", tenantPhoneNumber),
+						zap.Error(err))
+					continue
+				}
+
+				// 4. Busca ou cria o cliente pelo número de telefone
+				cliente, err := h.clienteService.BuscarOuCriarPorTelefone(ctx, tenantID, userPhoneNumber, userProfileName)
+				if err != nil {
+					logger.Error(ctx, "Erro ao processar cliente",
+						zap.Error(err),
+						zap.String("userPhoneNumber", userPhoneNumber))
+					continue
+				}
+
+				// 5. SANITIZA a mensagem
+				mensagem := message.Text.Body
+				sanitizedMsg, err := security.SanitizeAndValidate(mensagem)
+				if err != nil {
+					logger.Warn(ctx, "Mensagem inválida",
+						zap.Error(err),
+						zap.String("mensagem", mensagem))
+					continue
+				}
+
+				logger.Info(ctx, "Mensagem sanitizada",
+					zap.String("original", mensagem),
+					zap.String("sanitized", sanitizedMsg),
+				)
+
+				// 6. Processa a mensagem
+				go h.processMessage(ctx, cliente, tenantID, sanitizedMsg, userProfileName)
 			}
 		}
 	}
@@ -135,27 +194,26 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		Message: "Mensagem processada com sucesso",
 	})
 
-	logger.Info(ctx, "Webhook processado com sucesso", zap.Int("Messages_count", len(req.Entry)))
+	logger.Info(ctx, "Webhook processado com sucesso",
+		zap.Int("messages_count", len(req.Entry)))
 }
 
-// internal/webhook/handlers.go
+// HandleVerifyWebhook verifica o webhook (Meta/WhatsApp)
 func (h *WebhookHandler) HandleVerifyWebhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Pega os parâmetros da query string
 	mode := r.URL.Query().Get("hub.mode")
 	token := r.URL.Query().Get("hub.verify_token")
 	challenge := r.URL.Query().Get("hub.challenge")
 
-	// Verifica o token
 	expectedToken := os.Getenv("WHATSAPP_VERIFY_TOKEN")
 	if mode == "subscribe" && token == expectedToken {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(challenge)) // ← Retorna o challenge
+		w.Write([]byte(challenge))
 		return
 	}
 
@@ -163,10 +221,18 @@ func (h *WebhookHandler) HandleVerifyWebhook(w http.ResponseWriter, r *http.Requ
 }
 
 // processMessage processa uma mensagem do WhatsApp
-func (h *WebhookHandler) processMessage(ctx context.Context, clienteID, clienteNome, tenantID, mensagem string) {
-	logger.Info(ctx, "Mensagem recebida do WhatsApp",
-		zap.String("cliente_id", clienteID),
-		zap.String("tenant_id", tenantID),
+func (h *WebhookHandler) processMessage(
+	ctx context.Context,
+	cliente *dto.ClienteDTO,
+	tenantID uint,
+	mensagem string,
+	userProfileName string,
+) {
+	logger.Info(ctx, "Processando mensagem",
+		zap.Uint("cliente_id", cliente.ID),
+		zap.String("cliente_nome", cliente.Nome),
+		zap.String("cliente_telefone", cliente.Telefone),
+		zap.Uint("tenant_id", tenantID),
 		zap.String("mensagem", mensagem),
 	)
 
@@ -175,22 +241,16 @@ func (h *WebhookHandler) processMessage(ctx context.Context, clienteID, clienteN
 	if err != nil {
 		logger.Error(ctx, "Erro ao buscar cardápio",
 			zap.Error(err),
-			zap.String("tenant_id", tenantID),
-			zap.String("cliente_id", clienteID),
-			zap.String("mensagem", mensagem),
-		)
+			zap.Uint("tenant_id", tenantID))
 		return
 	}
 
 	// Extrai intenção
 	intencao, err := h.mcpServer.ExtractIntent(ctx, mensagem, cardapio)
 	if err != nil {
-		log.Printf("[Webhook] Erro ao extrair intenção: %v", err)
 		logger.Error(ctx, "Erro ao extrair intenção",
 			zap.Error(err),
-			zap.String("mensagem", mensagem),
-			zap.String("cliente_id", clienteID),
-		)
+			zap.String("mensagem", mensagem))
 		return
 	}
 
@@ -198,7 +258,6 @@ func (h *WebhookHandler) processMessage(ctx context.Context, clienteID, clienteN
 	var resposta string
 	switch intencao.Acao {
 	case "adicionar", "add":
-		// Adiciona ao carrinho
 		for _, item := range intencao.Itens {
 			carrinhoItem := dto.ItemCarrinho{
 				Nome:       item.Nome,
@@ -206,57 +265,65 @@ func (h *WebhookHandler) processMessage(ctx context.Context, clienteID, clienteN
 				Observacao: item.Observacao,
 				Preco:      item.PrecoUnitario,
 			}
-			h.mcpServer.AdicionarItemCarrinho(ctx, clienteID, tenantID, carrinhoItem)
+			h.mcpServer.AdicionarItemCarrinho(ctx, cliente.ID, tenantID, carrinhoItem)
 		}
-		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, clienteID, tenantID)
+		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, cliente.ID, tenantID)
 
 	case "remover", "remove":
 		for _, item := range intencao.Itens {
-			h.mcpServer.RemoverItemCarrinho(ctx, clienteID, tenantID, item.Nome, item.Quantidade)
+			h.mcpServer.RemoverItemCarrinho(ctx, cliente.ID, tenantID, item.Nome, item.Quantidade)
 		}
-		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, clienteID, tenantID)
+		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, cliente.ID, tenantID)
 
 	case "finalizar", "confirmar":
-		pedido, err := h.mcpServer.FinalizarCarrinho(ctx, clienteID, tenantID, clienteNome)
+		pedido, err := h.mcpServer.FinalizarCarrinho(ctx, cliente.ID, tenantID, cliente.Nome)
 		if err != nil {
 			logger.Error(ctx, "Erro ao finalizar pedido",
 				zap.Error(err),
-				zap.String("cliente_id", clienteID),
-				zap.String("tenant_id", tenantID))
+				zap.Uint("cliente_id", cliente.ID),
+				zap.Uint("tenant_id", tenantID))
 			resposta = "❌ Erro ao finalizar pedido. Por favor, tente novamente."
 		} else {
 			resposta = h.mcpServer.FormatarRespostaPedido(ctx, pedido)
 		}
 
 	case "limpar", "clear":
-		h.mcpServer.LimparCarrinho(ctx, clienteID, tenantID)
+		h.mcpServer.LimparCarrinho(ctx, cliente.ID, tenantID)
 		resposta = "🗑️ Carrinho limpo com sucesso!"
 
 	default:
-		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, clienteID, tenantID)
+		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, cliente.ID, tenantID)
 	}
 
 	// Envia resposta
-	if err := h.whatsApp.SendMessage(clienteID, resposta); err != nil {
+	if err := h.whatsApp.SendMessage(cliente.Telefone, resposta); err != nil {
 		logger.Error(ctx, "Erro ao enviar resposta WhatsApp",
 			zap.Error(err),
-			zap.String("cliente_id", clienteID),
-			zap.String("resposta", resposta))
+			zap.String("cliente_telefone", cliente.Telefone))
 	}
 }
 
-// getTenantID identifica o tenant baseado no número de telefone
-func (h *WebhookHandler) getTenantID(phoneNumberID string) string {
-	// Mapeamento entre número do WhatsApp Business e tenant
-	// Pode ser feito via .env, banco de dados ou configuração
-	// Exemplo simples:
-	mapping := map[string]string{
-		"123456789": "1", // PhoneNumberID do restaurante 1
-		"987654321": "2", // PhoneNumberID do mercado 2
+// getTenantID busca o tenant pelo número de telefone
+func (h *WebhookHandler) getTenantID(ctx context.Context, phoneNumber, phoneNumberID string) (uint, error) {
+	// 1. Tenta buscar pelo número de telefone no banco
+	// Nota: Você precisa injetar o TenantRepository ou criar um serviço
+	// Exemplo: return h.tenantService.FindByTelefone(ctx, phoneNumber)
+
+	// 2. Fallback: mapeamento estático (para desenvolvimento)
+	mapping := map[string]uint{
+		"5511999999999": 1, // FastFood do Zé
+		"5511888888888": 2, // Mercado Popular
+		"5511777777777": 3, // Farmácia Saúde
 	}
-	if tenantID, ok := mapping[phoneNumberID]; ok {
-		return tenantID
+
+	if id, ok := mapping[phoneNumber]; ok {
+		return id, nil
 	}
-	// Fallback: usar o próprio phoneNumberID como tenant
-	return phoneNumberID
+
+	// 3. Fallback: usar o phoneNumberID
+	if id, err := strconv.ParseUint(phoneNumberID, 10, 64); err == nil {
+		return uint(id), nil
+	}
+
+	return 0, nil
 }

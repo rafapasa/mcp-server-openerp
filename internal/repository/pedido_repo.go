@@ -1,4 +1,3 @@
-// Package repository contains repository implementations for the application.
 package repository
 
 import (

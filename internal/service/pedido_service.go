@@ -32,7 +32,8 @@ func NewPedidoService(
 // ProcessarPedido processa e salva um pedido
 func (s *PedidoService) ProcessarPedido(
 	ctx context.Context,
-	tenantID, clienteID, clienteNome string,
+	tenantID, clienteID uint,
+	clienteNome string,
 	pedidoExtraido *dto.PedidoExtraido,
 ) (*dto.PedidoConfirmado, error) {
 
@@ -71,7 +72,7 @@ func (s *PedidoService) ProcessarPedido(
 
 	// 4. Converte tenantID para uint
 	var tenantIDUint uint
-	if _, err := fmt.Sscan(tenantID, &tenantIDUint); err != nil {
+	if _, err := fmt.Sscan(fmt.Sprint(tenantID), &tenantIDUint); err != nil {
 		return nil, fmt.Errorf("tenant_id inválido: %w", err)
 	}
 
@@ -80,9 +81,9 @@ func (s *PedidoService) ProcessarPedido(
 
 	pedido := &models.Pedido{
 		TenantID:        tenantIDUint,
-		ClienteID:       clienteID,
+		ClienteID:       &clienteID,
 		ClienteNome:     clienteNome,
-		ClienteTelefone: clienteID, // usando o mesmo ID como telefone
+		ClienteTelefone: fmt.Sprint(clienteID), // usando o mesmo ID como telefone
 		Itens:           itensJSON,
 		Total:           total,
 		Status:          models.StatusConfirmado,
@@ -99,8 +100,8 @@ func (s *PedidoService) ProcessarPedido(
 	// 7. Monta resposta
 	pedidoConfirmado := &dto.PedidoConfirmado{
 		ID:            int(pedido.ID),
-		TenantID:      tenantID,
-		ClienteID:     clienteID,
+		TenantID:      fmt.Sprint(tenantID),
+		ClienteID:     fmt.Sprint(clienteID),
 		ClienteNome:   clienteNome,
 		Itens:         itensComPreco,
 		Total:         total,
@@ -109,7 +110,7 @@ func (s *PedidoService) ProcessarPedido(
 		CriadoEm:      pedido.CreatedAt.Format("02/01/2006 15:04:05"),
 	}
 
-	log.Printf("[Pedido] Pedido #%d criado para tenant %s, total R$ %.2f",
+	log.Printf("[Pedido] Pedido #%d criado para tenant %d, total R$ %.2f",
 		pedido.ID, tenantID, total)
 
 	return pedidoConfirmado, nil

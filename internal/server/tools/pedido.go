@@ -46,12 +46,12 @@ func processarPedidoHandler(deps *Dependencies) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		tenantID, err := GetStringRequired(args, "tenant_id")
+		tenantID, err := GetUintRequired(args, "tenant_id")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		clienteID, err := GetStringRequired(args, "cliente_id")
+		clienteID, err := GetUintRequired(args, "cliente_id")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

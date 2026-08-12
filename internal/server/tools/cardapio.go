@@ -4,6 +4,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -40,7 +41,11 @@ func consultarCardapioHandler(deps *Dependencies) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		tenantID, err := GetStringRequired(args, "tenant_id")
+		strTenantID, err := GetStringRequired(args, "tenant_id")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		tenantID, err := strconv.Atoi(strTenantID)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -51,7 +56,7 @@ func consultarCardapioHandler(deps *Dependencies) server.ToolHandlerFunc {
 			apenasDisponiveis = val
 		}
 
-		cardapio, err := deps.CardapioService.GetCardapio(ctx, tenantID)
+		cardapio, err := deps.CardapioService.GetCardapio(ctx, uint(tenantID))
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar cardápio: %v", err)), nil
 		}

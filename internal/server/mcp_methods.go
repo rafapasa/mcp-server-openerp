@@ -11,7 +11,7 @@ import (
 )
 
 // GetCardapio busca o cardápio (wrapper para o service)
-func (s *MCPServer) GetCardapio(tenantID string) ([]dto.ProdutoItem, error) {
+func (s *MCPServer) GetCardapio(tenantID uint) ([]dto.ProdutoItem, error) {
 	return s.cardapioService.GetCardapio(context.Background(), tenantID)
 }
 
@@ -21,27 +21,27 @@ func (s *MCPServer) ExtractIntent(ctx context.Context, mensagem string, cardapio
 }
 
 // AdicionarItemCarrinho adiciona um item ao carrinho
-func (s *MCPServer) AdicionarItemCarrinho(ctx context.Context, clienteID, tenantID string, item dto.ItemCarrinho) error {
+func (s *MCPServer) AdicionarItemCarrinho(ctx context.Context, clienteID, tenantID uint, item dto.ItemCarrinho) error {
 	return s.carrinhoService.AdicionarItem(ctx, clienteID, tenantID, item)
 }
 
 // RemoverItemCarrinho remove um item do carrinho
-func (s *MCPServer) RemoverItemCarrinho(ctx context.Context, clienteID, tenantID string, nome string, quantidade int) error {
+func (s *MCPServer) RemoverItemCarrinho(ctx context.Context, clienteID, tenantID uint, nome string, quantidade int) error {
 	return s.carrinhoService.RemoverItem(ctx, clienteID, tenantID, nome, quantidade)
 }
 
 // LimparCarrinho limpa o carrinho
-func (s *MCPServer) LimparCarrinho(ctx context.Context, clienteID, tenantID string) error {
+func (s *MCPServer) LimparCarrinho(ctx context.Context, clienteID, tenantID uint) error {
 	return s.carrinhoService.LimparCarrinho(ctx, clienteID, tenantID)
 }
 
 // FinalizarCarrinho finaliza o pedido
-func (s *MCPServer) FinalizarCarrinho(ctx context.Context, clienteID, tenantID, clienteNome string) (*dto.PedidoConfirmado, error) {
+func (s *MCPServer) FinalizarCarrinho(ctx context.Context, clienteID, tenantID uint, clienteNome string) (*dto.PedidoConfirmado, error) {
 	return s.carrinhoService.FinalizarCarrinho(ctx, clienteID, tenantID, clienteNome)
 }
 
 // FormatarResumoCarrinho formata o resumo do carrinho
-func (s *MCPServer) FormatarResumoCarrinho(ctx context.Context, clienteID, tenantID string) string {
+func (s *MCPServer) FormatarResumoCarrinho(ctx context.Context, clienteID, tenantID uint) string {
 	carrinho, err := s.carrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return fmt.Sprintf("❌ Erro ao buscar carrinho: %v", err)
