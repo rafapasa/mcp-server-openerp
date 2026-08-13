@@ -2,13 +2,7 @@
 package logger
 
 import (
-	"sync"
-
 	"go.uber.org/zap/zapcore"
-)
-
-var (
-	levelMutex sync.RWMutex
 )
 
 // SetLevelFromString define o nível a partir de uma string

@@ -2,11 +2,9 @@
 package logger
 
 import (
-	"context"
 	"os"
 	"sync"
 
-	"github.com/rafapasa/mcp-server-openerp/internal/observability/tracing"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -20,8 +18,9 @@ var (
 // Config contém as configurações do logger
 type Config struct {
 	Level      string `mapstructure:"LOG_LEVEL"`
-	Encoding   string `mapstructure:"LOG_ENCODING"` // json ou console
+	Encoding   string `mapstructure:"LOG_ENCODING"`
 	OutputPath string `mapstructure:"LOG_OUTPUT_PATH"`
+	LogFile    string `mapstructure:"LOG_FILE"` // NOVO: caminho do arquivo de log
 }
 
 // DefaultConfig retorna a configuração padrão
@@ -30,10 +29,11 @@ func DefaultConfig() Config {
 		Level:      "info",
 		Encoding:   "json",
 		OutputPath: "stdout",
+		LogFile:    "logs/mcp-server.log",
 	}
 }
 
-// Init inicializa o logger com as configurações fornecidas
+// Init inicializa o logger
 func Init(cfg Config) error {
 	var err error
 	once.Do(func() {
@@ -44,7 +44,7 @@ func Init(cfg Config) error {
 		}
 		level = lvl
 
-		// Define o encoder
+		// Encoder config
 		encoderConfig := zapcore.EncoderConfig{
 			TimeKey:        "timestamp",
 			LevelKey:       "level",
@@ -64,21 +64,27 @@ func Init(cfg Config) error {
 			encoder = zapcore.NewConsoleEncoder(encoderConfig)
 		}
 
-		// Define o output (stdout ou arquivo)
-		var writeSyncer zapcore.WriteSyncer
-		if cfg.OutputPath == "" || cfg.OutputPath == "stdout" {
-			writeSyncer = zapcore.AddSync(os.Stdout)
-		} else {
-			writeSyncer = zapcore.AddSync(&lumberjackLogger{
-				Filename:   cfg.OutputPath,
-				MaxSize:    100, // MB
-				MaxBackups: 3,
-				MaxAge:     28, // days
-			})
-			if err != nil {
-				return
+		// ============================================
+		// ✅ SAÍDA DUPLA: ARQUIVO + TERMINAL
+		// ============================================
+		var writers []zapcore.WriteSyncer
+
+		// 1. Sempre escreve no terminal (stdout)
+		writers = append(writers, zapcore.AddSync(os.Stdout))
+
+		// 2. Se LOG_FILE estiver configurado, escreve no arquivo
+		if cfg.LogFile != "" && cfg.LogFile != "stdout" {
+			// Cria diretório se não existir
+			// ... (ver código abaixo)
+
+			file, openErr := os.OpenFile(cfg.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if openErr == nil {
+				writers = append(writers, zapcore.AddSync(file))
 			}
 		}
+
+		// 3. Se LOG_FILE estiver vazio ou "stdout", usa apenas stdout
+		writeSyncer := zapcore.NewMultiWriteSyncer(writers...)
 
 		core := zapcore.NewCore(encoder, writeSyncer, level)
 		instance = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
@@ -87,47 +93,12 @@ func Init(cfg Config) error {
 	return err
 }
 
-// lumberjackLogger implementa zapcore.WriteSyncer para rotação de logs
-type lumberjackLogger struct {
-	Filename   string
-	MaxSize    int
-	MaxBackups int
-	MaxAge     int
-}
-
-func (l *lumberjackLogger) Write(p []byte) (n int, err error) {
-	// Implementação simplificada - em produção usar gopkg.in/natefinch/lumberjack.v2
-	return os.Stdout.Write(p)
-}
-
-func (l *lumberjackLogger) Sync() error {
-	return nil
-}
-
 // GetLogger retorna a instância do logger
 func GetLogger() *zap.Logger {
 	if instance == nil {
-		// Inicializa com configurações padrão se não foi iniciado
 		_ = Init(DefaultConfig())
 	}
 	return instance
-}
-
-// SetLevel altera o nível de log em runtime
-func SetLevel(lvl zapcore.Level) {
-	level = lvl
-	// Recria o core com o novo nível
-	if instance != nil {
-		// O zap não permite alterar o nível diretamente, recriamos o logger
-		cfg := DefaultConfig()
-		cfg.Level = lvl.String()
-		_ = Init(cfg)
-	}
-}
-
-// GetLevel retorna o nível atual
-func GetLevel() zapcore.Level {
-	return level
 }
 
 // Sync sincroniza os logs
@@ -138,45 +109,10 @@ func Sync() error {
 	return nil
 }
 
-// WithTracing adiciona campos de tracing ao logger
-func WithTracing(logger *zap.Logger, ctx context.Context) *zap.Logger {
-	traceID := TraceIDFromContext(ctx)
-	spanID := SpanIDFromContext(ctx)
-
-	fields := []zap.Field{}
-	if traceID != "" {
-		fields = append(fields, zap.String("trace_id", traceID))
-	}
-	if spanID != "" {
-		fields = append(fields, zap.String("span_id", spanID))
-	}
-
-	if len(fields) > 0 {
-		return logger.With(fields...)
-	}
-	return logger
+func SetLevel(lvl zapcore.Level) {
+	level = lvl
 }
 
-// TraceIDFromContext retorna o trace_id do contexto
-func TraceIDFromContext(ctx context.Context) string {
-	if id, ok := ctx.Value(TraceIDKey).(string); ok {
-		return id
-	}
-	// Tenta obter do tracing
-	if id := tracing.TraceIDFromContext(ctx); id != "" {
-		return id
-	}
-	return ""
-}
-
-// SpanIDFromContext retorna o span_id do contexto
-func SpanIDFromContext(ctx context.Context) string {
-	if id, ok := ctx.Value(SpanIDKey).(string); ok {
-		return id
-	}
-	// Tenta obter do tracing
-	if id := tracing.SpanIDFromContext(ctx); id != "" {
-		return id
-	}
-	return ""
+func GetLevel() zapcore.Level {
+	return level
 }

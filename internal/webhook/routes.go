@@ -158,7 +158,7 @@ func (s *Server) Start(addr string) error {
 	return s.httpServer.ListenAndServe()
 }
 
-// Shutdown finaliza o servidor gracefully
 func (s *Server) Shutdown(ctx context.Context) error {
+	logger.GetLogger().Info("Webhook server desligando...")
 	return s.httpServer.Shutdown(ctx)
 }

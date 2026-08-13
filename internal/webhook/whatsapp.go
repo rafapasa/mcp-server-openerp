@@ -3,11 +3,15 @@ package webhook
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+	"go.uber.org/zap"
 )
 
 // WhatsAppClient cliente para API do WhatsApp
@@ -30,6 +34,10 @@ func NewWhatsAppClient() *WhatsAppClient {
 
 // SendMessage envia uma mensagem via WhatsApp
 func (w *WhatsAppClient) SendMessage(to, message string) error {
+	logger.Debug(context.Background(), "Enviando mensagem WhatsApp",
+		zap.String("to", to),
+		zap.Int("message_size", len(message)),
+	)
 	url := fmt.Sprintf("%s/%s/messages", w.apiURL, w.phoneNumber)
 
 	payload := map[string]interface{}{

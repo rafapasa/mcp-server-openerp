@@ -65,3 +65,6 @@ install-tools:
 	go install golang.org/x/tools/cmd/goimports@latest
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	go install github.com/air-verse/air@latest
+
+mcp:
+	npx @modelcontextprotocol/inspector -- wsl bash -c "cd ~/mcp-server-openerp && go run ./cmd/stdio/main.go"

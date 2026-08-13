@@ -5,12 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
+	"go.uber.org/zap"
 )
 
 // PedidoService gerencia as operações de pedidos
@@ -37,9 +38,20 @@ func (s *PedidoService) ProcessarPedido(
 	pedidoExtraido *dto.PedidoExtraido,
 ) (*dto.PedidoConfirmado, error) {
 
+	logger.Info(ctx, "Processando pedido",
+		zap.Uint("tenant_id", tenantID),
+		zap.Uint("cliente_id", clienteID),
+		zap.String("cliente_nome", clienteNome),
+		zap.Int("itens_count", len(pedidoExtraido.Itens)),
+	)
+
 	// 1. Busca cardápio para validar e calcular preços
 	cardapio, err := s.cardapioService.GetCardapio(ctx, tenantID)
 	if err != nil {
+		logger.Error(ctx, "Erro ao buscar cardápio para processar pedido",
+			zap.Error(err),
+			zap.Uint("tenant_id", tenantID),
+		)
 		return nil, err
 	}
 
@@ -51,16 +63,20 @@ func (s *PedidoService) ProcessarPedido(
 	total := 0.0
 
 	for _, item := range todosItens {
-		// Busca no cardápio
 		existe, preco := s.cardapioService.ItemExisteNoCardapio(cardapio, item.Nome)
 		if !existe {
-			// Tenta encontrar similar
 			similar := s.cardapioService.EncontrarItemSimilar(cardapio, item.Nome)
 			if similar != "" {
 				_, preco = s.cardapioService.ItemExisteNoCardapio(cardapio, similar)
 				item.Nome = similar
-				log.Printf("[Pedido] Item '%s' corrigido para '%s'", item.Nome, similar)
+				logger.Info(ctx, "Item corrigido durante processamento do pedido",
+					zap.String("original", item.Nome),
+					zap.String("corrigido", similar),
+				)
 			} else {
+				logger.Warn(ctx, "Item não encontrado no cardápio",
+					zap.String("item", item.Nome),
+				)
 				return nil, fmt.Errorf("item '%s' não encontrado no cardápio", item.Nome)
 			}
 		}
@@ -70,20 +86,14 @@ func (s *PedidoService) ProcessarPedido(
 		itensComPreco = append(itensComPreco, item)
 	}
 
-	// 4. Converte tenantID para uint
-	var tenantIDUint uint
-	if _, err := fmt.Sscan(fmt.Sprint(tenantID), &tenantIDUint); err != nil {
-		return nil, fmt.Errorf("tenant_id inválido: %w", err)
-	}
-
-	// 5. Prepara pedido para salvar
+	// 4. Prepara pedido para salvar
 	itensJSON, _ := json.Marshal(itensComPreco)
 
 	pedido := &models.Pedido{
-		TenantID:        tenantIDUint,
+		TenantID:        tenantID,
 		ClienteID:       &clienteID,
 		ClienteNome:     clienteNome,
-		ClienteTelefone: fmt.Sprint(clienteID), // usando o mesmo ID como telefone
+		ClienteTelefone: fmt.Sprint(clienteID),
 		Itens:           itensJSON,
 		Total:           total,
 		Status:          models.StatusConfirmado,
@@ -92,12 +102,17 @@ func (s *PedidoService) ProcessarPedido(
 		Origem:          models.OrigemWhatsApp,
 	}
 
-	// 6. Salva no banco
+	// 5. Salva no banco
 	if err := s.pedidoRepo.Create(ctx, pedido); err != nil {
+		logger.Error(ctx, "Erro ao salvar pedido",
+			zap.Error(err),
+			zap.Uint("tenant_id", tenantID),
+			zap.Uint("cliente_id", clienteID),
+		)
 		return nil, fmt.Errorf("erro ao salvar pedido: %w", err)
 	}
 
-	// 7. Monta resposta
+	// 6. Monta resposta
 	pedidoConfirmado := &dto.PedidoConfirmado{
 		ID:            int(pedido.ID),
 		TenantID:      fmt.Sprint(tenantID),
@@ -110,15 +125,18 @@ func (s *PedidoService) ProcessarPedido(
 		CriadoEm:      pedido.CreatedAt.Format("02/01/2006 15:04:05"),
 	}
 
-	log.Printf("[Pedido] Pedido #%d criado para tenant %d, total R$ %.2f",
-		pedido.ID, tenantID, total)
+	logger.Info(ctx, "Pedido criado com sucesso",
+		zap.Uint("pedido_id", pedido.ID),
+		zap.Uint("tenant_id", tenantID),
+		zap.Float64("total", total),
+	)
 
 	return pedidoConfirmado, nil
 }
 
 // calcularTempoEstimado calcula o tempo estimado baseado nos itens
 func (s *PedidoService) CalcularTempoEstimado(itens []dto.ItemPedidoInput) int {
-	tempoBase := 15 // minutos
+	tempoBase := 15
 	tempoPorItem := 5
 
 	totalItems := 0
@@ -131,26 +149,22 @@ func (s *PedidoService) CalcularTempoEstimado(itens []dto.ItemPedidoInput) int {
 
 // AtualizarStatus atualiza o status de um pedido
 func (s *PedidoService) AtualizarStatus(ctx context.Context, pedidoID uint, status string) error {
+	logger.Info(ctx, "Atualizando status do pedido",
+		zap.Uint("pedido_id", pedidoID),
+		zap.String("status", status),
+	)
 	_, err := s.pedidoRepo.UpdateStatus(ctx, pedidoID, status)
 	return err
 }
 
 // BuscarPedidosDoDia busca pedidos do dia para um tenant
-func (s *PedidoService) BuscarPedidosDoDia(ctx context.Context, tenantID string) ([]models.Pedido, error) {
-	var tenantIDUint uint
-	if _, err := fmt.Sscan(tenantID, &tenantIDUint); err != nil {
-		return nil, fmt.Errorf("tenant_id inválido: %w", err)
-	}
-
+func (s *PedidoService) BuscarPedidosDoDia(ctx context.Context, tenantID uint) ([]models.Pedido, error) {
 	hoje := time.Now()
 	inicio := time.Date(hoje.Year(), hoje.Month(), hoje.Day(), 0, 0, 0, 0, hoje.Location())
 	fim := inicio.Add(24 * time.Hour)
 
-	return s.pedidoRepo.FindByTenantPeriodo(ctx, tenantIDUint, inicio, fim)
+	return s.pedidoRepo.FindByTenantPeriodo(ctx, tenantID, inicio, fim)
 }
-
-// internal/service/pedido_service.go
-// Adicione estes métodos à struct PedidoService
 
 // ============================================
 // DASHBOARD METHODS
@@ -210,6 +224,10 @@ func (s *PedidoService) ListWithFilters(ctx context.Context, tenantID uint, clie
 
 	pedidos, total, err := s.pedidoRepo.FindWithFilters(ctx, tenantID, clienteID, status, dataInicio, dataFim, limit, offset)
 	if err != nil {
+		logger.Error(ctx, "Erro ao listar pedidos com filtros",
+			zap.Error(err),
+			zap.Uint("tenant_id", tenantID),
+		)
 		return nil, 0, err
 	}
 
@@ -225,6 +243,7 @@ func (s *PedidoService) ListWithFilters(ctx context.Context, tenantID uint, clie
 func (s *PedidoService) FindByID(ctx context.Context, id uint) (*dto.PedidoDTO, error) {
 	pedido, err := s.pedidoRepo.FindByID(ctx, id)
 	if err != nil {
+		logger.Error(ctx, "Pedido não encontrado", zap.Uint("id", id), zap.Error(err))
 		return nil, err
 	}
 	result := s.converterParaDTO(pedido)
@@ -237,6 +256,10 @@ func (s *PedidoService) ListByCliente(ctx context.Context, clienteID uint, page,
 
 	pedidos, total, err := s.pedidoRepo.FindByCliente(ctx, clienteID, limit, offset)
 	if err != nil {
+		logger.Error(ctx, "Erro ao listar pedidos do cliente",
+			zap.Error(err),
+			zap.Uint("cliente_id", clienteID),
+		)
 		return nil, 0, err
 	}
 
@@ -250,8 +273,17 @@ func (s *PedidoService) ListByCliente(ctx context.Context, clienteID uint, page,
 
 // AtualizarStatusPedido atualiza o status de um pedido
 func (s *PedidoService) AtualizarStatusPedido(ctx context.Context, id uint, status string) (*dto.PedidoDTO, error) {
+	logger.Info(ctx, "Atualizando status do pedido via API",
+		zap.Uint("pedido_id", id),
+		zap.String("status", status),
+	)
+
 	pedido, err := s.pedidoRepo.UpdateStatus(ctx, id, status)
 	if err != nil {
+		logger.Error(ctx, "Erro ao atualizar status do pedido",
+			zap.Error(err),
+			zap.Uint("pedido_id", id),
+		)
 		return nil, err
 	}
 	result := s.converterParaDTO(pedido)
@@ -260,6 +292,11 @@ func (s *PedidoService) AtualizarStatusPedido(ctx context.Context, id uint, stat
 
 // Create cria um novo pedido
 func (s *PedidoService) Create(ctx context.Context, req *dto.CriarPedidoRequest) (*dto.PedidoDTO, error) {
+	logger.Info(ctx, "Criando novo pedido via API",
+		zap.Uint("tenant_id", req.TenantID),
+		zap.Uint("cliente_id", *req.ClienteID),
+		zap.Int("itens_count", len(req.Itens)),
+	)
 	// TODO: Implementar criação de pedido
 	return nil, nil
 }
@@ -268,7 +305,6 @@ func (s *PedidoService) Create(ctx context.Context, req *dto.CriarPedidoRequest)
 func (s *PedidoService) converterParaDTO(pedido *models.Pedido) dto.PedidoDTO {
 	var itens []dto.ItemPedidoDTO
 	if pedido.Itens != nil {
-		// Parse do JSON
 		_ = json.Unmarshal(pedido.Itens, &itens)
 	}
 
@@ -322,8 +358,17 @@ func (s *PedidoService) FindByTenant(ctx context.Context, tenantID uint) ([]dto.
 
 	pedidos, _, err := s.pedidoRepo.FindByTenant(ctx, tenantID, 100, 0)
 	if err != nil {
+		logger.Error(ctx, "Erro ao buscar pedidos por tenant",
+			zap.Error(err),
+			zap.Uint("tenant_id", tenantID),
+		)
 		return nil, err
 	}
+
 	result := make([]dto.PedidoDTO, len(pedidos))
+	for i, p := range pedidos {
+		result[i] = s.converterParaDTO(&p)
+	}
+
 	return result, nil
 }

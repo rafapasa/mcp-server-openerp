@@ -21,7 +21,7 @@ func NewMySQL(cfg *config.Config, dsn ...string) (*MySQL, error) {
 	isTest := len(dsn) > 0 && dsn[0] != ""
 
 	var logLevel logger.LogLevel
-	switch cfg.APIEnv {
+	switch cfg.Environment {
 	case "development":
 		if isTest {
 			logLevel = logger.Warn

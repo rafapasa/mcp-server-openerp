@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -332,9 +331,9 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 
 	// 5. Se tiver não encontrados, tenta corrigir (segunda chamada LLM - Híbrida)
 	if len(naoEncontrados) > 0 && len(produtosEncontrados) > 0 {
-		log.Printf("[Carrinho] Tentando corrigir %d produtos não encontrados", len(naoEncontrados))
+		logger.Warn(ctx, "Produtos não encontrados, tentando corrigir",
+			zap.Strings("nomes_nao_encontrados", naoEncontrados))
 
-		logger.Warn(ctx, "Produtos não encontrados, tentando corrigir", zap.Strings("nomes_nao_encontrados", naoEncontrados))
 		// Busca produtos similares no banco
 		similares, err := s.produtoRepo.BuscarProdutosLote(ctx, fmt.Sprint(tenantID), naoEncontrados)
 		if err != nil {

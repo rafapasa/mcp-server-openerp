@@ -10,6 +10,8 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+	"go.uber.org/zap"
 )
 
 // RegisterCardapioTools registra as tools de cardápio
@@ -38,16 +40,23 @@ func consultarCardapioHandler(deps *Dependencies) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := GetArguments(request)
 		if err != nil {
+			logger.Warn(ctx, "Erro ao extrair argumentos", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
 		strTenantID, err := GetStringRequired(args, "tenant_id")
 		if err != nil {
+			logger.Warn(ctx, "tenant_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
+
 		tenantID, err := strconv.Atoi(strTenantID)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			logger.Warn(ctx, "tenant_id não é um número válido",
+				zap.String("tenant_id", strTenantID),
+				zap.Error(err),
+			)
+			return mcp.NewToolResultError("ID do estabelecimento inválido"), nil
 		}
 
 		categoria, _ := GetString(args, "categoria")
@@ -56,9 +65,24 @@ func consultarCardapioHandler(deps *Dependencies) server.ToolHandlerFunc {
 			apenasDisponiveis = val
 		}
 
+		logger.Debug(ctx, "Consultando cardápio",
+			zap.Int("tenant_id", tenantID),
+			zap.String("categoria", categoria),
+			zap.Bool("apenas_disponiveis", apenasDisponiveis),
+		)
+
 		cardapio, err := deps.CardapioService.GetCardapio(ctx, uint(tenantID))
 		if err != nil {
+			logger.Error(ctx, "Erro ao buscar cardápio",
+				zap.Error(err),
+				zap.Int("tenant_id", tenantID),
+			)
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar cardápio: %v", err)), nil
+		}
+
+		if len(cardapio) == 0 {
+			logger.Warn(ctx, "Cardápio vazio", zap.Int("tenant_id", tenantID))
+			return mcp.NewToolResultText("Nenhum item encontrado no cardápio"), nil
 		}
 
 		var filtrados []dto.ProdutoItem
@@ -73,7 +97,12 @@ func consultarCardapioHandler(deps *Dependencies) server.ToolHandlerFunc {
 		}
 
 		if len(filtrados) == 0 {
-			return mcp.NewToolResultText("Nenhum item encontrado no cardápio"), nil
+			logger.Debug(ctx, "Nenhum item encontrado com os filtros aplicados",
+				zap.Int("tenant_id", tenantID),
+				zap.String("categoria", categoria),
+				zap.Bool("apenas_disponiveis", apenasDisponiveis),
+			)
+			return mcp.NewToolResultText("Nenhum item encontrado no cardápio com os filtros selecionados"), nil
 		}
 
 		var sb strings.Builder
@@ -90,6 +119,11 @@ func consultarCardapioHandler(deps *Dependencies) server.ToolHandlerFunc {
 			}
 			sb.WriteString("\n")
 		}
+
+		logger.Info(ctx, "Cardápio consultado com sucesso",
+			zap.Int("tenant_id", tenantID),
+			zap.Int("itens_encontrados", len(filtrados)),
+		)
 
 		return mcp.NewToolResultText(sb.String()), nil
 	}

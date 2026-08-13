@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/health"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/metrics"
@@ -61,13 +62,29 @@ func (s *Server) Start(addr string) error {
 	// Inicializa métricas
 	metrics.Init()
 
-	// Inicializa tracing
-	cfg := tracing.DefaultConfig()
-	if err := tracing.Init(cfg); err != nil {
-		logger.GetLogger().Warn("Error initializing tracing", zap.Error(err))
+	// Carrega configuração de tracing do .env
+	cfg := config.LoadConfigOrDefault()
+	tracingConfig := tracing.Config{
+		Enabled:      cfg.TracingEnabled,
+		Endpoint:     cfg.TracingEndpoint,
+		ServiceName:  cfg.TracingServiceName,
+		SamplingRate: cfg.TracingSamplingRate,
+	}
+
+	if err := tracing.Init(tracingConfig); err != nil {
+		logger.GetLogger().Warn("Erro ao iniciar tracing", zap.Error(err))
 	}
 
 	rateLimiter := middleware.NewRateLimiterFromEnv()
+
+	// Cleanup periódico do rate limiter
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			rateLimiter.Cleanup()
+		}
+	}()
 
 	mux := http.NewServeMux()
 
@@ -99,11 +116,11 @@ func (s *Server) Start(addr string) error {
 		middleware.SanitizeMiddleware(
 			middleware.RateLimitMiddleware(rateLimiter, middleware.TenantKeyExtractor)(
 				middleware.APIHeadersMiddleware(
-					//					middleware.TracingMiddleware(
-					middleware.LoggingMiddleware(
-						middleware.MetricsMiddleware(mux),
+					middleware.TracingMiddleware(
+						middleware.LoggingMiddleware(
+							middleware.MetricsMiddleware(mux),
+						),
 					),
-					//					),
 				),
 			),
 		),
@@ -117,13 +134,12 @@ func (s *Server) Start(addr string) error {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	logger.GetLogger().Info("API server started", zap.String("addr", addr))
+	logger.GetLogger().Info("API server started",
+		zap.String("addr", addr),
+		zap.Bool("tracing_enabled", cfg.TracingEnabled),
+	)
 	return s.httpServer.ListenAndServe()
 }
-
-// ============================================
-// ✅ SHUTDOWN - MÉTODO ADICIONADO
-// ============================================
 
 // Shutdown finaliza o servidor gracefulmente
 func (s *Server) Shutdown(ctx context.Context) error {

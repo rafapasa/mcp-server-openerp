@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 // cardapioService gerencia as operações do cardápio
@@ -42,24 +43,25 @@ func (s *cardapioService) GetCardapio(ctx context.Context, tenantID uint) ([]dto
 	if err == nil {
 		var cardapio []dto.ProdutoItem
 		if err := json.Unmarshal([]byte(cached), &cardapio); err == nil {
-			log.Printf("[Cache] Cardápio encontrado no cache para tenant %d", tenantID)
+			logger.Debug(ctx, "Cardápio encontrado no cache",
+				zap.Uint("tenant_id", tenantID),
+				zap.Int("itens", len(cardapio)),
+			)
 			return cardapio, nil
 		}
 	}
 
-	// 2. Converte tenantID para uint
-	var tenantIDUint uint
-	if _, err := fmt.Sscan(fmt.Sprint(tenantID), &tenantIDUint); err != nil {
-		return nil, fmt.Errorf("tenant_id inválido: %w", err)
-	}
-
-	// 3. Busca produtos do banco
-	produtos, err := s.produtoRepo.FindByTenantDisponiveis(ctx, tenantIDUint)
+	// 2. Busca produtos do banco
+	produtos, err := s.produtoRepo.FindByTenantDisponiveis(ctx, tenantID)
 	if err != nil {
+		logger.Error(ctx, "Erro ao buscar cardápio no banco",
+			zap.Error(err),
+			zap.Uint("tenant_id", tenantID),
+		)
 		return nil, fmt.Errorf("erro ao buscar cardápio: %w", err)
 	}
 
-	// 4. Converte para ProdutoItem
+	// 3. Converte para ProdutoItem
 	var cardapio []dto.ProdutoItem
 	for _, p := range produtos {
 		categoria := ""
@@ -78,11 +80,14 @@ func (s *cardapioService) GetCardapio(ctx context.Context, tenantID uint) ([]dto
 		})
 	}
 
-	// 5. Salva no cache
+	// 4. Salva no cache
 	if len(cardapio) > 0 {
 		data, _ := json.Marshal(cardapio)
 		s.cache.Set(ctx, cacheKey, data, time.Hour)
-		log.Printf("[Cache] Cardápio cacheado para tenant %d (%d itens)", tenantID, len(cardapio))
+		logger.Info(ctx, "Cardápio cacheado",
+			zap.Uint("tenant_id", tenantID),
+			zap.Int("itens", len(cardapio)),
+		)
 	}
 
 	return cardapio, nil
@@ -97,6 +102,10 @@ func (s *cardapioService) BuscarProdutoPorNome(ctx context.Context, tenantID str
 
 	produto, err := s.produtoRepo.FindByNome(ctx, tenantIDUint, nome)
 	if err != nil {
+		logger.Warn(ctx, "Produto não encontrado pelo nome",
+			zap.String("nome", nome),
+			zap.Uint("tenant_id", tenantIDUint),
+		)
 		return nil, err
 	}
 
@@ -195,9 +204,6 @@ func (s *cardapioService) FormatarCardapio(cardapio []dto.ProdutoItem) string {
 	return sb.String()
 }
 
-// internal/service/cardapio_service.go
-// Adicione estes métodos à struct cardapioService
-
 // ============================================
 // LIST METHODS
 // ============================================
@@ -208,6 +214,10 @@ func (s *cardapioService) ListWithFilters(ctx context.Context, tenantID uint, ca
 
 	produtos, total, err := s.produtoRepo.FindWithFilters(ctx, tenantID, categoriaID, disponivel, nome, limit, offset)
 	if err != nil {
+		logger.Error(ctx, "Erro ao listar produtos com filtros",
+			zap.Error(err),
+			zap.Uint("tenant_id", tenantID),
+		)
 		return nil, 0, err
 	}
 
@@ -232,6 +242,13 @@ func (s *cardapioService) ListWithFilters(ctx context.Context, tenantID uint, ca
 		}
 	}
 
+	logger.Debug(ctx, "Produtos listados com filtros",
+		zap.Uint("tenant_id", tenantID),
+		zap.Int("total", int(total)),
+		zap.Int("page", page),
+		zap.Int("limit", limit),
+	)
+
 	return result, total, nil
 }
 
@@ -239,6 +256,7 @@ func (s *cardapioService) ListWithFilters(ctx context.Context, tenantID uint, ca
 func (s *cardapioService) FindByID(ctx context.Context, id uint) (*dto.ProdutoDTO, error) {
 	produto, err := s.produtoRepo.FindByID(ctx, id)
 	if err != nil {
+		logger.Error(ctx, "Produto não encontrado", zap.Uint("id", id), zap.Error(err))
 		return nil, err
 	}
 
@@ -260,5 +278,3 @@ func (s *cardapioService) FindByID(ctx context.Context, id uint) (*dto.ProdutoDT
 		UpdatedAt:     produto.UpdatedAt,
 	}, nil
 }
-
-

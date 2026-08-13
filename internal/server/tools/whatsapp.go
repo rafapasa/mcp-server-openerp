@@ -4,6 +4,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -43,6 +44,7 @@ func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := GetArguments(request)
 		if err != nil {
+			logger.Warn(ctx, "Erro ao extrair argumentos", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -72,17 +74,23 @@ func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
 		// Busca cardápio
 		cardapio, err := deps.CardapioService.GetCardapio(ctx, tenantID)
 		if err != nil {
+			logger.Error(ctx, "Erro ao buscar cardápio",
+				zap.Error(err),
+				zap.Uint("tenant_id", tenantID),
+			)
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar cardápio: %v", err)), nil
 		}
 
 		if len(cardapio) == 0 {
+			logger.Warn(ctx, "Cardápio vazio para tenant", zap.Uint("tenant_id", tenantID))
 			return mcp.NewToolResultError("Cardápio não encontrado para este estabelecimento"), nil
 		}
 
-		// Detecta intenção do cliente
+		// ✅ Detecta intenção do cliente (com retry já implementado no LLM)
 		intencao, err := deps.LLMClient.ExtractIntent(ctx, mensagem, cardapio)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Erro ao interpretar mensagem: %v", err)), nil
+			// ✅ Trata erro da LLM
+			return handleLLMError(ctx, err, mensagem), nil
 		}
 
 		// Processa baseado na intenção
@@ -102,11 +110,89 @@ func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
 	}
 }
 
+// ============================================
+// ✅ HANDLE LLM ERROR
+// ============================================
+
+// handleLLMError trata erros da LLM e retorna mensagem amigável
+func handleLLMError(ctx context.Context, err error, mensagem string) *mcp.CallToolResult {
+	logger.Error(ctx, "Erro ao processar mensagem com LLM",
+		zap.Error(err),
+		zap.String("mensagem", mensagem),
+	)
+
+	errMsg := err.Error()
+	errMsgLower := strings.ToLower(errMsg)
+
+	// ✅ Verifica se é erro de indisponibilidade (503, UNAVAILABLE, high demand)
+	if strings.Contains(errMsgLower, "503") ||
+		strings.Contains(errMsgLower, "unavailable") ||
+		strings.Contains(errMsgLower, "high demand") ||
+		strings.Contains(errMsgLower, "temporarily indisponível") {
+
+		logger.Warn(ctx, "LLM indisponível, retornando mensagem amigável",
+			zap.Error(err),
+		)
+
+		return mcp.NewToolResultError(
+			"⚠️ *Desculpe, estou com dificuldades técnicas no momento.*\n\n" +
+				"O serviço de IA está temporariamente indisponível.\n" +
+				"Por favor, tente novamente em alguns segundos.\n\n" +
+				"Se o problema persistir, entre em contato com o suporte.",
+		)
+	}
+
+	// ✅ Verifica se é erro de timeout
+	if strings.Contains(errMsgLower, "timeout") ||
+		strings.Contains(errMsgLower, "deadline") {
+
+		logger.Warn(ctx, "LLM timeout, retornando mensagem amigável",
+			zap.Error(err),
+		)
+
+		return mcp.NewToolResultError(
+			"⏱️ *A requisição demorou muito para ser processada.*\n\n" +
+				"Por favor, tente novamente com uma mensagem mais curta ou simplificada.",
+		)
+	}
+
+	// ✅ Verifica se é erro de autenticação
+	if strings.Contains(errMsgLower, "unauthorized") ||
+		strings.Contains(errMsgLower, "invalid api key") ||
+		strings.Contains(errMsgLower, "403") {
+
+		logger.Error(ctx, "Erro de autenticação com LLM",
+			zap.Error(err),
+		)
+
+		return mcp.NewToolResultError(
+			"🔒 *Erro de configuração no serviço de IA.*\n\n" +
+				"Por favor, entre em contato com o suporte para resolver o problema.",
+		)
+	}
+
+	// ✅ Erro genérico
+	return mcp.NewToolResultError(
+		"❌ *Ops! Algo deu errado ao processar sua mensagem.*\n\n" +
+			"Por favor, tente novamente em alguns instantes.\n" +
+			"Se o problema persistir, entre em contato com o suporte.",
+	)
+}
+
+// ============================================
+// PROCESSADORES DE AÇÃO
+// ============================================
+
 // processarAdicionar adiciona itens ao carrinho
 func processarAdicionar(ctx context.Context, clienteID, tenantID uint, intencao *llm.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
 	if len(intencao.Itens) == 0 {
 		return mcp.NewToolResultError("Não foi possível identificar itens para adicionar ao carrinho"), nil
 	}
+
+	logger.Info(ctx, "Adicionando itens ao carrinho",
+		zap.Uint("cliente_id", clienteID),
+		zap.Int("itens_count", len(intencao.Itens)),
+	)
 
 	for _, item := range intencao.Itens {
 		carrinhoItem := dto.ItemCarrinho{
@@ -116,6 +202,10 @@ func processarAdicionar(ctx context.Context, clienteID, tenantID uint, intencao 
 			Preco:      item.PrecoUnitario,
 		}
 		if err := deps.CarrinhoService.AdicionarItem(ctx, clienteID, tenantID, carrinhoItem); err != nil {
+			logger.Error(ctx, "Erro ao adicionar item ao carrinho",
+				zap.Error(err),
+				zap.String("item_nome", item.Nome),
+			)
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao adicionar item: %v", err)), nil
 		}
 	}
@@ -123,6 +213,7 @@ func processarAdicionar(ctx context.Context, clienteID, tenantID uint, intencao 
 	// Busca carrinho atualizado
 	carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
+		logger.Error(ctx, "Erro ao buscar carrinho", zap.Error(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
 	}
 
@@ -141,8 +232,17 @@ func processarRemover(ctx context.Context, clienteID, tenantID uint, intencao *l
 		return mcp.NewToolResultError("Não foi possível identificar itens para remover"), nil
 	}
 
+	logger.Info(ctx, "Removendo itens do carrinho",
+		zap.Uint("cliente_id", clienteID),
+		zap.Int("itens_count", len(intencao.Itens)),
+	)
+
 	for _, item := range intencao.Itens {
 		if err := deps.CarrinhoService.RemoverItem(ctx, clienteID, tenantID, item.Nome, item.Quantidade); err != nil {
+			logger.Error(ctx, "Erro ao remover item do carrinho",
+				zap.Error(err),
+				zap.String("item_nome", item.Nome),
+			)
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao remover item: %v", err)), nil
 		}
 	}
@@ -150,6 +250,7 @@ func processarRemover(ctx context.Context, clienteID, tenantID uint, intencao *l
 	// Busca carrinho atualizado
 	carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
+		logger.Error(ctx, "Erro ao buscar carrinho", zap.Error(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
 	}
 
@@ -166,6 +267,7 @@ func processarRemover(ctx context.Context, clienteID, tenantID uint, intencao *l
 func processarVisualizar(ctx context.Context, clienteID, tenantID uint, deps *Dependencies) (*mcp.CallToolResult, error) {
 	carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
+		logger.Error(ctx, "Erro ao buscar carrinho", zap.Error(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
 	}
 
@@ -178,8 +280,14 @@ func processarVisualizar(ctx context.Context, clienteID, tenantID uint, deps *De
 
 // processarFinalizar finaliza o pedido
 func processarFinalizar(ctx context.Context, clienteID, tenantID uint, clienteNome string, deps *Dependencies) (*mcp.CallToolResult, error) {
+	logger.Info(ctx, "Finalizando pedido",
+		zap.Uint("cliente_id", clienteID),
+		zap.Uint("tenant_id", tenantID),
+	)
+
 	pedidoConfirmado, err := deps.CarrinhoService.FinalizarCarrinho(ctx, clienteID, tenantID, clienteNome)
 	if err != nil {
+		logger.Error(ctx, "Erro ao finalizar pedido", zap.Error(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao finalizar pedido: %v", err)), nil
 	}
 
@@ -189,7 +297,13 @@ func processarFinalizar(ctx context.Context, clienteID, tenantID uint, clienteNo
 
 // processarLimpar limpa o carrinho
 func processarLimpar(ctx context.Context, clienteID, tenantID uint, deps *Dependencies) (*mcp.CallToolResult, error) {
+	logger.Info(ctx, "Limpando carrinho",
+		zap.Uint("cliente_id", clienteID),
+		zap.Uint("tenant_id", tenantID),
+	)
+
 	if err := deps.CarrinhoService.LimparCarrinho(ctx, clienteID, tenantID); err != nil {
+		logger.Error(ctx, "Erro ao limpar carrinho", zap.Error(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao limpar carrinho: %v", err)), nil
 	}
 

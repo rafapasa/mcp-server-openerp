@@ -11,6 +11,15 @@ import (
 
 var jwtSecret = []byte(os.Getenv("JWT_SECRET"))
 
+// GetJWTSecret retorna o secret (para validação)
+func GetJWTSecret() []byte {
+	if len(jwtSecret) == 0 {
+		// Fallback para desenvolvimento
+		return []byte("default-secret-change-me")
+	}
+	return jwtSecret
+}
+
 // Claims representa as claims do JWT
 type Claims struct {
 	UserID   uint   `json:"user_id"`

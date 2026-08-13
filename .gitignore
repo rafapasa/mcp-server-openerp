@@ -28,9 +28,11 @@ build/
 .vscode/
 *.iml
 
+
 # Logs
-**/logs/
-**/*.log
+logs/
+*.log
+*.log.*
 
 # OS
 .DS_Store

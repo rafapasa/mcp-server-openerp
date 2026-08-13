@@ -106,7 +106,8 @@ func (h *APIHandlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Busca dados do dashboard
+	logger.Debug(ctx, "Dashboard acessado", zap.Uint("tenant_id", tenantID))
+
 	totalPedidosHoje, _ := h.pedidoService.CountPedidosHoje(ctx, tenantID)
 	totalPedidosSemana, _ := h.pedidoService.CountPedidosSemana(ctx, tenantID)
 	totalClientes, _ := h.clienteService.CountByTenant(ctx, tenantID)
@@ -145,6 +146,12 @@ func (h *APIHandlers) ListPedidos(w http.ResponseWriter, r *http.Request) {
 	dataInicio, _ := parseDate(r.URL.Query().Get("data_inicio"))
 	dataFim, _ := parseDate(r.URL.Query().Get("data_fim"))
 
+	logger.Debug(ctx, "Listando pedidos",
+		zap.Uint("tenant_id", tenantID),
+		zap.String("status", status),
+		zap.Uint("cliente_id", clienteID),
+	)
+
 	pedidos, total, err := h.pedidoService.ListWithFilters(ctx, tenantID, clienteID, status, dataInicio, dataFim, page, limit)
 	if err != nil {
 		logger.Error(ctx, "Failed to list orders", zap.Error(err))
@@ -169,6 +176,8 @@ func (h *APIHandlers) GetPedido(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Invalid order ID")
 		return
 	}
+
+	logger.Debug(ctx, "Buscando pedido", zap.Uint("id", id))
 
 	pedido, err := h.pedidoService.FindByID(ctx, id)
 	if err != nil {
@@ -202,6 +211,11 @@ func (h *APIHandlers) UpdatePedidoStatus(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	logger.Info(ctx, "Atualizando status do pedido",
+		zap.Uint("id", id),
+		zap.String("status", body.Status),
+	)
+
 	pedido, err := h.pedidoService.AtualizarStatusPedido(ctx, id, body.Status)
 	if err != nil {
 		logger.Error(ctx, "Failed to update order status", zap.Uint("id", id), zap.Error(err))
@@ -229,6 +243,12 @@ func (h *APIHandlers) ListClientes(w http.ResponseWriter, r *http.Request) {
 	nome := r.URL.Query().Get("nome")
 	telefone := r.URL.Query().Get("telefone")
 
+	logger.Debug(ctx, "Listando clientes",
+		zap.Uint("tenant_id", tenantID),
+		zap.String("nome", nome),
+		zap.String("telefone", telefone),
+	)
+
 	clientes, total, err := h.clienteService.ListWithFilters(ctx, tenantID, nome, telefone, page, limit)
 	if err != nil {
 		logger.Error(ctx, "Failed to list clients", zap.Error(err))
@@ -254,6 +274,8 @@ func (h *APIHandlers) GetCliente(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Debug(ctx, "Buscando cliente", zap.Uint("id", id))
+
 	cliente, err := h.clienteService.FindByID(ctx, id)
 	if err != nil {
 		logger.Error(ctx, "Failed to get client", zap.Uint("id", id), zap.Error(err))
@@ -274,6 +296,11 @@ func (h *APIHandlers) GetClientePedidos(w http.ResponseWriter, r *http.Request) 
 	}
 
 	page, limit := parsePagination(r)
+
+	logger.Debug(ctx, "Buscando pedidos do cliente",
+		zap.Uint("cliente_id", clienteID),
+	)
+
 	pedidos, total, err := h.pedidoService.ListByCliente(ctx, clienteID, page, limit)
 	if err != nil {
 		logger.Error(ctx, "Failed to get client orders", zap.Uint("cliente_id", clienteID), zap.Error(err))
@@ -298,6 +325,10 @@ func (h *APIHandlers) GetClienteEnderecos(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+
+	logger.Debug(ctx, "Buscando endereços do cliente",
+		zap.Uint("cliente_id", clienteID),
+	)
 
 	enderecos, err := h.clienteService.ListarEnderecos(ctx, clienteID)
 	if err != nil {
@@ -334,6 +365,12 @@ func (h *APIHandlers) ListProdutos(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	logger.Debug(ctx, "Listando produtos",
+		zap.Uint("tenant_id", tenantID),
+		zap.Uint("categoria_id", categoriaID),
+		zap.String("nome", nome),
+	)
+
 	produtos, total, err := h.cardapioService.ListWithFilters(ctx, tenantID, &categoriaID, disponivel, nome, page, limit)
 	if err != nil {
 		logger.Error(ctx, "Failed to list products", zap.Error(err))
@@ -359,6 +396,8 @@ func (h *APIHandlers) GetProduto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Debug(ctx, "Buscando produto", zap.Uint("id", id))
+
 	produto, err := h.cardapioService.FindByID(ctx, id)
 	if err != nil {
 		logger.Error(ctx, "Failed to get product", zap.Uint("id", id), zap.Error(err))
@@ -381,24 +420,28 @@ func (h *APIHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		logger.Warn(r.Context(), "Erro ao decodificar login", zap.Error(err))
 		writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
+	logger.Debug(r.Context(), "Tentativa de login", zap.String("email", body.Email))
+
 	// TODO: Implementar validação real (buscar usuário no banco)
-	// Por enquanto, credenciais fixas para teste
 	if body.Email != "admin@admin.com" || body.Password != "admin123" {
+		logger.Warn(r.Context(), "Falha no login", zap.String("email", body.Email))
 		writeError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
 
-	// Gera token JWT
 	token, err := GenerateJWT(1, 1, body.Email)
 	if err != nil {
 		logger.Error(r.Context(), "Failed to generate JWT", zap.Error(err))
 		writeError(w, http.StatusInternalServerError, "Failed to generate token")
 		return
 	}
+
+	logger.Info(r.Context(), "Login bem-sucedido", zap.String("email", body.Email))
 
 	writeSuccess(w, "Login successful", map[string]interface{}{
 		"token": token,

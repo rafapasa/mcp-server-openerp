@@ -34,7 +34,7 @@ func GetStringRequired(args map[string]interface{}, key string) (string, error) 
 	return val, nil
 }
 
-// GetStringRequired extrai uma string obrigatória
+// GetUintRequired extrai um uint obrigatório
 func GetUintRequired(args map[string]interface{}, key string) (uint, error) {
 	val, ok := args[key].(string)
 	if !ok || val == "" {
@@ -45,6 +45,19 @@ func GetUintRequired(args map[string]interface{}, key string) (uint, error) {
 		return 0, fmt.Errorf("'%s' deve ser um número válido", key)
 	}
 	return uint(uintVal), nil
+}
+
+// GetIntRequired extrai um int obrigatório
+func GetIntRequired(args map[string]interface{}, key string) (int, error) {
+	val, ok := args[key].(string)
+	if !ok || val == "" {
+		return 0, fmt.Errorf("'%s' é obrigatório", key)
+	}
+	intVal, err := strconv.Atoi(val)
+	if err != nil {
+		return 0, fmt.Errorf("'%s' deve ser um número válido", key)
+	}
+	return intVal, nil
 }
 
 // GetItems extrai e valida a lista de itens
