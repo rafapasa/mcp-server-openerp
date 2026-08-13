@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// Pega DSN das variáveis de ambiente
-	cfg := config.LoadConfig()
+	cfg, _ := config.LoadConfig()
 
 	// Conexão com banco de dados
 	db, err := database.NewMySQL(cfg, "")

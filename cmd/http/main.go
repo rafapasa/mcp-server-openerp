@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	cfg := config.LoadConfig()
+	cfg, _ := config.LoadConfig()
 
 	// Conexão com banco de dados
 	db, err := database.NewMySQL(cfg, "")

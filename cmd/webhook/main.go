@@ -14,7 +14,7 @@ import (
 
 func main() {
 	// Carrega configuração
-	cfg := config.LoadConfig()
+	cfg, _ := config.LoadConfig()
 
 	// Inicializa logger
 	if err := logger.Init(logger.Config{

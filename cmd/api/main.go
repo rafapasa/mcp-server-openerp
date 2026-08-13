@@ -20,7 +20,7 @@ func main() {
 	// ============================================
 	// 1. CARREGA CONFIGURAÇÃO
 	// ============================================
-	cfg := config.LoadConfig()
+	cfg, _ := config.LoadConfig()
 
 	// ============================================
 	// 2. INICIALIZA LOGGER

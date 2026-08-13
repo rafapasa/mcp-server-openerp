@@ -29,6 +29,6 @@ func NewLLMClient(config *config.Config) (LLMClient, error) {
 
 // NewLLMClientFromEnv cria um cliente LLM usando variáveis de ambiente
 func NewLLMClientFromEnv() (LLMClient, error) {
-	config := config.LoadConfig()
+	config, _ := config.LoadConfig()
 	return NewLLMClient(config)
 }

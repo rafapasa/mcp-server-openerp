@@ -1,13 +1,15 @@
 package config
 
 import (
-	"log"
+	"context"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 // Config armazena todas as configurações da aplicação
@@ -70,12 +72,16 @@ type Config struct {
 }
 
 // LoadConfig carrega as configurações do arquivo .env e variáveis de ambiente
-func LoadConfig() *Config {
+func LoadConfig() (*Config, error) {
 	viper.SetConfigFile(".env")
 	viper.AutomaticEnv()
 	// Carregar .env se existir
 	if err := godotenv.Load(); err != nil {
-		log.Println("Arquivo .env não encontrado, usando variáveis de ambiente do sistema")
+		logger.Error(context.Background(),
+			"Erro ao carregar arquivo .env",
+			zap.Error(err),
+		)
+		return nil, err
 	}
 
 	// JWT Expires In
@@ -141,7 +147,7 @@ func LoadConfig() *Config {
 		WhatsAppAccessToken: getEnv("WHATSAPP_ACCESS_TOKEN", ""),
 		WhatsAppPhoneNumber: getEnv("WHATSAPP_PHONE_NUMBER", ""),
 		WhatsAppVerifyToken: getEnv("WHATSAPP_VERIFY_TOKEN", ""),
-	}
+	}, nil
 }
 
 func getEnvAsBool(s string, defoult bool) bool {
@@ -189,7 +195,7 @@ func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
 
 // LoadConfigOrDefault carrega a configuração ou usa valores padrão
 func LoadConfigOrDefault() *Config {
-	cfg := LoadConfig()
+	cfg, _ := LoadConfig()
 
 	return cfg
 }
