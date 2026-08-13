@@ -99,11 +99,11 @@ func (s *Server) Start(addr string) error {
 		middleware.SanitizeMiddleware(
 			middleware.RateLimitMiddleware(rateLimiter, middleware.TenantKeyExtractor)(
 				middleware.APIHeadersMiddleware(
-					middleware.TracingMiddleware(
-						middleware.LoggingMiddleware(
-							middleware.MetricsMiddleware(mux),
-						),
+					//					middleware.TracingMiddleware(
+					middleware.LoggingMiddleware(
+						middleware.MetricsMiddleware(mux),
 					),
+					//					),
 				),
 			),
 		),

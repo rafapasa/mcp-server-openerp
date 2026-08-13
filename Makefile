@@ -1,7 +1,7 @@
 .PHONY: build build-stdio build-http run-stdio run-http dev test clean fmt lint check
 
 # Build all binaries
-build: build-stdio build-http
+build: build-stdio build-http build-wh build-api
 
 build-stdio:
 	go build -o bin/stdio ./cmd/stdio
@@ -12,6 +12,8 @@ build-http:
 build-wh:
 	go build -o bin/webhook ./cmd/webhook
 	
+build-api:
+	go build -o bin/api ./cmd/api	
 # Run commands
 run-stdio:
 	go run ./cmd/stdio
@@ -21,6 +23,13 @@ run-http:
 
 run-wh:
 	go run ./cmd/webhook
+
+run-api:
+	go run ./cmd/api
+
+ngrok:
+	ngrok http 8080
+
 # Development with live reload (requires air: go install github.com/air-verse/air@latest)
 dev:
 	air

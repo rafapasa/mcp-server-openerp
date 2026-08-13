@@ -14,7 +14,7 @@ func APIHeadersMiddleware(next http.Handler) http.Handler {
 		if allowedOrigins != "" {
 			w.Header().Set("Access-Control-Allow-Origin", allowedOrigins)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-ID")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-ID, Accept,  X-Requested-With, Origin")
 			w.Header().Set("Access-Control-Max-Age", "86400")
 		}
 
