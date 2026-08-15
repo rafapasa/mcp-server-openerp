@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/hbollon/go-edlib v1.7.0
-	github.com/mark3labs/mcp-go v0.57.0
+	github.com/mark3labs/mcp-go v0.58.0
 	github.com/paemuri/brdoc v1.1.2
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/go-redis/v9 v9.22.0
