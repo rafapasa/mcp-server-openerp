@@ -1,0 +1,83 @@
+# ============================================
+# STAGE 1: Builder Base (compartilhado)
+# ============================================
+FROM golang:1.25.5-alpine AS builder-base
+
+WORKDIR /app
+
+# Instala dependências de build
+RUN apk add --no-cache git ca-certificates
+
+# Copia e baixa dependências (cache otimizado)
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+# Copia todo o código fonte
+COPY . .
+
+# ============================================
+# STAGE 2: Build Webhook
+# ============================================
+FROM builder-base AS builder-webhook
+
+WORKDIR /app
+
+# Usa build com cache de módulos
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w -extldflags -static" \
+    -trimpath \
+    -o /webhook \
+    ./cmd/webhook/main.go
+
+# ============================================
+# STAGE 3: Build MCP (stdio)
+# ============================================
+FROM builder-base AS builder-mcp
+
+WORKDIR /app
+
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w -extldflags -static" \
+    -trimpath \
+    -o /mcp \
+    ./cmd/stdio/main.go
+
+# ============================================
+# STAGE 4: Imagem Final Webhook
+# ============================================
+FROM alpine:3.20 AS webhook
+
+RUN apk --no-cache add ca-certificates tzdata curl
+
+WORKDIR /app
+
+# Copia apenas o binário
+COPY --from=builder-webhook /webhook .
+
+# Usuário não-root
+RUN adduser -D -u 1000 appuser && chown appuser:appuser /app
+USER appuser
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["./webhook"]
+
+# ============================================
+# STAGE 5: Imagem Final MCP
+# ============================================
+FROM alpine:3.20 AS mcp
+
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /app
+COPY --from=builder-mcp /mcp .
+
+RUN adduser -D -u 1000 appuser && chown appuser:appuser /app
+USER appuser
+
+ENTRYPOINT ["./mcp"]

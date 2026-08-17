@@ -270,14 +270,43 @@ Gemini 1.5 Pro	gemini-1.5-pro
 Gemini 1.5 Flash	gemini-1.5-flash
 
 
+# Build webhook image
+make docker-build-webhook
 
-ngrok http 8080
+# Build MCP image
+make docker-build-mcp
+
+# Build all images
+make docker-build-all
+
+# Login Docker Hub
+make login
+
+# Build and push all
+make docker-build-push
+
+# Build, push e prepara para OCI
+make oci-deploy
+
+# Na OCI (já logado):
+make oci-pull
+make oci-up
+make oci-logs
+make oci-status
 
 
-### dev.facebook.com 
-Número de teste
-+1 (555) 202-5640
-Phone Number ID:1242584622278660
-Identificação da conta do WhatsApp Business:1384303933273959
+# Limpar tudo
+make clean
 
-[token ]EAATcjWRM99YBSJVHdv8JlpvgReiuoZALqv8Oq3IjMQ6B71MQsr3KGCiezbByaqMOyKFRCYx7FOeFZAAcJV2XhEMK1fsStdfnWgXR4NaQDkhiiHTI2HU7b2mmm2Ed9wTEk2ZALzJmTq3aKvjXMVCE6b9QxCbZBTn622pdxgTSXOyGLQQZBIlcNyjZBrF7RaQt2c8ZBbCTvmqUheclweIudviUxKI42NMzCnLaqZC5ZCEeZAZAQS5Bi1ZAv7FvboAOGYekCA37rNzfSYrEVvD31VlRinBi
+# Limpar só Docker
+make clean-docker
+
+# Limpar só binários
+make clean-bin
+
+
+# criar imagens e subir pro hub
+make docker-build-push IMAGE_TAG=v1.0.0
+
+# atualizar OCI
+make docker-build-push

@@ -1,0 +1,5 @@
+
+# Deploy local
+deploy/logs/
+deploy/.env
+deploy/*.local
