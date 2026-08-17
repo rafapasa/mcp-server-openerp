@@ -272,3 +272,12 @@ Gemini 1.5 Flash	gemini-1.5-flash
 
 
 ngrok http 8080
+
+
+### dev.facebook.com 
+Número de teste
++1 (555) 202-5640
+Phone Number ID:1242584622278660
+Identificação da conta do WhatsApp Business:1384303933273959
+
+[token ]EAATcjWRM99YBSJVHdv8JlpvgReiuoZALqv8Oq3IjMQ6B71MQsr3KGCiezbByaqMOyKFRCYx7FOeFZAAcJV2XhEMK1fsStdfnWgXR4NaQDkhiiHTI2HU7b2mmm2Ed9wTEk2ZALzJmTq3aKvjXMVCE6b9QxCbZBTn622pdxgTSXOyGLQQZBIlcNyjZBrF7RaQt2c8ZBbCTvmqUheclweIudviUxKI42NMzCnLaqZC5ZCEeZAZAQS5Bi1ZAv7FvboAOGYekCA37rNzfSYrEVvD31VlRinBi

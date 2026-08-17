@@ -1,0 +1,40 @@
+# Dockerfile.webhook - OTIMIZADO
+FROM golang:1.25.5-alpine AS builder
+
+WORKDIR /app
+
+# Copia e baixa dependências
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copia código
+COPY . .
+
+# Compila (remove debug info e symbols)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o webhook \
+    ./cmd/webhook/main.go
+
+# Imagem final (apenas o binário)
+FROM alpine:3.20
+
+# Instala apenas o essencial
+RUN apk --no-cache add ca-certificates tzdata curl
+
+WORKDIR /app
+
+# Copia apenas o binário
+COPY --from=builder /app/webhook .
+
+# Usa usuário não-root (segurança)
+RUN adduser -D -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["./webhook"]2
