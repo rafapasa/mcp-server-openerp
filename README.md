@@ -306,7 +306,10 @@ make clean-bin
 
 
 # criar imagens e subir pro hub
-make docker-build-push IMAGE_TAG=v1.0.0
+make docker-build-push
 
 # atualizar OCI
-make docker-build-push
+make oci-restart
+
+# Ver logs na OCI	
+make oci-logs
