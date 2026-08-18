@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   api:
     image: rafapasa/mcp-api:latest
@@ -9,6 +7,8 @@ services:
       - "8081:8081"
     env_file:
       - .env
+    volumes:
+      - ./logs:/app/logs
     networks:
       - mcp-network
 
@@ -20,6 +20,8 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    volumes:
+      - ./logs:/app/logs
     networks:
       - mcp-network
 
