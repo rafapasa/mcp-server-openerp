@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   api:
     image: rafapasa/mcp-api:latest
@@ -9,11 +11,6 @@ services:
       - .env
     networks:
       - mcp-network
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
   webhook:
     image: rafapasa/mcp-webhook:latest
@@ -25,11 +22,6 @@ services:
       - .env
     networks:
       - mcp-network
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
 networks:
   mcp-network:
