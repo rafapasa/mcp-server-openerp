@@ -62,7 +62,7 @@ clean:
 	go clean
 
 # ================================================================
-# DOCKER BUILD E PUSH
+# DOCKER BUILD E PUSH (MULTI-ARQUITETURA)
 # ================================================================
 
 .PHONY: login
@@ -71,11 +71,11 @@ login:
 
 .PHONY: docker-build-webhook
 docker-build-webhook:
-	docker buildx build --platform $(PLATFORM) -f $(DOCKERFILE) --target webhook -t $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG) -t $(DOCKER_USERNAME)/mcp-webhook:latest .
+	docker buildx build --platform $(PLATFORM) -f $(DOCKERFILE) --target webhook -t $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG) .
 
 .PHONY: docker-build-api
 docker-build-api:
-	docker buildx build --platform $(PLATFORM) -f $(DOCKERFILE) --target api -t $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG) -t $(DOCKER_USERNAME)/mcp-api:latest .
+	docker buildx build --platform $(PLATFORM) -f $(DOCKERFILE) --target api -t $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG) .
 
 .PHONY: docker-build-all
 docker-build-all: docker-build-webhook docker-build-api
@@ -83,12 +83,10 @@ docker-build-all: docker-build-webhook docker-build-api
 .PHONY: docker-push-webhook
 docker-push-webhook:
 	docker push $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG)
-	docker push $(DOCKER_USERNAME)/mcp-webhook:latest
 
 .PHONY: docker-push-api
 docker-push-api:
 	docker push $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG)
-	docker push $(DOCKER_USERNAME)/mcp-api:latest
 
 .PHONY: docker-push-all
 docker-push-all: docker-push-webhook docker-push-api
@@ -98,35 +96,84 @@ docker-build-push: login docker-build-all docker-push-all
 	@echo "✅ Imagens publicadas: $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG) e $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG)"
 
 # ================================================================
-# DOCKER COMPOSE (LOCAL)
+# 🚀 DEPLOY NA OCI
 # ================================================================
 
-.PHONY: compose-up compose-down compose-logs
-compose-up:
-	docker-compose -f deploy/docker-compose.yml up -d
+# --- Banco de Dados (MySQL + Redis) ---
+# Executar UMA ÚNICA VEZ, ou quando quiser resetar o banco
 
-compose-down:
-	docker-compose -f deploy/docker-compose.yml down
+.PHONY: oci-db-up oci-db-down oci-db-logs
+oci-db-up:
+	@echo "🐳 Iniciando MySQL e Redis (uma vez)..."
+	docker-compose -f docker-compose.database.yml up -d
+	@echo "✅ Banco de dados em execução"
+	@echo "   MySQL: mcp-mysql:3306"
+	@echo "   Redis: mcp-redis:6379"
 
-compose-logs:
-	docker-compose -f deploy/docker-compose.yml logs -f
+oci-db-down:
+	docker-compose -f docker-compose.database.yml down
 
-# ================================================================
-# OCI DEPLOY
-# ================================================================
+oci-db-logs:
+	docker-compose -f docker-compose.database.yml logs -f
 
-.PHONY: oci-pull oci-up oci-down oci-restart oci-logs
+# --- Aplicação (API + Webhook) ---
+# Executar SEMPRE que atualizar as imagens
+
+.PHONY: oci-pull oci-app-up oci-app-down oci-app-restart oci-app-logs
 oci-pull:
+	@echo "📥 Baixando imagens do Docker Hub..."
 	docker pull $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG)
 	docker pull $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG)
+	@echo "✅ Imagens baixadas"
 
-oci-up:
-	docker-compose -f deploy/docker-compose.yml --env-file .env up -d
+oci-app-up:
+	@echo "🐳 Iniciando API e Webhook..."
+	docker-compose -f docker-compose.app.yml up -d
+	@echo "✅ Aplicação em execução"
+	@echo "   API:      http://localhost:8081"
+	@echo "   Webhook:  http://localhost:8080"
 
-oci-down:
-	docker-compose -f deploy/docker-compose.yml down
+oci-app-down:
+	docker-compose -f docker-compose.app.yml down
 
-oci-restart: oci-down oci-up
+oci-app-restart: oci-app-down oci-pull oci-app-up
 
-oci-logs:
-	docker-compose -f deploy/docker-compose.yml logs -f
+oci-app-logs:
+	docker-compose -f docker-compose.app.yml logs -f
+
+# --- Deploy Completo (Banco + Aplicação) ---
+
+.PHONY: oci-deploy
+oci-deploy: oci-db-up oci-pull oci-app-up
+	@echo "============================================"
+	@echo "  ✅ DEPLOY COMPLETO FINALIZADO"
+	@echo "============================================"
+	@echo "  Banco:  MySQL e Redis"
+	@echo "  App:    API e Webhook"
+	@echo "============================================"
+
+# --- Comandos de Utilitários ---
+
+.PHONY: oci-ps oci-status
+oci-ps:
+	docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+oci-status: oci-ps
+
+.PHONY: oci-logs-all
+oci-logs-all:
+	docker-compose -f docker-compose.database.yml logs -f &
+	docker-compose -f docker-compose.app.yml logs -f
+
+# ================================================================
+# AMBIENTE LOCAL (Desenvolvimento)
+# ================================================================
+
+.PHONY: local-up local-down
+local-up:
+	docker-compose -f docker-compose.database.yml up -d
+	docker-compose -f docker-compose.app.yml up -d
+
+local-down:
+	docker-compose -f docker-compose.database.yml down
+	docker-compose -f docker-compose.app.yml down
