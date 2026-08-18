@@ -5,7 +5,7 @@
 DOCKER_USERNAME := rafapasa
 IMAGE_TAG := latest
 PLATFORM := linux/arm64
-DOCKERFILE := deploy/Dockerfile.multistage
+DOCKERFILE := Dockerfile.multistage
 
 # ================================================================
 # DESENVOLVIMENTO LOCAL
