@@ -84,8 +84,8 @@ ifndef IMAGE_TAG
 	$(error Use: make build-push IMAGE_TAG=1.0.0)
 endif
 	git pull
-	DOCKER_BUILDKIT=1 docker build -f $(DOCKERFILE) --target api -t $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG) .
-	DOCKER_BUILDKIT=1 docker build -f $(DOCKERFILE) --target webhook -t $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG) .
+	DOCKER_BUILDKIT=1 docker build $(NO_CACHE) -f $(DOCKERFILE) --target api -t $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG) .
+	DOCKER_BUILDKIT=1 docker build $(NO_CACHE) -f $(DOCKERFILE) --target webhook -t $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG) .
 	docker push $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG)
 	docker push $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG)
 
