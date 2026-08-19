@@ -116,6 +116,12 @@ endif
 logs:
 	docker logs -f mcp-api --tail=100
 
+logs-api:
+	docker logs -f mcp-api --tail=100
+
+logs-wh:
+	docker logs -f mcp-webhook --tail=100	
+
 logs-tail:
 	docker compose -f docker-compose.app.yml logs -f --tail=100
 
