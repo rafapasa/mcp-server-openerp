@@ -11,8 +11,6 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-
-	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 )
 
 // Status representa o status de um componente
@@ -115,7 +113,7 @@ type HealthResponse struct {
 }
 
 // NewDefaultHealthChecker cria um checker com verificações padrão
-func NewDefaultHealthChecker(db *gorm.DB, redis *redis.Client, llmClient llm.LLMClient) *HealthChecker {
+func NewDefaultHealthChecker(db *gorm.DB, redis *redis.Client) *HealthChecker {
 	hc := NewHealthChecker()
 
 	// Verificação do banco de dados
@@ -187,46 +185,6 @@ func NewDefaultHealthChecker(db *gorm.DB, redis *redis.Client, llmClient llm.LLM
 			Status:    StatusUp,
 			Message:   "Redis OK",
 			Latency:   time.Since(start),
-			CheckedAt: time.Now(),
-		}
-	})
-
-	// Verificação do LLM
-	hc.Register("llm", func(ctx context.Context) CheckResult {
-		start := time.Now()
-
-		if llmClient == nil {
-			return CheckResult{
-				Status:    StatusDown,
-				Message:   "LLM client não configurado",
-				Latency:   time.Since(start),
-				CheckedAt: time.Now(),
-			}
-		}
-
-		// Testa o LLM com um prompt simples
-		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-
-		// Faz uma chamada simples para testar
-		_, err := llmClient.GenerateWithContext(ctx, "Teste de saúde: responda OK")
-		if err != nil {
-			return CheckResult{
-				Status:    StatusDegraded,
-				Message:   fmt.Sprintf("LLM com erro: %v", err),
-				Latency:   time.Since(start),
-				CheckedAt: time.Now(),
-			}
-		}
-
-		return CheckResult{
-			Status:  StatusUp,
-			Message: fmt.Sprintf("LLM OK (%s)", llmClient.GetProvider()),
-			Latency: time.Since(start),
-			Details: map[string]string{
-				"provider": llmClient.GetProvider(),
-				"model":    llmClient.GetModel(),
-			},
 			CheckedAt: time.Now(),
 		}
 	})

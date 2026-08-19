@@ -173,7 +173,12 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 					zap.String("sanitized", sanitizedMsg),
 				)
 
-				go h.processMessage(ctx, cliente, tenantID, sanitizedMsg, userProfileName)
+				go h.processMessage(ctx,
+					cliente,
+					tenantID,
+					sanitizedMsg,
+					// userProfileName,
+				)
 			}
 		}
 	}
@@ -221,7 +226,7 @@ func (h *WebhookHandler) processMessage(
 	cliente *dto.ClienteDTO,
 	tenantID uint,
 	mensagem string,
-	userProfileName string,
+	// userProfileName string,
 ) {
 	logger.Info(ctx, "Processando mensagem",
 		zap.Uint("cliente_id", cliente.ID),
@@ -314,7 +319,7 @@ func (h *WebhookHandler) processMessage(
 }
 
 // getTenantID busca o tenant pelo número de telefone
-func (h *WebhookHandler) getTenantID(ctx context.Context, phoneNumber, phoneNumberID string) (uint, error) {
+func (h *WebhookHandler) getTenantID(_ context.Context, phoneNumber, phoneNumberID string) (uint, error) {
 	// TODO: Implementar busca no banco de dados
 	// return h.tenantService.FindByTelefone(ctx, phoneNumber)
 

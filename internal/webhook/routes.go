@@ -59,7 +59,7 @@ func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *Serve
 	handler := NewWebhookHandler(mcpServer, whatsApp, clienteService)
 
 	// Cria health checker
-	hc := health.NewDefaultHealthChecker(db, cache, llmClient)
+	hc := health.NewDefaultHealthChecker(db, cache)
 
 	return &Server{
 		handler:     handler,
