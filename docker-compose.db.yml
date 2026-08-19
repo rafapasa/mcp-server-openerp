@@ -1,42 +1,42 @@
 services:
-  mysql:
+  mcp-mysql:
     image: mysql:8.4
     container_name: mcp-mysql
-    hostname: mysql
-    restart: unless-stopped
-    ports:
-      - "3306:3306"
+    hostname: mcp-mysql
+    restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root_password_secure
-      MYSQL_DATABASE: mcp_server_openerp
+      MYSQL_DATABASE: mcp_db
       MYSQL_USER: mcp_user
       MYSQL_PASSWORD: mcp_password_secure
+    ports:
+      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-    networks:
-      - mcp-network
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password_secure"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - mcp-network
 
-  redis:
+  mcp-redis:
     image: redis:7-alpine
     container_name: mcp-redis
-    hostname: redis
-    restart: unless-stopped
+    hostname: mcp-redis
+    restart: always
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    networks:
-      - mcp-network
+    command: redis-server --appendonly yes --save ""
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
-      timeout: 5s
       retries: 5
+    networks:
+      - mcp-network
 
 volumes:
   mysql_data:
@@ -44,4 +44,4 @@ volumes:
 
 networks:
   mcp-network:
-    driver: bridge
+    name: mcp-network

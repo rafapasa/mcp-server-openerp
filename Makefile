@@ -8,7 +8,7 @@ PLATFORM := linux/arm64
 DOCKERFILE := Dockerfile.multistage
 
 # ================================================================
-# DESENVOLVIMENTO LOCAL
+# DESENVOLVIMENTO LOCAL - MANTIDO
 # ================================================================
 
 .PHONY: build build-stdio build-http build-wh build-api
@@ -62,118 +62,62 @@ clean:
 	go clean
 
 # ================================================================
-# DOCKER BUILD E PUSH (MULTI-ARQUITETURA)
+# 🚀 DEPLOY OCI - ORACLE LINUX 9 / AMPERE ARM64
 # ================================================================
 
 .PHONY: login
 login:
-	docker login
+	docker login -u $(DOCKER_USERNAME)
 
-.PHONY: docker-build-webhook
-docker-build-webhook:
-	docker buildx build --platform $(PLATFORM) -f $(DOCKERFILE) --target webhook -t $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG) .
+# 1 - Sobe MySQL 8.4 + Redis - Roda uma vez, cria a rede
+.PHONY: init-db
+init-db:
+	@echo "🐳 Criando rede mcp-network e subindo MySQL + Redis..."
+	docker network create mcp-network || true
+	docker compose -f docker-compose.db.yml up -d
+	@echo "✅ MySQL mcp-mysql:3306 | Redis mcp-redis:6379"
 
-.PHONY: docker-build-api
-docker-build-api:
-	docker buildx build --platform $(PLATFORM) -f $(DOCKERFILE) --target api -t $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG) .
-
-.PHONY: docker-build-all
-docker-build-all: docker-build-webhook docker-build-api
-
-.PHONY: docker-push-webhook
-docker-push-webhook:
+# 2 - Build na OCI + Push
+.PHONY: build-push
+build-push:
+ifndef IMAGE_TAG
+	$(error Use: make build-push IMAGE_TAG=1.0.0)
+endif
+	git pull
+	DOCKER_BUILDKIT=1 docker build -f $(DOCKERFILE) --target api -t $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG) .
+	DOCKER_BUILDKIT=1 docker build -f $(DOCKERFILE) --target webhook -t $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG) .
+	docker push $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG)
 	docker push $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG)
 
-.PHONY: docker-push-api
-docker-push-api:
-	docker push $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG)
+# 3 - Deploy App - SÓ funciona se a rede/db existir
+.PHONY: deploy
+deploy:
+ifndef IMAGE_TAG
+	$(error Use: make deploy IMAGE_TAG=1.0.0)
+endif
+	@if ! docker network inspect mcp-network > /dev/null 2>&1; then \
+		echo "❌ ERRO: rede mcp-network não existe!"; \
+		echo "👉 Rode primeiro: make init-db"; \
+		exit 1; \
+	fi
+	@echo "🚀 Deploy $(IMAGE_TAG)..."
+	IMAGE_TAG=$(IMAGE_TAG) docker compose -f docker-compose.app.yml up -d --pull always
+	docker image prune -f
+	docker ps
 
-.PHONY: docker-push-all
-docker-push-all: docker-push-webhook docker-push-api
+.PHONY: rollback
+rollback:
+ifndef IMAGE_TAG
+	$(error Use: make rollback IMAGE_TAG=1.0.0)
+endif
+	$(MAKE) deploy IMAGE_TAG=$(IMAGE_TAG)
 
-.PHONY: docker-build-push
-docker-build-push: login docker-build-all docker-push-all
-	@echo "✅ Imagens publicadas: $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG) e $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG)"
+.PHONY: logs logs-tail ps status
+logs:
+	docker logs -f mcp-api --tail=100
 
-# ================================================================
-# 🚀 DEPLOY NA OCI
-# ================================================================
+logs-tail:
+	docker compose -f docker-compose.app.yml logs -f --tail=100
 
-# --- Banco de Dados (MySQL + Redis) ---
-# Executar UMA ÚNICA VEZ, ou quando quiser resetar o banco
-
-.PHONY: oci-db-up oci-db-down oci-db-logs
-oci-db-up:
-	@echo "🐳 Iniciando MySQL e Redis (uma vez)..."
-	docker-compose -f docker-compose.database.yml up -d
-	@echo "✅ Banco de dados em execução"
-	@echo "   MySQL: mcp-mysql:3306"
-	@echo "   Redis: mcp-redis:6379"
-
-oci-db-down:
-	docker-compose -f docker-compose.database.yml down
-
-oci-db-logs:
-	docker-compose -f docker-compose.database.yml logs -f
-
-# --- Aplicação (API + Webhook) ---
-# Executar SEMPRE que atualizar as imagens
-
-.PHONY: oci-pull oci-app-up oci-app-down oci-app-restart oci-app-logs
-oci-pull:
-	@echo "📥 Baixando imagens do Docker Hub..."
-	docker pull $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG)
-	docker pull $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG)
-	@echo "✅ Imagens baixadas"
-
-oci-app-up:
-	@echo "🐳 Iniciando API e Webhook..."
-	docker-compose -f docker-compose.app.yml up -d
-	@echo "✅ Aplicação em execução"
-	@echo "   API:      http://localhost:8081"
-	@echo "   Webhook:  http://localhost:8080"
-
-oci-app-down:
-	docker-compose -f docker-compose.app.yml down
-
-oci-app-restart: oci-app-down oci-pull oci-app-up
-
-oci-app-logs:
-	docker-compose -f docker-compose.app.yml logs -f
-
-# --- Deploy Completo (Banco + Aplicação) ---
-
-.PHONY: oci-deploy
-oci-deploy: oci-db-up oci-pull oci-app-up
-	@echo "============================================"
-	@echo "  ✅ DEPLOY COMPLETO FINALIZADO"
-	@echo "============================================"
-	@echo "  Banco:  MySQL e Redis"
-	@echo "  App:    API e Webhook"
-	@echo "============================================"
-
-# --- Comandos de Utilitários ---
-
-.PHONY: oci-ps oci-status
-oci-ps:
+ps status:
 	docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-oci-status: oci-ps
-
-.PHONY: oci-logs-all
-oci-logs-all:
-	docker-compose -f docker-compose.database.yml logs -f &
-	docker-compose -f docker-compose.app.yml logs -f
-
-# ================================================================
-# AMBIENTE LOCAL (Desenvolvimento)
-# ================================================================
-
-.PHONY: local-up local-down
-local-up:
-	docker-compose -f docker-compose.database.yml up -d
-	docker-compose -f docker-compose.app.yml up -d
-
-local-down:
-	docker-compose -f docker-compose.database.yml down
-	docker-compose -f docker-compose.app.yml down

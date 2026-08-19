@@ -270,46 +270,12 @@ Gemini 1.5 Pro	gemini-1.5-pro
 Gemini 1.5 Flash	gemini-1.5-flash
 
 
-# Build webhook image
-make docker-build-webhook
+# Build deploy
+# Se tentar deploy sem db
+make deploy IMAGE_TAG=1.0.0
+# ❌ ERRO: rede mcp-network não existe! Rode primeiro: make init-db
 
-# Build MCP image
-make docker-build-mcp
-
-# Build all images
-make docker-build-all
-
-# Login Docker Hub
-make login
-
-# Build and push all
-make docker-build-push
-
-# Build, push e prepara para OCI
-make oci-deploy
-
-# Na OCI (já logado):
-make oci-pull
-make oci-up
-make oci-logs
-make oci-status
-
-
-# Limpar tudo
-make clean
-
-# Limpar só Docker
-make clean-docker
-
-# Limpar só binários
-make clean-bin
-
-
-# criar imagens e subir pro hub
-make docker-build-push
-
-# atualizar OCI
-make oci-restart
-
-# Ver logs na OCI	
-make oci-logs
+# Correto
+make init-db
+make build-push IMAGE_TAG=1.0.0
+make deploy IMAGE_TAG=1.0.0

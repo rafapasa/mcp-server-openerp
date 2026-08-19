@@ -1,29 +1,39 @@
 services:
-  api:
-    image: rafapasa/mcp-api:latest
+  mcp-api:
+    image: rafapasa/mcp-api:${IMAGE_TAG:-latest}
     container_name: mcp-api
-    restart: unless-stopped
+    hostname: mcp-api
+    restart: always
+    env_file:
+      - .env
     ports:
       - "8081:8081"
-    env_file:
-      - .env
-    volumes:
-      - ./logs:/app/logs
     networks:
       - mcp-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
-  webhook:
-    image: rafapasa/mcp-webhook:latest
+  mcp-webhook:
+    image: rafapasa/mcp-webhook:${IMAGE_TAG:-latest}
     container_name: mcp-webhook
-    restart: unless-stopped
+    hostname: mcp-webhook
+    restart: always
+    env_file:
+      - .env
     ports:
       - "8080:8080"
-    env_file:
-      - .env
-    volumes:
-      - ./logs:/app/logs
     networks:
       - mcp-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 networks:
   mcp-network:
