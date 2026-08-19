@@ -3,9 +3,10 @@
 # ================================================================
 
 DOCKER_USERNAME := rafapasa
-IMAGE_TAG := latest
+IMAGE_TAG ?= latest
 PLATFORM := linux/arm64
 DOCKERFILE := Dockerfile.multistage
+NO_CACHE ?=
 
 # ================================================================
 # DESENVOLVIMENTO LOCAL - MANTIDO
@@ -69,7 +70,6 @@ clean:
 login:
 	docker login -u $(DOCKER_USERNAME)
 
-# 1 - Sobe MySQL 8.4 + Redis - Roda uma vez, cria a rede
 .PHONY: init-db
 init-db:
 	@echo "🐳 Criando rede mcp-network e subindo MySQL + Redis..."
@@ -77,24 +77,24 @@ init-db:
 	docker compose -f docker-compose.db.yml up -d
 	@echo "✅ MySQL mcp-mysql:3306 | Redis mcp-redis:6379"
 
-# 2 - Build na OCI + Push
+# 2 - Build na OCI + Push - Sempre cria a versão + latest
 .PHONY: build-push
 build-push:
-ifndef IMAGE_TAG
-	$(error Use: make build-push IMAGE_TAG=1.0.0)
+ifeq ($(IMAGE_TAG),latest)
+	$(error Use: make build-push IMAGE_TAG=0.1.11 - não pode buildar só latest)
 endif
 	git pull
-	DOCKER_BUILDKIT=1 docker build $(NO_CACHE) -f $(DOCKERFILE) --target api -t $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG) .
-	DOCKER_BUILDKIT=1 docker build $(NO_CACHE) -f $(DOCKERFILE) --target webhook -t $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG) .
+	DOCKER_BUILDKIT=1 docker build $(NO_CACHE) -f $(DOCKERFILE) --target api -t $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG) -t $(DOCKER_USERNAME)/mcp-api:latest .
+	DOCKER_BUILDKIT=1 docker build $(NO_CACHE) -f $(DOCKERFILE) --target webhook -t $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG) -t $(DOCKER_USERNAME)/mcp-webhook:latest .
 	docker push $(DOCKER_USERNAME)/mcp-api:$(IMAGE_TAG)
+	docker push $(DOCKER_USERNAME)/mcp-api:latest
 	docker push $(DOCKER_USERNAME)/mcp-webhook:$(IMAGE_TAG)
+	docker push $(DOCKER_USERNAME)/mcp-webhook:latest
+	@echo "✅ Build $(IMAGE_TAG) + latest enviado"
 
-# 3 - Deploy App - SÓ funciona se a rede/db existir
+# 3 - Deploy App - Se não passar tag, usa latest
 .PHONY: deploy
 deploy:
-ifndef IMAGE_TAG
-	$(error Use: make deploy IMAGE_TAG=1.0.0)
-endif
 	@if ! docker network inspect mcp-network > /dev/null 2>&1; then \
 		echo "❌ ERRO: rede mcp-network não existe!"; \
 		echo "👉 Rode primeiro: make init-db"; \
@@ -107,9 +107,6 @@ endif
 
 .PHONY: rollback
 rollback:
-ifndef IMAGE_TAG
-	$(error Use: make rollback IMAGE_TAG=1.0.0)
-endif
 	$(MAKE) deploy IMAGE_TAG=$(IMAGE_TAG)
 
 .PHONY: logs logs-tail ps status
