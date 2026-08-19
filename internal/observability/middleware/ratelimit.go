@@ -136,7 +136,7 @@ func (rl *RateLimiter) Allow(key string) (bool, int64) {
 	// Verifica se excedeu o limite
 	if entry.count >= cfg.requests {
 		// Calcula o tempo de espera em segundos
-		waitTime := int64(entry.resetTime.Sub(time.Now()).Seconds())
+		waitTime := int64(time.Until(entry.resetTime).Seconds())
 		if waitTime < 1 {
 			waitTime = 1
 		}
