@@ -117,15 +117,11 @@ type Config struct {
 
 // LoadConfig carrega as configurações do arquivo .env e variáveis de ambiente
 func LoadConfig() (*Config, error) {
-	// Configura o Viper
-	viper.SetConfigFile(".env")
-	viper.AutomaticEnv()
+	// Tenta carregar .env se existir localmente, ignora erro no Docker
+	_ = godotenv.Load()
 
-	// Carrega .env se existir
-	err := godotenv.Load()
-	if err != nil {
-		return nil, err
-	}
+	// Viper só pra ler ENV, sem arquivo
+	viper.AutomaticEnv()
 
 	// Configuração com valores padrão
 	cfg := &Config{
