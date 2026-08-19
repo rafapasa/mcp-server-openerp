@@ -12,22 +12,24 @@ import (
 	"go.uber.org/zap"
 )
 
-// SanitizeMiddleware sanitiza os dados da requisição
 func SanitizeMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Só sanitiza POST com JSON
+		// Webhook NÃO pode ser sanitizado antes da verificação HMAC
+		if r.URL.Path == "/webhook" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		if r.Method == http.MethodPost && r.Header.Get("Content-Type") == "application/json" {
 			body, err := io.ReadAll(r.Body)
 			if err == nil {
-				// Sanitiza o body
 				sanitizedBody := sanitizeJSON(body)
 				r.Body = io.NopCloser(bytes.NewReader(sanitizedBody))
+			} else {
+				r.Body = io.NopCloser(bytes.NewReader(body))
 			}
 		}
-
-		// Sanitiza headers
 		sanitizeHeaders(r)
-
 		next.ServeHTTP(w, r)
 	})
 }

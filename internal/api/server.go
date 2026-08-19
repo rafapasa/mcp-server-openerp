@@ -47,7 +47,7 @@ func NewServer(db *gorm.DB, cache *redis.Client) *Server {
 	// Handlers
 	handlers := NewAPIHandlers(clienteService, pedidoService, cardapioService)
 
-	hc := health.NewDefaultHealthChecker(db, cache, nil)
+	hc := health.NewDefaultHealthChecker(db, cache)
 
 	return &Server{
 		handlers:    handlers,
