@@ -22,6 +22,8 @@ func NewLLMClient(config *config.Config) (LLMClient, error) {
 		return NewGroqLLM(config), nil
 	case "gemini":
 		return NewGeminiLLM(config), nil
+	case "deepseek":
+		return NewDeepSeekLLM(config), nil
 	default:
 		return nil, fmt.Errorf("provedor LLM não suportado: %s", provider)
 	}

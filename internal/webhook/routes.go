@@ -10,6 +10,7 @@ import (
 
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
+	"github.com/rafapasa/mcp-server-openerp/internal/media"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/health"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/metrics"
@@ -23,24 +24,23 @@ import (
 	"gorm.io/gorm"
 )
 
-// Server servidor webhook
 type Server struct {
 	httpServer  *http.Server
 	handler     *WebhookHandler
 	db          *gorm.DB
 	cache       *redis.Client
 	llmClient   llm.LLMClient
+	transcriber *media.GroqTranscriber
+	geminiLLM   llm.LLMClient
+	deepseekLLM llm.LLMClient
 	healthCheck *health.HealthChecker
 }
 
-// NewServer cria um novo servidor webhook
-func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *Server {
-	// Inicializa repositórios
+func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient, transcriber *media.GroqTranscriber, geminiLLM llm.LLMClient, deepseekLLM llm.LLMClient) *Server {
 	tenantRepo := repository.NewTenantRepository(db)
 	produtoRepo := repository.NewProdutoRepository(db)
 	pedidoRepo := repository.NewPedidoRepository(db)
 
-	// Inicializa serviços
 	cardapioService := service.NewCardapioService(produtoRepo, tenantRepo, cache)
 	pedidoService := service.NewPedidoService(pedidoRepo, cardapioService)
 	clienteRepo := repository.NewClienteRepository(db)
@@ -49,16 +49,13 @@ func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *Serve
 
 	_ = service.NewCarrinhoService(cache, cardapioService, pedidoService, produtoRepo, llmClient)
 
-	// Cria MCP Server (para reutilizar a lógica)
 	mcpServer := server.NewMCPServer(db, cache, llmClient)
 
-	// Cria cliente WhatsApp
 	whatsApp := NewWhatsAppClient()
 
-	// Cria handler
-	handler := NewWebhookHandler(mcpServer, whatsApp, clienteService)
+	// agora handler com 3 LLMs
+	handler := NewWebhookHandler(mcpServer, whatsApp, clienteService, transcriber, geminiLLM, deepseekLLM)
 
-	// Cria health checker
 	hc := health.NewDefaultHealthChecker(db, cache)
 
 	return &Server{
@@ -66,17 +63,16 @@ func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *Serve
 		db:          db,
 		cache:       cache,
 		llmClient:   llmClient,
+		transcriber: transcriber,
+		geminiLLM:   geminiLLM,
+		deepseekLLM: deepseekLLM,
 		healthCheck: hc,
 	}
 }
 
-// Start inicia o servidor HTTP
 func (s *Server) Start(addr string) error {
-
-	// Inicializa métricas
 	metrics.Init()
 
-	// Carrega configuração de tracing do .env
 	cfg := config.LoadConfigOrDefault()
 	tracingConfig := tracing.Config{
 		Enabled:      cfg.TracingEnabled,
@@ -85,15 +81,11 @@ func (s *Server) Start(addr string) error {
 		SamplingRate: cfg.TracingSamplingRate,
 	}
 
-	// Inicializa tracing
 	if err := tracing.Init(tracingConfig); err != nil {
 		logger.GetLogger().Warn("Erro ao iniciar tracing", zap.Error(err))
 	}
 
-	// Cria rate limiter
 	rateLimiter := middleware.NewRateLimiterFromEnv()
-
-	// Cria rate limiter com cleanup periódico
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
@@ -102,14 +94,10 @@ func (s *Server) Start(addr string) error {
 		}
 	}()
 
-	// Define os extractors
-	tenantExtractor := middleware.TenantKeyExtractor // Por tenant
-	// clientExtractor := middleware.ClientKeyExtractor      // Por tenant+cliente
-	// ipExtractor := middleware.IPKeyExtractor              // Por IP
+	tenantExtractor := middleware.TenantKeyExtractor
 
 	mux := http.NewServeMux()
 
-	// Health checks (usando o healthChecker com contexto)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		health.HealthHandler(s.healthCheck)(w, r)
 	})
@@ -120,14 +108,11 @@ func (s *Server) Start(addr string) error {
 		health.StatusHandler(s.healthCheck)(w, r)
 	})
 
-	// Rotas do webhook
 	mux.HandleFunc("GET /webhook", s.handler.HandleVerifyWebhook)
 	mux.HandleFunc("POST /webhook", VerifyWebhookRequest(s.handler.HandleWebhook))
 
-	// Métricas
 	mux.Handle("GET /metrics", promhttp.Handler())
 
-	// Cria handler com todos os middlewares
 	handler := middleware.SecurityHeadersMiddleware(
 		middleware.SanitizeMiddleware(
 			middleware.RateLimitMiddleware(rateLimiter, tenantExtractor)(
@@ -150,7 +135,7 @@ func (s *Server) Start(addr string) error {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	logger.GetLogger().Info("Webhook server configurado com segurança",
+	logger.GetLogger().Info("Webhook server configurado",
 		zap.String("addr", addr),
 		zap.Bool("hsts_enabled", middleware.IsProduction()),
 	)

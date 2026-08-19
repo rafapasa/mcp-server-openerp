@@ -71,6 +71,16 @@ type Config struct {
 	LlmModel    string `mapstructure:"LLM_MODEL"`
 	LlmBaseURL  string `mapstructure:"LLM_BASE_URL"`
 
+	LlmDeepSeekApiKey   string `mapstructure:"DEEPSEEK_API_KEY"`
+	LlmDeepSeekModel    string `mapstructure:"DEEPSEEK_MODEL"`
+	LlmGeminiApiKey     string `mapstructure:"GEMINI_API_KEY"`
+	LlmGeminiModel      string `mapstructure:"GEMINI_MODEL"`
+	LlmGroqApiKey       string `mapstructure:"GROQ_API_KEY"`
+	LlmGroqModel        string `mapstructure:"GROQ_MODEL"`
+	LlmGroqWhisperModel string `mapstructure:"GROQ_WHISPER_MODEL"`
+	LlmOpenAiApiKey     string `mapstructure:"OPENAI_API_KEY"`
+	LlmOpenAiModel      string `mapstructure:"OPENAI_MODEL"`
+
 	// ============================================
 	// WHATSAPP WEBHOOK
 	// ============================================
@@ -163,6 +173,22 @@ func LoadConfig() (*Config, error) {
 		LlmAPIKey:   getEnv("LLM_API_KEY", ""),
 		LlmModel:    getEnv("LLM_MODEL", ""),
 		LlmBaseURL:  getEnv("LLM_BASE_URL", ""),
+		// DeepSeek
+		LlmDeepSeekApiKey: getEnv("DEEPSEEK_API_KEY", ""),
+		LlmDeepSeekModel:  getEnv("DEEPSEEK_MODEL", "deepseek-chat"),
+
+		// Gemini
+		LlmGeminiApiKey: getEnv("GEMINI_API_KEY", ""),
+		LlmGeminiModel:  getEnv("GEMINI_MODEL", "gemini-2.0-flash"),
+
+		// Groq - 3 usos: chat + whisper + vision
+		LlmGroqApiKey:       getEnv("GROQ_API_KEY", ""),
+		LlmGroqModel:        getEnv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+		LlmGroqWhisperModel: getEnv("GROQ_WHISPER_MODEL", "whisper-large-v3"),
+
+		// OpenAI
+		LlmOpenAiApiKey: getEnv("OPENAI_API_KEY", ""),
+		LlmOpenAiModel:  getEnv("OPENAI_MODEL", "gpt-4o-mini"),
 
 		// WhatsApp
 		WhatsAppAPIURL:      getEnv("WHATSAPP_API_URL", "https://graph.facebook.com/v18.0"),

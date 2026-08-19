@@ -235,3 +235,7 @@ FORMATO DE RESPOSTA (JSON):
 func (llm *OpenAILLM) CorrigirNomes(ctx context.Context, nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error) {
 	return CorrigirNomes(ctx, nomesNaoEncontrados, produtosEncontrados, llm.GenerateWithContext)
 }
+
+func (llm *OpenAILLM) GenerateWithImage(ctx context.Context, prompt, b64Data, mimeType string) (string, error) {
+	return "", fmt.Errorf("vision não suportado no provider %s, use gemini", llm.GetProvider())
+}

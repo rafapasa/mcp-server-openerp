@@ -75,3 +75,36 @@ func (w *WhatsAppClient) SendMessage(to, message string) error {
 
 	return nil
 }
+
+// NOVO - baixa mídia do WhatsApp Cloud API
+func (w *WhatsAppClient) DownloadMedia(mediaID string) ([]byte, error) {
+	// 1. pega URL real da mídia
+	url := fmt.Sprintf("%s/%s", w.apiURL, mediaID)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+w.accessToken)
+	resp, err := w.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var meta struct {
+		URL      string `json:"url"`
+		MimeType string `json:"mime_type"`
+	}
+	bb, _ := io.ReadAll(resp.Body)
+	json.Unmarshal(bb, &meta)
+	if meta.URL == "" {
+		return nil, fmt.Errorf("sem url de mídia: %s", string(bb))
+	}
+
+	// 2. baixa binário
+	req2, _ := http.NewRequest("GET", meta.URL, nil)
+	req2.Header.Set("Authorization", "Bearer "+w.accessToken)
+	resp2, err := w.client.Do(req2)
+	if err != nil {
+		return nil, err
+	}
+	defer resp2.Body.Close()
+	return io.ReadAll(resp2.Body)
+}
