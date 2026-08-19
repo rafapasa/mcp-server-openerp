@@ -2,16 +2,12 @@
 package config
 
 import (
-	"context"
-	"encoding/json"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/spf13/viper"
-	"go.uber.org/zap"
 )
 
 // Config armazena todas as configurações da aplicação
@@ -197,11 +193,6 @@ func LoadConfig() (*Config, error) {
 		HSTSIncludeSubdomains: getEnvAsBool("HSTS_INCLUDE_SUBDOMAINS", true),
 		HSTSPreload:           getEnvAsBool("HSTS_PRELOAD", false),
 	}
-	cfgJson, _ := json.Marshal(cfg)
-
-	logger.Info(context.Background(), "Variaveis de ambiente",
-		zap.String("Config", string(cfgJson)),
-	)
 	return cfg, nil
 }
 
