@@ -17,14 +17,13 @@ import (
 )
 
 func main() {
-	// ============================================
-	// 1. CARREGA CONFIGURAÇÃO
-	// ============================================
-	cfg, _ := config.LoadConfig()
+	// Carrega configuração
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("Erro ao carregar configuração: %v", err)
+	}
 
-	// ============================================
-	// 2. INICIALIZA LOGGER
-	// ============================================
+	// Inicializa logger
 	if err := logger.Init(logger.Config{
 		Level:    cfg.LogLevel,
 		Encoding: cfg.LogEncoding,

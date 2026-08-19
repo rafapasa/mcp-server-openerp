@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"os"
 
@@ -17,11 +16,8 @@ func main() {
 	// Carrega configuração
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		logger.Error(context.Background() , "Erro ao carregar configuração",
-			zap.Error(err),
-		)
+		log.Fatalf("Erro ao carregar configuração: %v", err)
 	}
-
 
 	// Inicializa logger
 	if err := logger.Init(logger.Config{
