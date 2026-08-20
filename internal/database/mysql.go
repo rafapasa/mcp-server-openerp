@@ -2,13 +2,14 @@ package database
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // MySQL representa a conexão com o banco de dados
@@ -20,22 +21,25 @@ type MySQL struct {
 func NewMySQL(cfg *config.Config, dsn ...string) (*MySQL, error) {
 	isTest := len(dsn) > 0 && dsn[0] != ""
 
-	var logLevel logger.LogLevel
+	var logLevel gormlogger.LogLevel
 	switch cfg.Environment {
 	case "development":
 		if isTest {
-			logLevel = logger.Warn
+			// teste unitário: só erro
+			logLevel = gormlogger.Error
 		} else {
-			logLevel = logger.Info
+			// dev: só avisa query lenta >200ms e erros, não flooda SELECT
+			logLevel = gormlogger.Warn
 		}
 	case "production":
-		logLevel = logger.Error
+		// prod: só erro real
+		logLevel = gormlogger.Error
 	default:
-		logLevel = logger.Silent
+		logLevel = gormlogger.Silent
 	}
 
 	gormConfig := &gorm.Config{
-		Logger: logger.Default.LogMode(logLevel),
+		Logger: gormlogger.Default.LogMode(logLevel),
 		NowFunc: func() time.Time {
 			return time.Now().Local()
 		},
@@ -66,8 +70,19 @@ func NewMySQL(cfg *config.Config, dsn ...string) (*MySQL, error) {
 		return nil, fmt.Errorf("erro ao testar conexão com o banco: %w", err)
 	}
 
-	log.Println("✅ Conectado ao banco de dados MySQL com sucesso!")
-	log.Printf("📊 Database: %s @ %s:%s", cfg.DBName, cfg.DBHost, cfg.DBPort)
+	// Loga só uma vez com zap, não com log padrão
+	// Se logger ainda não inicializou (no migrate), ignora
+	func() {
+		defer func() { _ = recover() }()
+		if l := logger.GetLogger(); l != nil {
+			l.Info("MySQL conectado",
+				zap.String("database", cfg.DBName),
+				zap.String("host", cfg.DBHost),
+				zap.String("port", cfg.DBPort),
+				zap.Int("gorm_level", int(logLevel)),
+			)
+		}
+	}()
 
 	return &MySQL{DB: db}, nil
 }
@@ -75,9 +90,8 @@ func NewMySQL(cfg *config.Config, dsn ...string) (*MySQL, error) {
 func getConnectionString(cfg *config.Config, dsn ...string) string {
 	if len(dsn) > 0 && dsn[0] != "" {
 		return dsn[0]
-	} else {
-		return cfg.GetDSN()
 	}
+	return cfg.GetDSN()
 }
 
 // Close fecha a conexão com o banco de dados

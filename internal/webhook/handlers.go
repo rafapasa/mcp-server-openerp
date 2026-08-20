@@ -1,4 +1,4 @@
-// internal/webhook/handlers.go - FINAL 100% FIBER - SEM MUX, SEM sanitize.go, COM CACHE E INTENT
+// internal/webhook/handlers.go - FINAL 100% FIBER - CORRIGIDO
 package webhook
 
 import (
@@ -31,7 +31,7 @@ type WebhookHandler struct {
 	transcriber    *media.GroqTranscriber
 	geminiLLM      llm.LLMClient
 	deepseekLLM    llm.LLMClient
-	cacheLayer     *cache.Cache // NOVO: cache real com GetOrSet
+	cacheLayer     *cache.Cache
 	cfg            *config.Config
 }
 
@@ -44,8 +44,12 @@ func NewWebhookHandler(mcpServer *server.MCPServer, whatsApp *WhatsAppClient, cl
 		geminiLLM:      geminiLLM,
 		deepseekLLM:    deepseekLLM,
 		cfg:            cfg,
-		// cacheLayer será injetado em routes.go: cache.New(redisClient)
 	}
+}
+
+// Injeção do cache - chamar em routes.go
+func (h *WebhookHandler) SetCache(c *cache.Cache) {
+	h.cacheLayer = c
 }
 
 type WebhookRequest struct {
@@ -107,32 +111,50 @@ type WebhookResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
-// HandleWebhookFiber - POST /webhook - 100% Fiber
+// HandleWebhookFiber - POST /webhook
 func (h *WebhookHandler) HandleWebhookFiber(c *fiber.Ctx) error {
-	// 1. Valida assinatura PRIMEIRO - antes de qualquer processamento
-	ctx := c.UserContext()
+	// Contexto Fiber - use Background com trace, UserContext() no Fiber é vazio
+	ctx := context.Background()
+
+	// 1. Valida assinatura PRIMEIRO
 	ok, err := VerifyWebhookHandlerFiber(c, *h.cfg)
 	if !ok {
-		// Não vaza detalhe pro atacante
-		if !config.IsProduction() {
-			logger.Warn(ctx, err.Error())
+		if !h.cfg.IsProduction() {
+			logger.Warn(ctx, "Webhook não autorizado", zap.Error(err))
 		}
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "unauthorized",
-		})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
 
-	// Fast check: se não tem messages, é evento de status
+	// 2. Fast check - ACK RÁPIDO pro Meta
 	body := c.Body()
 	if !strings.Contains(string(body), "\"messages\"") {
 		logger.Debug(ctx, "Evento de status ignorado")
 		return c.Status(200).JSON(WebhookResponse{Success: true})
 	}
 
+	// 3. Parse
 	var req WebhookRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		logger.Error(ctx, "Erro ao parsear JSON", zap.Error(err))
-		return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
+		return c.Status(200).JSON(WebhookResponse{Success: true}) // retorna 200 mesmo com erro pra Meta não reenviar
+	}
+
+	// 4. Responde 200 IMEDIATAMENTE e processa em background
+	// Copia body pra goroutine não perder referência
+	bodyCopy := make([]byte, len(body))
+	copy(bodyCopy, body)
+
+	go h.processWebhookAsync(context.Background(), bodyCopy)
+
+	return c.Status(200).JSON(WebhookResponse{Success: true, Message: "ok"})
+}
+
+// Processamento assíncrono - aqui pode demorar
+func (h *WebhookHandler) processWebhookAsync(ctx context.Context, body []byte) {
+	var req WebhookRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		logger.Error(ctx, "Erro parse async", zap.Error(err))
+		return
 	}
 
 	for _, entry := range req.Entry {
@@ -164,71 +186,70 @@ func (h *WebhookHandler) HandleWebhookFiber(c *fiber.Ctx) error {
 					continue
 				}
 
-				// FAST PATH - BOM DIA / OI - SEM CUSTO, ANTES DE TUDO
-				// Mensagem crua, sem sanitize
+				// FAST PATH
 				if message.Type == "text" {
 					raw := strings.TrimSpace(message.Text.Body)
 
-					// Busca last_greet do Redis (sem GetJSON, usa seu Redis client direto)
 					var lastGreeting time.Time
-					// se seu cacheLayer tem redis.Client: h.cacheLayer.Client.Get(...)
-					// por enquanto, simplificado:
-					lastGreetStr, _ := h.cacheLayer.Get(ctx, fmt.Sprintf("last_greet:%d", cliente.ID))
-					if lastGreetStr != "" {
-						lastGreeting, _ = time.Parse(time.RFC3339, lastGreetStr)
+					if h.cacheLayer != nil {
+						if lastGreetStr, _ := h.cacheLayer.Get(ctx, fmt.Sprintf("last_greet:%d", cliente.ID)); lastGreetStr != "" {
+							lastGreeting, _ = time.Parse(time.RFC3339, lastGreetStr)
+						}
 					}
 
 					res := intent.ClassifyV2(raw, lastGreeting)
 
 					switch res.Type {
 					case intent.IntentGreeting:
-						h.cacheLayer.Set(ctx, fmt.Sprintf("last_greet:%d", cliente.ID), time.Now().Format(time.RFC3339), 10*time.Minute)
+						if h.cacheLayer != nil {
+							h.cacheLayer.Set(ctx, fmt.Sprintf("last_greet:%d", cliente.ID), time.Now().Format(time.RFC3339), 10*time.Minute)
+						}
 						h.whatsApp.SendMessage(cliente.Telefone, intent.GreetingResponse(cliente.Nome, time.Now().Hour()))
 						continue
-					case intent.IntentGreetingWithAdd: // "bom dia 2 x-burger"
-						h.cacheLayer.Set(ctx, fmt.Sprintf("last_greet:%d", cliente.ID), time.Now().Format(time.RFC3339), 10*time.Minute)
+					case intent.IntentGreetingWithAdd:
+						if h.cacheLayer != nil {
+							h.cacheLayer.Set(ctx, fmt.Sprintf("last_greet:%d", cliente.ID), time.Now().Format(time.RFC3339), 10*time.Minute)
+						}
 						h.whatsApp.SendMessage(cliente.Telefone, intent.GreetingResponse(cliente.Nome, time.Now().Hour()))
-						// já processa o resto como pedido
-						go h.processMessage(context.Background(), cliente, tenantID, res.CleanRest)
+						h.processMessage(ctx, cliente, tenantID, res.CleanRest)
 						continue
 					case intent.IntentSmallTalk, intent.IntentThanks:
 						h.whatsApp.SendMessage(cliente.Telefone, intent.SmallTalkResponse(raw))
 						continue
 					case intent.IntentViewCart:
-						// usa cache do carrinho que vamos fazer na issue #8
 						resposta := h.mcpServer.FormatarResumoCarrinho(ctx, cliente.ID, tenantID)
 						h.whatsApp.SendMessage(cliente.Telefone, resposta)
 						continue
 					}
 				}
 
-				// Processa mídia em background (áudio, imagem, doc)
 				msgCopy := message
-				go h.processMessageWithMedia(context.Background(), cliente, tenantID, msgCopy)
+				h.processMessageWithMedia(ctx, cliente, tenantID, msgCopy)
 			}
 		}
 	}
-
-	return c.Status(200).JSON(WebhookResponse{Success: true, Message: "ok"})
 }
 
 // HandleVerifyWebhookFiber - GET /webhook
 func (h *WebhookHandler) HandleVerifyWebhookFiber(c *fiber.Ctx) error {
+	ctx := context.Background()
 	mode := c.Query("hub.mode")
 	token := c.Query("hub.verify_token")
 	challenge := c.Query("hub.challenge")
 	expectedToken := strings.TrimSpace(os.Getenv("WHATSAPP_VERIFY_TOKEN"))
+	if expectedToken == "" {
+		expectedToken = strings.TrimSpace(h.cfg.WhatsAppVerifyToken)
+	}
 
 	if mode == "subscribe" && token == expectedToken && challenge != "" {
 		c.Set("Content-Type", "text/plain")
-		logger.Info(c.UserContext(), "Webhook verificado com sucesso")
+		logger.Info(ctx, "Webhook verificado com sucesso", zap.String("mode", mode))
 		return c.Status(200).SendString(challenge)
 	}
-	logger.Warn(c.UserContext(), "Verificação falhou", zap.String("mode", mode))
+	logger.Warn(ctx, "Verificação falhou", zap.String("mode", mode), zap.String("token", token))
 	return c.Status(403).SendString("Verificação falhou")
 }
 
-// processMessageWithMedia - roteador de mídia, agora com cache
 func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *dto.ClienteDTO, tenantID uint, message struct {
 	From      string `json:"from"`
 	ID        string `json:"id"`
@@ -260,7 +281,6 @@ func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *d
 
 	switch message.Type {
 	case "text":
-		// NÃO sanitiza aqui - sanitização é no preprocessor.go
 		textoFinal = strings.TrimSpace(message.Text.Body)
 
 	case "audio", "voice":
@@ -344,14 +364,11 @@ func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.Client
 		zap.String("mensagem", mensagem),
 	)
 
-	// CACHE REAL - GetOrSet
 	cardapio, err := cache.GetOrSet(h.cacheLayer, ctx, "cardapio:"+strconv.Itoa(int(tenantID)), 5*time.Minute, func() ([]dto.ProdutoItem, error) {
-		// sua chamada original, mas só executa se miss no Redis
 		c, err := h.mcpServer.GetCardapio(tenantID)
 		if err != nil {
 			return nil, err
 		}
-		// converte pro DTO se precisar
 		return c, nil
 	})
 	if err != nil {

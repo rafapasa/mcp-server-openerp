@@ -1,66 +1,27 @@
-// internal/observability/middleware/logging.go
+// logging.go - Fiber
 package middleware
 
 import (
-	"net/http"
 	"time"
 
-	"go.uber.org/zap"
-
+	"github.com/gofiber/fiber/v2"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+	"go.uber.org/zap"
 )
 
-// LoggingMiddleware cria um middleware para logging de requisições HTTP
-func LoggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func LoggerFiber() fiber.Handler {
+	return func(c *fiber.Ctx) error {
 		start := time.Now()
+		err := c.Next()
+		latency := time.Since(start)
 
-		// Gera trace_id se não existir
-		traceID := r.Header.Get("X-Trace-ID")
-		if traceID == "" {
-			traceID = logger.GenerateTraceID()
-		}
-
-		// Cria logger com trace_id
-		ctx := logger.WithTraceID(r.Context(), traceID)
-		ctx = logger.WithFields(ctx, zap.String("path", r.URL.Path))
-
-		// Adiciona ao request
-		r = r.WithContext(ctx)
-
-		// Log da requisição
-		logger.Info(ctx, "Request received",
-			zap.String("method", r.Method),
-			zap.String("path", r.URL.Path),
-			zap.String("remote_addr", r.RemoteAddr),
+		logger.GetLogger().Info("request",
+			zap.String("method", c.Method()),
+			zap.String("path", c.Path()),
+			zap.Int("status", c.Response().StatusCode()),
+			zap.Duration("latency", latency),
+			zap.String("ip", c.IP()),
 		)
-
-		// Wrapper para capturar status code
-		wrapped := &responseWriter{
-			ResponseWriter: w,
-			statusCode:     http.StatusOK,
-		}
-
-		// Processa a requisição
-		next.ServeHTTP(wrapped, r)
-
-		// Log da resposta
-		duration := time.Since(start)
-		logger.Info(ctx, "Request completed",
-			zap.Int("status", wrapped.statusCode),
-			zap.Duration("duration", duration),
-			zap.Int64("duration_ms", duration.Milliseconds()),
-		)
-	})
-}
-
-// responseWriter wrapper para capturar o status code
-type responseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
+		return err
+	}
 }

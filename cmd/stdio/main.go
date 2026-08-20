@@ -16,7 +16,9 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 	"github.com/rafapasa/mcp-server-openerp/internal/server"
+	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
 
 func main() {
@@ -88,7 +90,17 @@ func main() {
 	// ============================================
 	// 6. CRIA SERVIDOR MCP
 	// ============================================
-	mcpServer := server.NewMCPServer(db.DB, redisClient.Client, llmClient)
+
+	tenantRepo := repository.NewTenantRepository(db.DB)
+	produtoRepo := repository.NewProdutoRepository(db.DB)
+	pedidoRepo := repository.NewPedidoRepository(db.DB)
+
+	cardapioService := service.NewCardapioService(produtoRepo, tenantRepo, redisClient.Client)
+	pedidoService := service.NewPedidoService(pedidoRepo, cardapioService)
+
+	carrinhoService := service.NewCarrinhoService(redisClient.Client, cardapioService, pedidoService, produtoRepo, llmClient)
+
+	mcpServer := server.NewMCPServer(db.DB, redisClient.Client, llmClient, cardapioService, pedidoService, carrinhoService)
 	zapLogger.Info("MCP Server criado com sucesso")
 
 	// ============================================

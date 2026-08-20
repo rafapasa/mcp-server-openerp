@@ -10,7 +10,9 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
+	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 	"github.com/rafapasa/mcp-server-openerp/internal/server"
+	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
 
 func main() {
@@ -36,7 +38,16 @@ func main() {
 	}
 
 	// Cria servidor MCP
-	mcpServer := server.NewMCPServer(db.GetDB(), redisClient.GetClient(), llmClient)
+	tenantRepo := repository.NewTenantRepository(db.DB)
+	produtoRepo := repository.NewProdutoRepository(db.DB)
+	pedidoRepo := repository.NewPedidoRepository(db.DB)
+
+	cardapioService := service.NewCardapioService(produtoRepo, tenantRepo, redisClient.Client)
+	pedidoService := service.NewPedidoService(pedidoRepo, cardapioService)
+
+	carrinhoService := service.NewCarrinhoService(redisClient.Client, cardapioService, pedidoService, produtoRepo, llmClient)
+
+	mcpServer := server.NewMCPServer(db.DB, redisClient.Client, llmClient, cardapioService, pedidoService, carrinhoService)
 
 	// Configura HTTP Server
 	s := mcp_server.NewStreamableHTTPServer(mcpServer.MCPServer)

@@ -31,7 +31,7 @@ func VerifyWebhookHandlerFiber(c *fiber.Ctx, cfg config.Config) (bool, error) {
 	secret := strings.TrimSpace(cfg.WhatsAppAppSecret)
 	if secret == "" {
 		// FAIL CLOSED em produção
-		if config.IsProduction() {
+		if cfg.IsProduction() {
 			return false, fmt.Errorf("WHATSAPP_APP_SECRET não configurado")
 		}
 		logger.Warn(c.UserContext(), "WHATSAPP_APP_SECRET não configurado - validação desabilitada em dev")
