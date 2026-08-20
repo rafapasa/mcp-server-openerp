@@ -62,6 +62,7 @@ func main() {
 		transcriber,
 		geminiLLM,
 		deepseekLLM,
+		cfg,
 	)
 
 	port := cfg.WebhookPort
