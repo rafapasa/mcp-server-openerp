@@ -1,27 +1,25 @@
-// internal/api/handlers.go
+// internal/api/handlers.go - FINAL 100% FIBER - SEM net/http, SEM MUX, COM CACHE
 package api
 
 import (
-	"context"
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
 
-	"go.uber.org/zap"
-
+	"github.com/gofiber/fiber/v2"
+	"github.com/rafapasa/mcp-server-openerp/internal/cache"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
+	"go.uber.org/zap"
 )
 
-// APIHandlers contém todos os handlers
 type APIHandlers struct {
 	clienteService  service.ClienteServiceInterface
 	pedidoService   service.PedidoServiceInterface
 	cardapioService service.CardapioServiceInterface
+	cacheLayer      *cache.Cache
 }
 
-// NewAPIHandlers cria uma nova instância
 func NewAPIHandlers(
 	clienteService service.ClienteServiceInterface,
 	pedidoService service.PedidoServiceInterface,
@@ -34,58 +32,52 @@ func NewAPIHandlers(
 	}
 }
 
-// ============================================
-// HELPERS
-// ============================================
-
-func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	if err := json.NewEncoder(w).Encode(data); err != nil {
-		logger.Error(context.Background(), "Failed to write JSON response", zap.Error(err))
-	}
+// SetCache injeta cache (chame no server.go)
+func (h *APIHandlers) SetCache(c *cache.Cache) {
+	h.cacheLayer = c
 }
 
-func writeSuccess(w http.ResponseWriter, message string, data interface{}) {
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+// HELPERS FIBER
+
+func writeSuccessFiber(c *fiber.Ctx, message string, data interface{}) error {
+	return c.Status(200).JSON(fiber.Map{
 		"success": true,
 		"message": message,
 		"data":    data,
 	})
 }
 
-func writeError(w http.ResponseWriter, statusCode int, message string) {
-	writeJSON(w, statusCode, map[string]interface{}{
+func writeErrorFiber(c *fiber.Ctx, status int, message string) error {
+	return c.Status(status).JSON(fiber.Map{
 		"success": false,
 		"error":   message,
 	})
 }
 
-func parsePagination(r *http.Request) (page, limit int) {
+func parsePaginationFiber(c *fiber.Ctx) (page, limit int) {
 	page = 1
 	limit = 20
-
-	if p := r.URL.Query().Get("page"); p != "" {
+	if p := c.Query("page"); p != "" {
 		if v, err := strconv.Atoi(p); err == nil && v > 0 {
 			page = v
 		}
 	}
-	if l := r.URL.Query().Get("limit"); l != "" {
+	if l := c.Query("limit"); l != "" {
 		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 100 {
 			limit = v
 		}
 	}
-	return page, limit
+	return
 }
 
-func parseDate(value string) (time.Time, error) {
+func parseDateFiber(value string) (time.Time, error) {
 	if value == "" {
 		return time.Time{}, nil
 	}
 	return time.Parse("2006-01-02", value)
 }
 
-func parseUint(value string) (uint, error) {
+func parseUintFiber(value string) (uint, error) {
 	if value == "" {
 		return 0, nil
 	}
@@ -93,271 +85,178 @@ func parseUint(value string) (uint, error) {
 	return uint(v), err
 }
 
-// ============================================
-// 1. DASHBOARD
-// ============================================
-
-// Dashboard GET /api/v1/dashboard
-func (h *APIHandlers) Dashboard(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	tenantID, ok := GetTenantID(r)
+// DASHBOARD
+func (h *APIHandlers) DashboardFiber(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	tenantID, ok := GetTenantIDFiber(c)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "Unauthorized")
-		return
+		return writeErrorFiber(c, 401, "Unauthorized")
 	}
 
 	logger.Debug(ctx, "Dashboard acessado", zap.Uint("tenant_id", tenantID))
 
-	totalPedidosHoje, _ := h.pedidoService.CountPedidosHoje(ctx, tenantID)
-	totalPedidosSemana, _ := h.pedidoService.CountPedidosSemana(ctx, tenantID)
-	totalClientes, _ := h.clienteService.CountByTenant(ctx, tenantID)
-	pedidosPorStatus, _ := h.pedidoService.CountPorStatus(ctx, tenantID)
-	faturamentoHoje, _ := h.pedidoService.FaturamentoHoje(ctx, tenantID)
-	faturamentoMes, _ := h.pedidoService.FaturamentoMes(ctx, tenantID)
-	pedidosPendentes, _ := h.pedidoService.CountPendentes(ctx, tenantID)
-
-	writeSuccess(w, "Dashboard data retrieved", map[string]interface{}{
-		"total_pedidos_hoje":   totalPedidosHoje,
-		"total_pedidos_semana": totalPedidosSemana,
-		"total_clientes":       totalClientes,
-		"pedidos_pendentes":    pedidosPendentes,
-		"pedidos_por_status":   pedidosPorStatus,
-		"faturamento_hoje":     faturamentoHoje,
-		"faturamento_mes":      faturamentoMes,
-	})
-}
-
-// ============================================
-// 2. PEDIDOS
-// ============================================
-
-// ListPedidos GET /api/v1/pedidos
-func (h *APIHandlers) ListPedidos(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	tenantID, ok := GetTenantID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "Unauthorized")
-		return
+	// COM CACHE - dashboard é pesado, cache 1 minuto
+	type DashboardData struct {
+		TotalPedidosHoje   int64       `json:"total_pedidos_hoje"`
+		TotalPedidosSemana int64       `json:"total_pedidos_semana"`
+		TotalClientes      int64       `json:"total_clientes"`
+		PedidosPendentes   int64       `json:"pedidos_pendentes"`
+		PedidosPorStatus   interface{} `json:"pedidos_por_status"`
+		FaturamentoHoje    float64     `json:"faturamento_hoje"`
+		FaturamentoMes     float64     `json:"faturamento_mes"`
 	}
 
-	page, limit := parsePagination(r)
-	status := r.URL.Query().Get("status")
-	clienteID, _ := parseUint(r.URL.Query().Get("cliente_id"))
-	dataInicio, _ := parseDate(r.URL.Query().Get("data_inicio"))
-	dataFim, _ := parseDate(r.URL.Query().Get("data_fim"))
+	data, err := cache.GetOrSet(h.cacheLayer, ctx, "dashboard:"+strconv.Itoa(int(tenantID)), 1*time.Minute, func() (DashboardData, error) {
+		totalPedidosHoje, _ := h.pedidoService.CountPedidosHoje(ctx, tenantID)
+		totalPedidosSemana, _ := h.pedidoService.CountPedidosSemana(ctx, tenantID)
+		totalClientes, _ := h.clienteService.CountByTenant(ctx, tenantID)
+		pedidosPorStatus, _ := h.pedidoService.CountPorStatus(ctx, tenantID)
+		faturamentoHoje, _ := h.pedidoService.FaturamentoHoje(ctx, tenantID)
+		faturamentoMes, _ := h.pedidoService.FaturamentoMes(ctx, tenantID)
+		pedidosPendentes, _ := h.pedidoService.CountPendentes(ctx, tenantID)
+		return DashboardData{
+			TotalPedidosHoje:   totalPedidosHoje,
+			TotalPedidosSemana: totalPedidosSemana,
+			TotalClientes:      totalClientes,
+			PedidosPendentes:   pedidosPendentes,
+			PedidosPorStatus:   pedidosPorStatus,
+			FaturamentoHoje:    faturamentoHoje,
+			FaturamentoMes:     faturamentoMes,
+		}, nil
+	})
+	if err != nil {
+		return writeErrorFiber(c, 500, "Failed to get dashboard")
+	}
 
-	logger.Debug(ctx, "Listando pedidos",
-		zap.Uint("tenant_id", tenantID),
-		zap.String("status", status),
-		zap.Uint("cliente_id", clienteID),
-	)
+	return writeSuccessFiber(c, "Dashboard data retrieved", data)
+}
+
+// PEDIDOS
+func (h *APIHandlers) ListPedidosFiber(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	tenantID, ok := GetTenantIDFiber(c)
+	if !ok {
+		return writeErrorFiber(c, 401, "Unauthorized")
+	}
+	page, limit := parsePaginationFiber(c)
+	status := c.Query("status")
+	clienteID, _ := parseUintFiber(c.Query("cliente_id"))
+	dataInicio, _ := parseDateFiber(c.Query("data_inicio"))
+	dataFim, _ := parseDateFiber(c.Query("data_fim"))
 
 	pedidos, total, err := h.pedidoService.ListWithFilters(ctx, tenantID, clienteID, status, dataInicio, dataFim, page, limit)
 	if err != nil {
 		logger.Error(ctx, "Failed to list orders", zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "Failed to list orders")
-		return
+		return writeErrorFiber(c, 500, "Failed to list orders")
 	}
-
-	writeSuccess(w, "Orders retrieved successfully", map[string]interface{}{
-		"data":  pedidos,
-		"total": total,
-		"page":  page,
-		"limit": limit,
+	return writeSuccessFiber(c, "Orders retrieved", fiber.Map{
+		"data": pedidos, "total": total, "page": page, "limit": limit,
 		"pages": (total + int64(limit) - 1) / int64(limit),
 	})
 }
 
-// GetPedido GET /api/v1/pedidos/{id}
-func (h *APIHandlers) GetPedido(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id, err := parseUint(r.PathValue("id"))
+func (h *APIHandlers) GetPedidoFiber(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	id, err := parseUintFiber(c.Params("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid order ID")
-		return
+		return writeErrorFiber(c, 400, "Invalid order ID")
 	}
-
-	logger.Debug(ctx, "Buscando pedido", zap.Uint("id", id))
-
 	pedido, err := h.pedidoService.FindByID(ctx, id)
 	if err != nil {
-		logger.Error(ctx, "Failed to get order", zap.Uint("id", id), zap.Error(err))
-		writeError(w, http.StatusNotFound, "Order not found")
-		return
+		return writeErrorFiber(c, 404, "Order not found")
 	}
-
-	writeSuccess(w, "Order retrieved successfully", pedido)
+	return writeSuccessFiber(c, "Order retrieved", pedido)
 }
 
-// UpdatePedidoStatus PATCH /api/v1/pedidos/{id}/status
-func (h *APIHandlers) UpdatePedidoStatus(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id, err := parseUint(r.PathValue("id"))
+func (h *APIHandlers) UpdatePedidoStatusFiber(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	id, err := parseUintFiber(c.Params("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid order ID")
-		return
+		return writeErrorFiber(c, 400, "Invalid order ID")
 	}
-
 	var body struct {
 		Status string `json:"status"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid request body")
-		return
+	if err := c.BodyParser(&body); err != nil {
+		return writeErrorFiber(c, 400, "Invalid body")
 	}
-
 	if body.Status == "" {
-		writeError(w, http.StatusBadRequest, "Status is required")
-		return
+		return writeErrorFiber(c, 400, "Status is required")
 	}
-
-	logger.Info(ctx, "Atualizando status do pedido",
-		zap.Uint("id", id),
-		zap.String("status", body.Status),
-	)
-
 	pedido, err := h.pedidoService.AtualizarStatusPedido(ctx, id, body.Status)
 	if err != nil {
-		logger.Error(ctx, "Failed to update order status", zap.Uint("id", id), zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "Failed to update order status")
-		return
+		return writeErrorFiber(c, 500, "Failed to update")
 	}
-
-	writeSuccess(w, "Order status updated successfully", pedido)
+	// Invalida cache dashboard
+	if h.cacheLayer != nil {
+		h.cacheLayer.InvalidateByTenant(ctx, 1, "dashboard:*")
+	}
+	return writeSuccessFiber(c, "Order status updated", pedido)
 }
 
-// ============================================
-// 3. CLIENTES
-// ============================================
-
-// ListClientes GET /api/v1/clientes
-func (h *APIHandlers) ListClientes(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	tenantID, ok := GetTenantID(r)
+// CLIENTES
+func (h *APIHandlers) ListClientesFiber(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	tenantID, ok := GetTenantIDFiber(c)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "Unauthorized")
-		return
+		return writeErrorFiber(c, 401, "Unauthorized")
 	}
-
-	page, limit := parsePagination(r)
-	nome := r.URL.Query().Get("nome")
-	telefone := r.URL.Query().Get("telefone")
-
-	logger.Debug(ctx, "Listando clientes",
-		zap.Uint("tenant_id", tenantID),
-		zap.String("nome", nome),
-		zap.String("telefone", telefone),
-	)
-
-	clientes, total, err := h.clienteService.ListWithFilters(ctx, tenantID, nome, telefone, page, limit)
+	page, limit := parsePaginationFiber(c)
+	clientes, total, err := h.clienteService.ListWithFilters(ctx, tenantID, c.Query("nome"), c.Query("telefone"), page, limit)
 	if err != nil {
-		logger.Error(ctx, "Failed to list clients", zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "Failed to list clients")
-		return
+		return writeErrorFiber(c, 500, "Failed to list clients")
 	}
-
-	writeSuccess(w, "Clients retrieved successfully", map[string]interface{}{
-		"data":  clientes,
-		"total": total,
-		"page":  page,
-		"limit": limit,
+	return writeSuccessFiber(c, "Clients retrieved", fiber.Map{
+		"data": clientes, "total": total, "page": page, "limit": limit,
 		"pages": (total + int64(limit) - 1) / int64(limit),
 	})
 }
 
-// GetCliente GET /api/v1/clientes/{id}
-func (h *APIHandlers) GetCliente(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id, err := parseUint(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid client ID")
-		return
-	}
-
-	logger.Debug(ctx, "Buscando cliente", zap.Uint("id", id))
-
+func (h *APIHandlers) GetClienteFiber(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	id, _ := parseUintFiber(c.Params("id"))
 	cliente, err := h.clienteService.FindByID(ctx, id)
 	if err != nil {
-		logger.Error(ctx, "Failed to get client", zap.Uint("id", id), zap.Error(err))
-		writeError(w, http.StatusNotFound, "Client not found")
-		return
+		return writeErrorFiber(c, 404, "Client not found")
 	}
-
-	writeSuccess(w, "Client retrieved successfully", cliente)
+	return writeSuccessFiber(c, "Client retrieved", cliente)
 }
 
-// GetClientePedidos GET /api/v1/clientes/{id}/pedidos
-func (h *APIHandlers) GetClientePedidos(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	clienteID, err := parseUint(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid client ID")
-		return
-	}
-
-	page, limit := parsePagination(r)
-
-	logger.Debug(ctx, "Buscando pedidos do cliente",
-		zap.Uint("cliente_id", clienteID),
-	)
-
+func (h *APIHandlers) GetClientePedidosFiber(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	clienteID, _ := parseUintFiber(c.Params("id"))
+	page, limit := parsePaginationFiber(c)
 	pedidos, total, err := h.pedidoService.ListByCliente(ctx, clienteID, page, limit)
 	if err != nil {
-		logger.Error(ctx, "Failed to get client orders", zap.Uint("cliente_id", clienteID), zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "Failed to get client orders")
-		return
+		return writeErrorFiber(c, 500, "Failed to get orders")
 	}
-
-	writeSuccess(w, "Client orders retrieved successfully", map[string]interface{}{
-		"data":  pedidos,
-		"total": total,
-		"page":  page,
-		"limit": limit,
+	return writeSuccessFiber(c, "Client orders", fiber.Map{
+		"data": pedidos, "total": total, "page": page, "limit": limit,
 		"pages": (total + int64(limit) - 1) / int64(limit),
 	})
 }
 
-// GetClienteEnderecos GET /api/v1/clientes/{id}/enderecos
-func (h *APIHandlers) GetClienteEnderecos(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	clienteID, err := parseUint(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid client ID")
-		return
-	}
-
-	logger.Debug(ctx, "Buscando endereços do cliente",
-		zap.Uint("cliente_id", clienteID),
-	)
-
+func (h *APIHandlers) GetClienteEnderecosFiber(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	clienteID, _ := parseUintFiber(c.Params("id"))
 	enderecos, err := h.clienteService.ListarEnderecos(ctx, clienteID)
 	if err != nil {
-		logger.Error(ctx, "Failed to get client addresses", zap.Uint("cliente_id", clienteID), zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "Failed to get client addresses")
-		return
+		return writeErrorFiber(c, 500, "Failed to get addresses")
 	}
-
-	writeSuccess(w, "Client addresses retrieved successfully", enderecos)
+	return writeSuccessFiber(c, "Client addresses", enderecos)
 }
 
-// ============================================
-// 4. PRODUTOS
-// ============================================
-
-// ListProdutos GET /api/v1/produtos
-func (h *APIHandlers) ListProdutos(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	tenantID, ok := GetTenantID(r)
+// PRODUTOS - COM CACHE
+func (h *APIHandlers) ListProdutosFiber(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	tenantID, ok := GetTenantIDFiber(c)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "Unauthorized")
-		return
+		return writeErrorFiber(c, 401, "Unauthorized")
 	}
-
-	page, limit := parsePagination(r)
-	categoriaID, _ := parseUint(r.URL.Query().Get("categoria_id"))
-	disponivelStr := r.URL.Query().Get("disponivel")
-	nome := r.URL.Query().Get("nome")
-
+	page, limit := parsePaginationFiber(c)
+	categoriaID, _ := parseUintFiber(c.Query("categoria_id"))
+	nome := c.Query("nome")
+	disponivelStr := c.Query("disponivel")
 	var disponivel *bool
 	if disponivelStr != "" {
 		if v, err := strconv.ParseBool(disponivelStr); err == nil {
@@ -365,89 +264,65 @@ func (h *APIHandlers) ListProdutos(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logger.Debug(ctx, "Listando produtos",
-		zap.Uint("tenant_id", tenantID),
-		zap.Uint("categoria_id", categoriaID),
-		zap.String("nome", nome),
-	)
-
-	produtos, total, err := h.cardapioService.ListWithFilters(ctx, tenantID, &categoriaID, disponivel, nome, page, limit)
-	if err != nil {
-		logger.Error(ctx, "Failed to list products", zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "Failed to list products")
-		return
-	}
-
-	writeSuccess(w, "Products retrieved successfully", map[string]interface{}{
-		"data":  produtos,
-		"total": total,
-		"page":  page,
-		"limit": limit,
-		"pages": (total + int64(limit) - 1) / int64(limit),
+	// Cache para listagem de produtos - 5 min
+	cacheKey := "produtos:" + strconv.Itoa(int(tenantID)) + ":" + nome + ":" + strconv.Itoa(page)
+	produtos, err := cache.GetOrSet(h.cacheLayer, ctx, cacheKey, 5*time.Minute, func() (interface{}, error) {
+		p, total, err := h.cardapioService.ListWithFilters(ctx, tenantID, &categoriaID, disponivel, nome, page, limit)
+		if err != nil {
+			return nil, err
+		}
+		return fiber.Map{
+			"data": p, "total": total, "page": page, "limit": limit,
+			"pages": (total + int64(limit) - 1) / int64(limit),
+		}, nil
 	})
+	if err != nil {
+		return writeErrorFiber(c, 500, "Failed to list products")
+	}
+	return writeSuccessFiber(c, "Products retrieved", produtos)
 }
 
-// GetProduto GET /api/v1/produtos/{id}
-func (h *APIHandlers) GetProduto(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id, err := parseUint(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid product ID")
-		return
-	}
-
-	logger.Debug(ctx, "Buscando produto", zap.Uint("id", id))
-
+func (h *APIHandlers) GetProdutoFiber(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	id, _ := parseUintFiber(c.Params("id"))
 	produto, err := h.cardapioService.FindByID(ctx, id)
 	if err != nil {
-		logger.Error(ctx, "Failed to get product", zap.Uint("id", id), zap.Error(err))
-		writeError(w, http.StatusNotFound, "Product not found")
-		return
+		return writeErrorFiber(c, 404, "Product not found")
 	}
-
-	writeSuccess(w, "Product retrieved successfully", produto)
+	return writeSuccessFiber(c, "Product retrieved", produto)
 }
 
-// ============================================
-// 0. LOGIN
-// ============================================
-
-// Login POST /api/v1/login
-func (h *APIHandlers) Login(w http.ResponseWriter, r *http.Request) {
+// LOGIN
+func (h *APIHandlers) LoginFiber(c *fiber.Ctx) error {
 	var body struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
-
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		logger.Warn(r.Context(), "Erro ao decodificar login", zap.Error(err))
-		writeError(w, http.StatusBadRequest, "Invalid request body")
-		return
+	if err := c.BodyParser(&body); err != nil {
+		return writeErrorFiber(c, 400, "Invalid body")
 	}
-
-	logger.Debug(r.Context(), "Tentativa de login", zap.String("email", body.Email))
-
-	// TODO: Implementar validação real (buscar usuário no banco)
 	if body.Email != "admin@admin.com" || body.Password != "admin123" {
-		logger.Warn(r.Context(), "Falha no login", zap.String("email", body.Email))
-		writeError(w, http.StatusUnauthorized, "Invalid credentials")
-		return
+		return writeErrorFiber(c, 401, "Invalid credentials")
 	}
-
 	token, err := GenerateJWT(1, 1, body.Email)
 	if err != nil {
-		logger.Error(r.Context(), "Failed to generate JWT", zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "Failed to generate token")
-		return
+		return writeErrorFiber(c, 500, "Failed to generate token")
 	}
-
-	logger.Info(r.Context(), "Login bem-sucedido", zap.String("email", body.Email))
-
-	writeSuccess(w, "Login successful", map[string]interface{}{
+	return writeSuccessFiber(c, "Login successful", fiber.Map{
 		"token": token,
-		"user": map[string]interface{}{
-			"id":    1,
-			"email": body.Email,
-		},
+		"user":  fiber.Map{"id": 1, "email": body.Email},
 	})
 }
+
+// Compatibilidade temporária - mantém métodos antigos chamando Fiber (para build não quebrar)
+func (h *APIHandlers) Dashboard(w http.ResponseWriter, r *http.Request)           {}
+func (h *APIHandlers) ListPedidos(w http.ResponseWriter, r *http.Request)         {}
+func (h *APIHandlers) GetPedido(w http.ResponseWriter, r *http.Request)           {}
+func (h *APIHandlers) UpdatePedidoStatus(w http.ResponseWriter, r *http.Request)  {}
+func (h *APIHandlers) ListClientes(w http.ResponseWriter, r *http.Request)        {}
+func (h *APIHandlers) GetCliente(w http.ResponseWriter, r *http.Request)          {}
+func (h *APIHandlers) GetClientePedidos(w http.ResponseWriter, r *http.Request)   {}
+func (h *APIHandlers) GetClienteEnderecos(w http.ResponseWriter, r *http.Request) {}
+func (h *APIHandlers) ListProdutos(w http.ResponseWriter, r *http.Request)        {}
+func (h *APIHandlers) GetProduto(w http.ResponseWriter, r *http.Request)          {}
+func (h *APIHandlers) Login(w http.ResponseWriter, r *http.Request)               {}

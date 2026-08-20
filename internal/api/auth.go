@@ -63,11 +63,3 @@ func ValidateJWT(tokenString string) (*Claims, error) {
 
 	return nil, errors.New("token inválido")
 }
-
-// ExtractTokenFromHeader extrai o token do header Authorization
-func ExtractTokenFromHeader(authHeader string) string {
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		return authHeader[7:]
-	}
-	return ""
-}

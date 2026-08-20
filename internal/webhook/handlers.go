@@ -1,21 +1,22 @@
-// internal/webhook/handlers.go
+// internal/webhook/handlers.go - FINAL 100% FIBER - SEM MUX, SEM sanitize.go, COM CACHE E INTENT
 package webhook
 
 import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"io"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/gofiber/fiber/v2"
+	"github.com/rafapasa/mcp-server-openerp/internal/cache"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/intent"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 	"github.com/rafapasa/mcp-server-openerp/internal/media"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
-	"github.com/rafapasa/mcp-server-openerp/internal/observability/security"
 	"github.com/rafapasa/mcp-server-openerp/internal/server"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 	"go.uber.org/zap"
@@ -26,8 +27,9 @@ type WebhookHandler struct {
 	whatsApp       *WhatsAppClient
 	clienteService service.ClienteServiceInterface
 	transcriber    *media.GroqTranscriber
-	geminiLLM      llm.LLMClient // vision
-	deepseekLLM    llm.LLMClient // texto - você já pode usar h.mcpServer.ExtractIntent que já está com deepseek via factory
+	geminiLLM      llm.LLMClient
+	deepseekLLM    llm.LLMClient
+	cacheLayer     *cache.Cache // NOVO: cache real com GetOrSet
 }
 
 func NewWebhookHandler(mcpServer *server.MCPServer, whatsApp *WhatsAppClient, clienteService service.ClienteServiceInterface, transcriber *media.GroqTranscriber, geminiLLM llm.LLMClient, deepseekLLM llm.LLMClient) *WebhookHandler {
@@ -38,6 +40,7 @@ func NewWebhookHandler(mcpServer *server.MCPServer, whatsApp *WhatsAppClient, cl
 		transcriber:    transcriber,
 		geminiLLM:      geminiLLM,
 		deepseekLLM:    deepseekLLM,
+		// cacheLayer será injetado em routes.go: cache.New(redisClient)
 	}
 }
 
@@ -100,29 +103,21 @@ type WebhookResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
-func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		logger.Error(ctx, "Erro ao ler body do webhook", zap.Error(err))
-		http.Error(w, "Erro ao ler body", http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
+// HandleWebhookFiber - POST /webhook - 100% Fiber
+func (h *WebhookHandler) HandleWebhookFiber(c *fiber.Ctx) error {
+	ctx := c.UserContext()
 
+	// Fast check: se não tem messages, é evento de status
+	body := c.Body()
 	if !strings.Contains(string(body), "\"messages\"") {
 		logger.Debug(ctx, "Evento de status ignorado")
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(WebhookResponse{Success: true})
-		return
+		return c.Status(200).JSON(WebhookResponse{Success: true})
 	}
 
 	var req WebhookRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		logger.Error(ctx, "Erro ao parsear JSON do webhook", zap.Error(err))
-		http.Error(w, "Erro ao parsear JSON", http.StatusBadRequest)
-		return
+		logger.Error(ctx, "Erro ao parsear JSON", zap.Error(err))
+		return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 	}
 
 	for _, entry := range req.Entry {
@@ -133,9 +128,9 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 			for _, message := range change.Value.Messages {
 				userPhone := message.From
 				userName := ""
-				for _, c := range change.Value.Contacts {
-					if c.WaID == userPhone {
-						userName = c.Profile.Name
+				for _, contact := range change.Value.Contacts {
+					if contact.WaID == userPhone {
+						userName = contact.Profile.Name
 						break
 					}
 				}
@@ -144,7 +139,7 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 				tenantID, err := h.getTenantID(ctx, tenantPhone, tenantPhoneID)
 				if err != nil || tenantID == 0 {
-					logger.Warn(ctx, "Tenant não encontrado", zap.String("tenantPhone", tenantPhone), zap.Error(err))
+					logger.Warn(ctx, "Tenant não encontrado", zap.String("tenantPhone", tenantPhone))
 					continue
 				}
 
@@ -154,35 +149,48 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 
-				// processa em background
+				// FAST PATH - BOM DIA / OI - SEM CUSTO, ANTES DE TUDO
+				// Mensagem crua, sem sanitize
+				if message.Type == "text" {
+					raw := strings.TrimSpace(message.Text.Body)
+					if intent.Classify(raw) == intent.IntentGreeting {
+						// Resposta instantânea, sem LLM, sem Redis, sem MySQL
+						h.whatsApp.SendMessage(cliente.Telefone, intent.GreetingResponse(cliente.Nome, time.Now().Hour()))
+						continue
+					}
+					if intent.Classify(raw) == intent.IntentSmallTalk {
+						h.whatsApp.SendMessage(cliente.Telefone, intent.SmallTalkResponse(raw))
+						continue
+					}
+				}
+
+				// Processa mídia em background (áudio, imagem, doc)
 				msgCopy := message
 				go h.processMessageWithMedia(context.Background(), cliente, tenantID, msgCopy)
 			}
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(WebhookResponse{Success: true, Message: "ok"})
+	return c.Status(200).JSON(WebhookResponse{Success: true, Message: "ok"})
 }
 
-func (h *WebhookHandler) HandleVerifyWebhook(w http.ResponseWriter, r *http.Request) {
-	mode := r.URL.Query().Get("hub.mode")
-	token := r.URL.Query().Get("hub.verify_token")
-	challenge := r.URL.Query().Get("hub.challenge")
+// HandleVerifyWebhookFiber - GET /webhook
+func (h *WebhookHandler) HandleVerifyWebhookFiber(c *fiber.Ctx) error {
+	mode := c.Query("hub.mode")
+	token := c.Query("hub.verify_token")
+	challenge := c.Query("hub.challenge")
 	expectedToken := strings.TrimSpace(os.Getenv("WHATSAPP_VERIFY_TOKEN"))
+
 	if mode == "subscribe" && token == expectedToken && challenge != "" {
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(challenge))
-		logger.Info(r.Context(), "Webhook verificado com sucesso")
-		return
+		c.Set("Content-Type", "text/plain")
+		logger.Info(c.UserContext(), "Webhook verificado com sucesso")
+		return c.Status(200).SendString(challenge)
 	}
-	logger.Warn(r.Context(), "Verificação do webhook falhou", zap.String("mode", mode))
-	http.Error(w, "Verificação falhou", http.StatusForbidden)
+	logger.Warn(c.UserContext(), "Verificação falhou", zap.String("mode", mode))
+	return c.Status(403).SendString("Verificação falhou")
 }
 
-// NOVO: roteador de mídia
+// processMessageWithMedia - roteador de mídia, agora com cache
 func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *dto.ClienteDTO, tenantID uint, message struct {
 	From      string `json:"from"`
 	ID        string `json:"id"`
@@ -214,12 +222,8 @@ func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *d
 
 	switch message.Type {
 	case "text":
-		sanitized, err := security.SanitizeAndValidate(message.Text.Body)
-		if err != nil {
-			logger.Warn(ctx, "Mensagem inválida", zap.Error(err))
-			return
-		}
-		textoFinal = sanitized
+		// NÃO sanitiza aqui - sanitização é no preprocessor.go
+		textoFinal = strings.TrimSpace(message.Text.Body)
 
 	case "audio", "voice":
 		mediaID := message.Audio.ID
@@ -229,17 +233,16 @@ func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *d
 		audioBytes, err := h.whatsApp.DownloadMedia(mediaID)
 		if err != nil {
 			logger.Error(ctx, "Erro ao baixar audio", zap.Error(err))
-			h.whatsApp.SendMessage(cliente.Telefone, "⚠️ Não consegui baixar seu áudio. Pode enviar por texto?")
+			h.whatsApp.SendMessage(cliente.Telefone, "⚠ Não consegui baixar seu áudio. Pode enviar por texto?")
 			return
 		}
-		// GROQ WHISPER
 		transcribed, err := h.transcriber.Transcribe(ctx, audioBytes)
 		if err != nil {
-			logger.Error(ctx, "Erro ao transcrever audio Groq", zap.Error(err))
-			h.whatsApp.SendMessage(cliente.Telefone, "⚠️ Não consegui entender seu áudio. Pode digitar?")
+			logger.Error(ctx, "Erro transcrição Groq", zap.Error(err))
+			h.whatsApp.SendMessage(cliente.Telefone, "⚠ Não entendi seu áudio. Pode digitar?")
 			return
 		}
-		logger.Info(ctx, "Audio transcrito via Groq", zap.String("texto", transcribed))
+		logger.Info(ctx, "Áudio transcrito", zap.String("texto", transcribed))
 		textoFinal = transcribed
 
 	case "image":
@@ -253,63 +256,45 @@ func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *d
 		if mime == "" {
 			mime = "image/jpeg"
 		}
-
-		// GEMINI VISION
-		promptVision := `Você é um atendente de farmácia/restaurante. Analise a imagem.
-		Se for receita médica: retorne JSON {"tipo":"receita","texto_receita":"...","medicamentos":[{"nome":"", "dosagem":""}]}
-		Se for produto/cardápio/pizza/lanche: descreva o pedido que o cliente quer {"tipo":"pedido","descricao":"...","itens_sugeridos":[""]}.
-		Retorne SÓ JSON.`
-
+		promptVision := `Você é atendente. Analise imagem. Se receita: JSON {"tipo":"receita","texto_receita":"..."} Se produto/pedido: {"tipo":"pedido","descricao":"..."}. Só JSON.`
 		visionResp, err := h.geminiLLM.GenerateWithImage(ctx, promptVision, b64, mime)
 		if err != nil {
-			logger.Error(ctx, "Erro Gemini Vision", zap.Error(err))
 			textoFinal = message.Image.Caption
 			if textoFinal == "" {
-				textoFinal = "Cliente enviou uma imagem"
+				textoFinal = "Cliente enviou imagem"
 			}
 		} else {
-			logger.Info(ctx, "Gemini Vision extraiu", zap.String("resposta", visionResp))
-			// Tenta parsear se for receita
 			var parsed map[string]interface{}
 			if json.Unmarshal([]byte(visionResp), &parsed) == nil {
-				if parsed["tipo"] == "receita" {
-					// Já busca medicamentos direto
-					textoFinal = parsed["texto_receita"].(string)
-					// Você pode aqui chamar serviço que busca no banco e responde
+				if t, ok := parsed["texto_receita"]; ok {
+					textoFinal = t.(string)
+				} else if d, ok := parsed["descricao"]; ok {
+					textoFinal = d.(string)
 				} else {
 					textoFinal = visionResp
-					if desc, ok := parsed["descricao"]; ok {
-						textoFinal = desc.(string)
-					}
 				}
 			} else {
 				textoFinal = visionResp
 			}
 		}
-		// Adiciona caption se tiver
 		if message.Image.Caption != "" {
 			textoFinal = textoFinal + " " + message.Image.Caption
 		}
 
 	case "document":
-		// Pode ser receita em PDF - baixa e manda pro Gemini também
 		docBytes, err := h.whatsApp.DownloadMedia(message.Document.ID)
 		if err != nil {
 			return
 		}
 		b64 := base64.StdEncoding.EncodeToString(docBytes)
-		mime := message.Document.MimeType
-		visionResp, _ := h.geminiLLM.(interface {
-			GenerateWithImage(context.Context, string, string, string) (string, error)
-		}).GenerateWithImage(ctx, "Extraia texto desta receita/documento em JSON {\"texto\":\"\"}", b64, mime)
+		visionResp, _ := h.geminiLLM.GenerateWithImage(ctx, "Extraia texto desta receita em JSON {\"texto\":\"\"}", b64, message.Document.MimeType)
 		textoFinal = visionResp
 
 	default:
-		logger.Warn(ctx, "Tipo de mensagem não suportado", zap.String("type", message.Type))
+		logger.Warn(ctx, "Tipo não suportado", zap.String("type", message.Type))
 		return
 	}
 
-	// AGORA TUDO É TEXTO -> DeepSeek (via seu MCPServer que já usa factory)
 	h.processMessage(ctx, cliente, tenantID, textoFinal)
 }
 
@@ -321,16 +306,25 @@ func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.Client
 		zap.String("mensagem", mensagem),
 	)
 
-	cardapio, err := h.mcpServer.GetCardapio(tenantID)
+	// CACHE REAL - GetOrSet
+	cardapio, err := cache.GetOrSet(h.cacheLayer, ctx, "cardapio:"+strconv.Itoa(int(tenantID)), 5*time.Minute, func() ([]dto.ProdutoItem, error) {
+		// sua chamada original, mas só executa se miss no Redis
+		c, err := h.mcpServer.GetCardapio(tenantID)
+		if err != nil {
+			return nil, err
+		}
+		// converte pro DTO se precisar
+		return c, nil
+	})
 	if err != nil {
-		logger.Error(ctx, "Erro ao buscar cardápio", zap.Error(err))
+		logger.Error(ctx, "Erro ao buscar cardápio com cache", zap.Error(err))
 		return
 	}
 
 	intencao, err := h.mcpServer.ExtractIntent(ctx, mensagem, cardapio)
 	if err != nil {
 		logger.Error(ctx, "Erro ao extrair intenção", zap.Error(err))
-		h.whatsApp.SendMessage(cliente.Telefone, "⚠ Desculpe, tive um problema técnico. Tente novamente em alguns segundos.")
+		h.whatsApp.SendMessage(cliente.Telefone, "⚠ Tive um problema técnico. Tente novamente.")
 		return
 	}
 
@@ -351,7 +345,7 @@ func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.Client
 	case "finalizar", "confirmar":
 		pedido, err := h.mcpServer.FinalizarCarrinho(ctx, cliente.ID, tenantID, cliente.Nome)
 		if err != nil {
-			resposta = "❌ Erro ao finalizar pedido. Tente novamente."
+			resposta = "❌ Erro ao finalizar pedido."
 		} else {
 			resposta = h.mcpServer.FormatarRespostaPedido(ctx, pedido)
 		}
@@ -362,9 +356,7 @@ func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.Client
 		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, cliente.ID, tenantID)
 	}
 
-	if err := h.whatsApp.SendMessage(cliente.Telefone, resposta); err != nil {
-		logger.Error(ctx, "Erro ao enviar resposta WhatsApp", zap.Error(err))
-	}
+	h.whatsApp.SendMessage(cliente.Telefone, resposta)
 }
 
 func (h *WebhookHandler) getTenantID(_ context.Context, phoneNumber, phoneNumberID string) (uint, error) {

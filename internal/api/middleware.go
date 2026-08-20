@@ -1,10 +1,10 @@
-// internal/api/middleware.go
+// internal/api/middleware.go - FINAL 100% FIBER - SEM net/http
 package api
 
 import (
-	"context"
-	"net/http"
+	"strings"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"go.uber.org/zap"
 )
@@ -17,78 +17,119 @@ const (
 	EmailKey    contextKey = "email"
 )
 
-// AuthMiddleware verifica o token JWT
-func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Pega o header Authorization
-		authHeader := r.Header.Get("Authorization")
+// AuthMiddlewareFiber - verifica JWT no Fiber
+func AuthMiddlewareFiber() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		authHeader := c.Get("Authorization")
 		if authHeader == "" {
-			writeError(w, http.StatusUnauthorized, "Authorization header required")
-			return
+			return c.Status(401).JSON(fiber.Map{
+				"success": false,
+				"error":   "Authorization header required",
+			})
 		}
 
-		// Extrai o token
 		tokenString := ExtractTokenFromHeader(authHeader)
 		if tokenString == "" {
-			writeError(w, http.StatusUnauthorized, "Invalid authorization header format")
-			return
+			return c.Status(401).JSON(fiber.Map{
+				"success": false,
+				"error":   "Invalid authorization header format",
+			})
 		}
 
-		// Valida o token
 		claims, err := ValidateJWT(tokenString)
 		if err != nil {
-			logger.Warn(r.Context(), "Invalid JWT", zap.Error(err))
-			writeError(w, http.StatusUnauthorized, "Invalid or expired token")
-			return
+			logger.Warn(c.UserContext(), "Invalid JWT", zap.Error(err))
+			return c.Status(401).JSON(fiber.Map{
+				"success": false,
+				"error":   "Invalid or expired token",
+			})
 		}
 
-		// Adiciona claims ao contexto
-		ctx := r.Context()
-		ctx = context.WithValue(ctx, UserIDKey, claims.UserID)
-		ctx = context.WithValue(ctx, TenantIDKey, claims.TenantID)
-		ctx = context.WithValue(ctx, EmailKey, claims.Email)
+		// Fiber usa Locals em vez de context.WithValue
+		c.Locals(string(UserIDKey), claims.UserID)
+		c.Locals(string(TenantIDKey), claims.TenantID)
+		c.Locals(string(EmailKey), claims.Email)
+		c.Locals("user_id", claims.UserID)
+		c.Locals("tenant_id", claims.TenantID)
 
-		next.ServeHTTP(w, r.WithContext(ctx))
+		return c.Next()
 	}
 }
 
-// OptionalAuthMiddleware permite autenticação opcional (para login)
-func OptionalAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
+// OptionalAuthMiddlewareFiber - auth opcional
+func OptionalAuthMiddlewareFiber() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		authHeader := c.Get("Authorization")
 		if authHeader != "" {
 			tokenString := ExtractTokenFromHeader(authHeader)
 			if tokenString != "" {
 				claims, err := ValidateJWT(tokenString)
 				if err == nil {
-					ctx := r.Context()
-					ctx = context.WithValue(ctx, UserIDKey, claims.UserID)
-					ctx = context.WithValue(ctx, TenantIDKey, claims.TenantID)
-					ctx = context.WithValue(ctx, EmailKey, claims.Email)
-					r = r.WithContext(ctx)
+					c.Locals(string(UserIDKey), claims.UserID)
+					c.Locals(string(TenantIDKey), claims.TenantID)
+					c.Locals(string(EmailKey), claims.Email)
+					c.Locals("tenant_id", claims.TenantID)
 				}
 			}
 		}
-		next.ServeHTTP(w, r)
+		return c.Next()
 	}
 }
 
-// GetUserID extrai o user_id do contexto
-func GetUserID(r *http.Request) (uint, bool) {
-	val := r.Context().Value(UserIDKey)
-	if val == nil {
-		return 0, false
+// Helpers Fiber
+func GetUserIDFiber(c *fiber.Ctx) (uint, bool) {
+	if v := c.Locals("user_id"); v != nil {
+		if id, ok := v.(uint); ok {
+			return id, true
+		}
 	}
-	id, ok := val.(uint)
-	return id, ok
+	if v := c.Locals(string(UserIDKey)); v != nil {
+		if id, ok := v.(uint); ok {
+			return id, true
+		}
+	}
+	return 0, false
 }
 
-// GetTenantID extrai o tenant_id do contexto
-func GetTenantID(r *http.Request) (uint, bool) {
-	val := r.Context().Value(TenantIDKey)
-	if val == nil {
-		return 0, false
+func GetTenantIDFiber(c *fiber.Ctx) (uint, bool) {
+	// tenta Locals primeiro (setado pelo AuthMiddlewareFiber)
+	if v := c.Locals("tenant_id"); v != nil {
+		switch val := v.(type) {
+		case uint:
+			return val, true
+		case int:
+			return uint(val), true
+		case int64:
+			return uint(val), true
+		}
 	}
-	id, ok := val.(uint)
-	return id, ok
+	if v := c.Locals(string(TenantIDKey)); v != nil {
+		if id, ok := v.(uint); ok {
+			return id, true
+		}
+	}
+	// fallback header (dev)
+	if tid := c.Get("X-Tenant-ID"); tid != "" {
+		if id, err := parseUintFiber(tid); err == nil && id != 0 {
+			return id, true
+		}
+	}
+	return 0, false
+}
+
+func GetTenantID(c *fiber.Ctx) (uint, bool) {
+	return GetTenantIDFiber(c)
+}
+
+// Compatibilidade - mantém assinatura antiga pra não quebrar, mas redireciona pro Fiber
+// Pode deletar depois que tudo for Fiber
+func ExtractTokenFromHeader(authHeader string) string {
+	if authHeader == "" {
+		return ""
+	}
+	parts := strings.Split(authHeader, " ")
+	if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+		return parts[1]
+	}
+	return ""
 }

@@ -1,0 +1,290 @@
+# ESTRUTURA
+.
+├── AGENTS.md
+├── CONTEXT_MCP.txt
+├── Contexto.md
+├── Dockerfile.multistage
+├── LICENSE
+├── Makefile
+├── README.md
+├── bin
+│   └── webhook
+├── cmd
+│   ├── api
+│   │   └── main.go
+│   ├── http
+│   │   └── main.go
+│   ├── migrate
+│   │   └── main.go
+│   ├── sing
+│   │   └── main.go
+│   ├── stdio
+│   │   └── main.go
+│   └── webhook
+│       └── main.go
+├── deploy
+├── docker-compose.app.yml
+├── docker-compose.db.yml
+├── go.mod
+├── go.sum
+├── grafana.sh
+├── internal
+│   ├── api
+│   │   ├── auth.go
+│   │   ├── handlers.go
+│   │   ├── middleware.go
+│   │   └── server.go
+│   ├── config
+│   │   └── config.go
+│   ├── database
+│   │   ├── migrate.go
+│   │   ├── mysql.go
+│   │   ├── redis.go
+│   │   └── seed.go
+│   ├── dto
+│   │   ├── carrinho.go
+│   │   ├── cliente_dto.go
+│   │   ├── pedido.go
+│   │   ├── pedido_dto.go
+│   │   └── produto.go
+│   ├── llm
+│   │   ├── deepseek.go
+│   │   ├── factory.go
+│   │   ├── gemini.go
+│   │   ├── groq.go
+│   │   ├── helpers.go
+│   │   ├── interface.go
+│   │   ├── openai.go
+│   │   ├── preprocessor.go
+│   │   └── retry.go
+│   ├── media
+│   │   └── groq_transcriber.go
+│   ├── models
+│   │   ├── cliente.go
+│   │   └── models.go
+│   ├── observability
+│   │   ├── health
+│   │   ├── logger
+│   │   ├── metrics
+│   │   ├── middleware
+│   │   ├── security
+│   │   └── tracing
+│   ├── repository
+│   │   ├── cliente_repo.go
+│   │   ├── endereco_repo.go
+│   │   ├── endereco_repo_test.go
+│   │   ├── pedido_repo.go
+│   │   ├── produto_repo.go
+│   │   └── tenant_repo.go
+│   ├── server
+│   │   ├── icons
+│   │   ├── icons.go
+│   │   ├── mcp_methods.go
+│   │   ├── server.go
+│   │   └── tools
+│   ├── service
+│   │   ├── cardapio_service.go
+│   │   ├── carrinho_service.go
+│   │   ├── cliente_service.go
+│   │   ├── interface.go
+│   │   └── pedido_service.go
+│   └── webhook
+│       ├── handlers.go
+│       ├── routes.go
+│       ├── security.go
+│       └── whatsapp.go
+├── oci-mcp-server.sh
+├── prometheus.yml
+├── run-inspector.bat
+├── run-inspector.sh
+├── server.json
+└── sql
+    ├── cliente.sql
+    ├── dump.sql
+    └── mcp_server_openerp.sql
+
+32 directories, 71 files
+
+# GO.MOD
+module github.com/rafapasa/mcp-server-openerp
+
+go 1.25.5
+
+require (
+	github.com/hbollon/go-edlib v1.7.0
+	github.com/mark3labs/mcp-go v0.57.0
+	github.com/paemuri/brdoc v1.1.2
+	github.com/prometheus/client_golang v1.24.1
+	github.com/redis/go-redis/v9 v9.22.0
+	github.com/spf13/viper v1.21.0
+	github.com/stretchr/testify v1.11.1
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
+	go.opentelemetry.io/otel v1.45.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.45.0
+	go.opentelemetry.io/otel/sdk v1.45.0
+	go.opentelemetry.io/otel/trace v1.45.0
+	go.uber.org/zap v1.28.0
+	gorm.io/driver/sqlite v1.6.0
+)
+
+require (
+	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/felixge/httpsnoop v1.1.0 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/go-logr/logr v1.4.4 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/go-sql-driver/mysql v1.8.1 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
+	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/prometheus/client_model v0.6.2 // indirect
+	github.com/prometheus/common v0.70.1 // indirect
+	github.com/prometheus/procfs v0.21.1 // indirect
+	github.com/sagikazarmark/locafero v0.11.0 // indirect
+	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
+	github.com/spf13/afero v1.15.0 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/subosito/gotenv v1.6.0 // indirect
+	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.45.0 // indirect
+	go.opentelemetry.io/otel/metric v1.45.0 // indirect
+	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	golang.org/x/net v0.57.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
+	google.golang.org/grpc v1.83.0 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
+
+require (
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/google/jsonschema-go v0.4.2 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/joho/godotenv v1.5.1
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
+	github.com/spf13/cast v1.10.0 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
+	gorm.io/driver/mysql v1.6.0
+	gorm.io/gorm v1.31.2
+)
+
+# MAIN.GO
+
+# HANDLERS (amostra)
+internal/observability/middleware/metrics.go:func MetricsMiddleware(next http.Handler) http.Handler {
+internal/observability/middleware/sanitize.go:func SanitizeMiddleware(next http.Handler) http.Handler {
+internal/observability/middleware/logging.go:func LoggingMiddleware(next http.Handler) http.Handler {
+internal/observability/middleware/security.go:func SecurityHeadersMiddleware(next http.Handler) http.Handler {
+internal/observability/middleware/ratelimit_middleware.go:func RateLimitMiddleware(rl *RateLimiter, extractor KeyExtractor) func(http.Handler) http.Handler {
+internal/observability/middleware/ratelimit_middleware.go:	return func(next http.Handler) http.Handler {
+internal/observability/middleware/tracing.go:func TracingMiddleware(next http.Handler) http.Handler {
+internal/observability/middleware/tracing.go:func HTTPTraceWrapper(handler http.Handler) http.Handler {
+internal/observability/middleware/security_api.go:func APIHeadersMiddleware(next http.Handler) http.Handler {
+internal/observability/metrics/llm.go:			Name: "llm_intent_distribution_total",
+internal/observability/metrics/llm.go:			Help: "Distribution of detected intents",
+internal/observability/metrics/llm.go:		[]string{"intent"},
+internal/observability/metrics/llm.go:func IntentDetected(intent string) {
+internal/observability/metrics/llm.go:	LLMIntentDistribution.WithLabelValues(intent).Inc()
+internal/observability/tracing/attributes.go:	AttrLLMIntent   = attribute.Key("llm.intent")
+internal/observability/health/health.go:func HealthHandler(hc *HealthChecker) http.HandlerFunc {
+internal/observability/health/health.go:func ReadinessHandler(hc *HealthChecker) http.HandlerFunc {
+internal/observability/health/health.go:func StatusHandler(hc *HealthChecker) http.HandlerFunc {
+internal/observability/security/sanitize_helpers.go:	"oi", "olá", "ola", "bom dia", "boa tarde", "boa noite",
+internal/api/handlers.go:func NewAPIHandlers(
+internal/api/handlers.go:func (h *APIHandlers) Dashboard(w http.ResponseWriter, r *http.Request) {
+internal/api/handlers.go:func (h *APIHandlers) ListPedidos(w http.ResponseWriter, r *http.Request) {
+internal/api/handlers.go:func (h *APIHandlers) GetPedido(w http.ResponseWriter, r *http.Request) {
+internal/api/handlers.go:func (h *APIHandlers) UpdatePedidoStatus(w http.ResponseWriter, r *http.Request) {
+internal/api/handlers.go:func (h *APIHandlers) ListClientes(w http.ResponseWriter, r *http.Request) {
+internal/api/handlers.go:func (h *APIHandlers) GetCliente(w http.ResponseWriter, r *http.Request) {
+internal/api/handlers.go:func (h *APIHandlers) GetClientePedidos(w http.ResponseWriter, r *http.Request) {
+internal/api/handlers.go:func (h *APIHandlers) GetClienteEnderecos(w http.ResponseWriter, r *http.Request) {
+internal/api/handlers.go:func (h *APIHandlers) ListProdutos(w http.ResponseWriter, r *http.Request) {
+internal/api/handlers.go:func (h *APIHandlers) GetProduto(w http.ResponseWriter, r *http.Request) {
+internal/api/handlers.go:func (h *APIHandlers) Login(w http.ResponseWriter, r *http.Request) {
+internal/api/middleware.go:func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+internal/api/middleware.go:func OptionalAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+internal/webhook/handlers.go:func NewWebhookHandler(mcpServer *server.MCPServer, whatsApp *WhatsAppClient, clienteService service.ClienteServiceInterface, transcriber *media.GroqTranscriber, geminiLLM llm.LLMClient, deepseekLLM llm.LLMClient) *WebhookHandler {
+internal/webhook/handlers.go:func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
+internal/webhook/handlers.go:func (h *WebhookHandler) HandleVerifyWebhook(w http.ResponseWriter, r *http.Request) {
+internal/webhook/handlers.go:func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *dto.ClienteDTO, tenantID uint, message struct {
+internal/webhook/handlers.go:func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.ClienteDTO, tenantID uint, mensagem string) {
+internal/webhook/handlers.go:func (h *WebhookHandler) getTenantID(_ context.Context, phoneNumber, phoneNumberID string) (uint, error) {
+internal/webhook/security.go:func VerifyWebhookRequest(next http.HandlerFunc) http.HandlerFunc {
+internal/webhook/security.go:func VerifyWebhookHandler(handler func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
+internal/server/tools/cardapio.go:func consultarCardapioHandler(deps *Dependencies) server.ToolHandlerFunc {
+internal/server/tools/whatsapp.go:func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
+internal/server/tools/carrinho.go:func adicionarAoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
+internal/server/tools/carrinho.go:func removerDoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
+internal/server/tools/carrinho.go:func visualizarCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
+internal/server/tools/carrinho.go:func finalizarPedidoHandler(deps *Dependencies) server.ToolHandlerFunc {
+internal/server/tools/carrinho.go:func limparCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
+internal/server/tools/pedido.go:func processarPedidoHandler(deps *Dependencies) server.ToolHandlerFunc {
+internal/server/server.go:func (s *MCPServer) RegisterTool(tool mcp.Tool, handler server.ToolHandlerFunc) {
+
+# REDIS USAGE ATUAL
+internal/observability/middleware/security_api.go:28:		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+internal/observability/middleware/security_api.go:29:		w.Header().Set("Pragma", "no-cache")
+internal/observability/health/health.go:12:	"github.com/redis/go-redis/v9"
+internal/observability/health/health.go:116:func NewDefaultHealthChecker(db *gorm.DB, redis *redis.Client) *HealthChecker {
+internal/observability/health/health.go:169:	hc.Register("redis", func(ctx context.Context) CheckResult {
+internal/observability/health/health.go:175:		if err := redis.Ping(ctx).Err(); err != nil {
+internal/observability/health/health.go:234:		essential := []string{"database", "redis"}
+internal/api/server.go:19:	"github.com/redis/go-redis/v9"
+internal/api/server.go:29:	cache       *redis.Client
+internal/api/server.go:34:func NewServer(db *gorm.DB, cache *redis.Client) *Server {
+internal/api/server.go:43:	cardapioService := service.NewCardapioService(produtoRepo, tenantRepo, cache)
+internal/api/server.go:50:	hc := health.NewDefaultHealthChecker(db, cache)
+internal/api/server.go:55:		cache:       cache,
+internal/database/redis.go:10:	"github.com/redis/go-redis/v9"
+internal/database/redis.go:15:	Client *redis.Client
+internal/database/redis.go:22:	client := redis.NewClient(&redis.Options{
+internal/database/redis.go:168:func (r *Redis) ZAdd(key string, members ...*redis.Z) error {
+internal/database/redis.go:169:	// Convert []*redis.Z to []redis.Z as required by go-redis/v9 ZAdd method
+internal/database/redis.go:170:	zMembers := make([]redis.Z, len(members))
+internal/database/redis.go:188:func (r *Redis) GetClient() *redis.Client {
+internal/webhook/routes.go:22:	"github.com/redis/go-redis/v9"
+internal/webhook/routes.go:31:	cache       *redis.Client
+internal/webhook/routes.go:39:func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient, transcriber *media.GroqTranscriber, geminiLLM llm.LLMClient, deepseekLLM llm.LLMClient) *Server {
+internal/webhook/routes.go:44:	cardapioService := service.NewCardapioService(produtoRepo, tenantRepo, cache)
+internal/webhook/routes.go:50:	_ = service.NewCarrinhoService(cache, cardapioService, pedidoService, produtoRepo, llmClient)
+internal/webhook/routes.go:52:	mcpServer := server.NewMCPServer(db, cache, llmClient)
+internal/webhook/routes.go:59:	hc := health.NewDefaultHealthChecker(db, cache)
+internal/webhook/routes.go:64:		cache:       cache,
+internal/server/server.go:7:	"github.com/redis/go-redis/v9"
+internal/server/server.go:27:	cache *redis.Client
+internal/server/server.go:31:func NewMCPServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *MCPServer {
+internal/server/server.go:38:	cardapioService := service.NewCardapioService(produtoRepo, tenantRepo, cache)
+internal/server/server.go:41:		cache,
+internal/server/server.go:58:		cache:           cache,
+internal/service/carrinho_service.go:15:	"github.com/redis/go-redis/v9"
+internal/service/carrinho_service.go:25:	cache           *redis.Client
+internal/service/carrinho_service.go:35:	cache *redis.Client,
+internal/service/carrinho_service.go:42:		cache:           cache,
+internal/service/carrinho_service.go:60:	data, err := s.cache.Get(ctx, key).Result()
+internal/service/carrinho_service.go:61:	if err == redis.Nil {
+internal/service/carrinho_service.go:102:	if err := s.cache.Set(context.Background(), key, data, TTLCarrinho*time.Second).Err(); err != nil {
+internal/service/carrinho_service.go:183:	return s.cache.Del(ctx, key).Err()
+internal/service/cardapio_service.go:14:	"github.com/redis/go-redis/v9"
+internal/service/cardapio_service.go:22:	cache       *redis.Client
+internal/service/cardapio_service.go:28:	cache *redis.Client,
+internal/service/cardapio_service.go:33:		cache:       cache,
+internal/service/cardapio_service.go:37:// GetCardapio busca o cardápio do restaurante (com cache)
+internal/service/cardapio_service.go:39:	// 1. Tenta buscar do cache
+internal/service/cardapio_service.go:40:	cacheKey := fmt.Sprintf("cardapio:%d", tenantID)
+internal/service/cardapio_service.go:42:	cached, err := s.cache.Get(ctx, cacheKey).Result()
