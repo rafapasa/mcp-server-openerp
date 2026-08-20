@@ -1,4 +1,4 @@
-// internal/server/server.go
+// internal/server/server.go - 100% DI - PRONTO PRO WIRE
 package server
 
 import (
@@ -8,7 +8,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
-	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 	"github.com/rafapasa/mcp-server-openerp/internal/server/tools"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
@@ -17,33 +16,26 @@ import (
 type MCPServer struct {
 	*server.MCPServer
 
-	// Serviços
+	// Serviços - injetados
 	cardapioService service.CardapioServiceInterface
-	pedidoService   service.PedidoServiceInterface
+	pedidoService service.PedidoServiceInterface
 	carrinhoService service.CarrinhoServiceInterface
 
-	// Clientes
-	llm   llm.LLMClient
+	// Clientes - injetados
+	llm llm.LLMClient
 	cache *redis.Client
+	db *gorm.DB
 }
 
-// NewMCPServer cria uma nova instância do servidor
-func NewMCPServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *MCPServer {
-	// Inicializa repositórios
-	tenantRepo := repository.NewTenantRepository(db)
-	produtoRepo := repository.NewProdutoRepository(db)
-	pedidoRepo := repository.NewPedidoRepository(db)
-
-	// Inicializa serviços
-	cardapioService := service.NewCardapioService(produtoRepo, tenantRepo, cache)
-	pedidoService := service.NewPedidoService(pedidoRepo, cardapioService)
-	carrinhoService := service.NewCarrinhoService(
-		cache,
-		cardapioService,
-		pedidoService,
-		produtoRepo,
-		llmClient,
-	)
+// NewMCPServer - NÃO CRIA NADA DENTRO, SÓ RECEBE - WIRE READY
+func NewMCPServer(
+	db *gorm.DB,
+	cache *redis.Client,
+	llmClient llm.LLMClient,
+	cardapioService service.CardapioServiceInterface,
+	pedidoService service.PedidoServiceInterface,
+	carrinhoService service.CarrinhoServiceInterface,
+) *MCPServer {
 
 	s := &MCPServer{
 		MCPServer: server.NewMCPServer(
@@ -51,30 +43,28 @@ func NewMCPServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient) *MC
 			"1.0.0",
 			server.WithToolCapabilities(true),
 		),
+		db: db,
+		cache: cache,
+		llm: llmClient,
 		cardapioService: cardapioService,
-		pedidoService:   pedidoService,
+		pedidoService: pedidoService,
 		carrinhoService: carrinhoService,
-		llm:             llmClient,
-		cache:           cache,
 	}
 
-	// Registra tools usando o novo sistema
+	// Registra tools
 	s.registerTools()
 
 	return s
 }
 
-// registerTools registra todas as tools usando o novo sistema
+// registerTools registra todas as tools
 func (s *MCPServer) registerTools() {
-	// Cria dependências para as tools
 	deps := &tools.Dependencies{
 		CardapioService: s.cardapioService,
-		PedidoService:   s.pedidoService,
+		PedidoService: s.pedidoService,
 		CarrinhoService: s.carrinhoService,
-		LLMClient:       s.llm,
+		LLMClient: s.llm,
 	}
-
-	// Registra todas as tools
 	tools.RegisterAllTools(s, deps)
 }
 

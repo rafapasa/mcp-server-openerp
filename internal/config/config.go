@@ -4,6 +4,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -309,7 +310,18 @@ func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
 	return defaultValue
 }
 
+func (c *Config) IsProduction() bool {
+	env := strings.ToLower(strings.TrimSpace(c.Environment))
+	if env == "" {
+		env = strings.ToLower(strings.TrimSpace(os.Getenv("ENVIRONMENT")))
+	}
+	return env == "production" || env == "prod" || env == "prd"
+}
+
 func IsProduction() bool {
-	env := os.Getenv("ENVIRONMENT")
-	return env == "production" || env == "prod"
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("ENVIRONMENT")))
+	if env == "" {
+		env = strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+	}
+	return env == "production" || env == "prod" || env == "prd"
 }

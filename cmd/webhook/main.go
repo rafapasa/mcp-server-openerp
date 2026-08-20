@@ -30,6 +30,7 @@ func main() {
 	zapLogger.Info("Iniciando servidor webhook",
 		zap.String("log_level", cfg.LogLevel),
 		zap.String("log_encoding", cfg.LogEncoding),
+		zap.String("env", cfg.Environment),
 	)
 
 	db, err := database.NewMySQL(cfg, "")
@@ -44,17 +45,15 @@ func main() {
 	}
 
 	// LLMs - 3 providers
-	llmClient, err := llm.NewLLMClient(cfg) // provider principal do .env (deepseek)
+	llmClient, err := llm.NewLLMClient(cfg)
 	if err != nil {
 		zapLogger.Fatal("Erro ao carregar LLM", zap.Error(err))
 	}
 
-	// Especificos para media
 	transcriber := media.NewGroqTranscriber(cfg)
-	geminiLLM := llm.NewGeminiLLM(cfg)     // vision
-	deepseekLLM := llm.NewDeepSeekLLM(cfg) // texto - pode ser mesmo que llmClient se provider=deepseek
+	geminiLLM := llm.NewGeminiLLM(cfg)
+	deepseekLLM := llm.NewDeepSeekLLM(cfg)
 
-	// Cria servidor webhook com todos os clients
 	server := webhook.NewServer(
 		db.GetDB(),
 		redisClient.Client,
@@ -73,9 +72,6 @@ func main() {
 	zapLogger.Info("Webhook server iniciado",
 		zap.String("port", port),
 		zap.String("provider_principal", llmClient.GetProvider()),
-		zap.String("groq_model", cfg.LlmGroqModel),
-		zap.String("gemini_model", cfg.LlmGeminiModel),
-		zap.String("deepseek_model", cfg.LlmDeepSeekModel),
 	)
 
 	if err := server.Start(":" + port); err != nil {
