@@ -19,9 +19,9 @@ type LLMClient interface {
 }
 
 type IntencaoCliente struct {
-	Acao string `json:"acao"`
-	Itens []dto.ItemPedidoInput `json:"itens,omitempty"`
-	Mensagem string `json:"mensagem,omitempty"`
+	Acao     string                `json:"acao"`
+	Itens    []dto.ItemPedidoInput `json:"itens,omitempty"`
+	Mensagem string                `json:"mensagem,omitempty"`
 }
 
 // Opcional: interface pra quem tem audio

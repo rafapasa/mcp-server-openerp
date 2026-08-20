@@ -31,7 +31,7 @@ func ValidatePhoneNumberID(phoneNumberID string) error {
 	// Número de telefone: 10-15 dígitos
 	valid := regexp.MustCompile(`^[0-9]{10,15}$`)
 	if !valid.MatchString(phoneNumberID) {
-		return fmt.Errorf("client_id inválido (deve ter 10-15 dígitos): %s", phoneNumberID  )
+		return fmt.Errorf("client_id inválido (deve ter 10-15 dígitos): %s", phoneNumberID)
 	}
 
 	return nil
