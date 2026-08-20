@@ -12,15 +12,21 @@ import (
 func LoggerFiber() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()
-		err := c.Next()
-		latency := time.Since(start)
+		// log entrada
+		logger.GetLogger().Info("➡️  REQ",
+			zap.String("method", c.Method()),
+			zap.String("path", c.Path()),
+			zap.String("ip", c.IP()),
+			zap.String("query", string(c.Request().RequestURI())),
+		)
 
-		logger.GetLogger().Info("request",
+		err := c.Next()
+
+		logger.GetLogger().Info("⬅️  RES",
 			zap.String("method", c.Method()),
 			zap.String("path", c.Path()),
 			zap.Int("status", c.Response().StatusCode()),
-			zap.Duration("latency", latency),
-			zap.String("ip", c.IP()),
+			zap.Duration("latency", time.Since(start)),
 		)
 		return err
 	}

@@ -116,13 +116,19 @@ func (h *WebhookHandler) HandleWebhookFiber(c *fiber.Ctx) error {
 	// Contexto Fiber - use Background com trace, UserContext() no Fiber é vazio
 	ctx := context.Background()
 
+	logger.Info(ctx, "WEBHOOK ENTRADA",
+		zap.String("method", c.Method()),
+		zap.String("path", c.Path()),
+		zap.String("ip", c.IP()),
+		zap.String("headers", string(c.Request().Header.Header())),
+		zap.String("body", string(c.Body())),
+	)
+
 	// 1. Valida assinatura PRIMEIRO
 	ok, err := VerifyWebhookHandlerFiber(c, *h.cfg)
 	if !ok {
-		if !h.cfg.IsProduction() {
-			logger.Warn(ctx, "Webhook não autorizado", zap.Error(err))
-		}
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+		logger.Warn(ctx, "Validação HMAC falhou", zap.Error(err))
+		return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
 	}
 
 	// 2. Fast check - ACK RÁPIDO pro Meta
@@ -357,20 +363,28 @@ func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *d
 }
 
 func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.ClienteDTO, tenantID uint, mensagem string) {
-	logger.Info(ctx, "Processando mensagem",
+	logger.Info(ctx, "MSG RECEBIDA",
 		zap.Uint("cliente_id", cliente.ID),
 		zap.String("telefone", cliente.Telefone),
-		zap.Uint("tenant_id", tenantID),
+		zap.String("nome", cliente.Nome),
+		zap.Uint("tenant", tenantID),
 		zap.String("mensagem", mensagem),
 	)
 
-	cardapio, err := cache.GetOrSet(h.cacheLayer, ctx, "cardapio:"+strconv.Itoa(int(tenantID)), 5*time.Minute, func() ([]dto.ProdutoItem, error) {
-		c, err := h.mcpServer.GetCardapio(tenantID)
-		if err != nil {
-			return nil, err
-		}
-		return c, nil
-	})
+	// FIX: GetOrSet genérico precisa do tipo [[]dto.ProdutoItem]
+	cardapio, err := cache.GetOrSet(
+		h.cacheLayer,
+		ctx,
+		"cardapio:"+strconv.Itoa(int(tenantID)),
+		5*time.Minute,
+		func() ([]dto.ProdutoItem, error) {
+			c, err := h.mcpServer.GetCardapio(tenantID)
+			if err != nil {
+				return nil, err
+			}
+			return c, nil
+		},
+	)
 	if err != nil {
 		logger.Error(ctx, "Erro ao buscar cardápio com cache", zap.Error(err))
 		return
@@ -382,6 +396,8 @@ func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.Client
 		h.whatsApp.SendMessage(cliente.Telefone, "⚠ Tive um problema técnico. Tente novamente.")
 		return
 	}
+
+	logger.Info(ctx, "Intenção extraída", zap.Any("intencao", intencao))
 
 	var resposta string
 	switch intencao.Acao {
@@ -411,6 +427,7 @@ func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.Client
 		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, cliente.ID, tenantID)
 	}
 
+	logger.Info(ctx, "Resposta enviada", zap.String("resposta", resposta))
 	h.whatsApp.SendMessage(cliente.Telefone, resposta)
 }
 

@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
@@ -22,17 +23,23 @@ func NewMySQL(cfg *config.Config, dsn ...string) (*MySQL, error) {
 	isTest := len(dsn) > 0 && dsn[0] != ""
 
 	var logLevel gormlogger.LogLevel
-	switch cfg.Environment {
-	case "development":
+	env := strings.ToLower(cfg.Environment)
+	if env == "" {
+		env = strings.ToLower(cfg.Environment)
+	}
+
+	// aceita develop, dev, development
+	isDev := strings.Contains(env, "dev") || env == "local"
+
+	switch {
+	case isDev:
 		if isTest {
-			// teste unitário: só erro
-			logLevel = gormlogger.Error
+			logLevel = gormlogger.Silent
 		} else {
-			// dev: só avisa query lenta >200ms e erros, não flooda SELECT
-			logLevel = gormlogger.Warn
+			// DEV: SILENCIOSO - não loga SQL, só seu zap logger
+			logLevel = gormlogger.Silent
 		}
-	case "production":
-		// prod: só erro real
+	case env == "production" || env == "prod" || env == "prd":
 		logLevel = gormlogger.Error
 	default:
 		logLevel = gormlogger.Silent
