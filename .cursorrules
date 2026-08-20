@@ -1,0 +1,34 @@
+# Regras de Desenvolvimento - Projeto WhatsApp MCP Bridge
+
+## Stack Tecnológica
+- Linguagem: Go (versão 1.21+)
+- Web Framework: Fiber (v2 ou v3)
+- ORM: GORM (com driver PostgreSQL/SQLite)
+- Injeção de Dependência: Google Wire
+- Protocolo: MCP (Model Context Protocol)
+
+## Diretrizes de Arquitetura
+1. **Clean Architecture**: Mantenha a separação entre:
+   - `cmd/`: Ponto de entrada (main.go).
+   - `internal/`: Lógica de negócio (não exportável).
+     - `domain/`: Interfaces e structs de domínio.
+     - `repository/`: Implementação do GORM.
+     - `usecase/`: Lógica de negócio pura (Service Layer).
+     - `delivery/`: Handlers HTTP (Fiber) e Webhooks.
+   - `wire.go`: Configuração do Wire para injeção de dependências.
+
+## Padrões de Código
+- **Injeção de Dependência**: Nunca instancie structs diretamente dentro dos handlers. Sempre utilize interfaces e o Wire para conectar as dependências.
+- **Fiber**: Use `fiber.Ctx` apenas na camada de `delivery`. O `usecase` deve ser agnóstico ao framework.
+- **GORM**: Sempre utilize `context.Context` nos métodos do repositório para permitir timeout e tracing.
+- **WhatsApp**: Ao lidar com Webhooks, priorize processamento assíncrono (goroutines/filas) para responder o status 200 rapidamente ao servidor do WhatsApp.
+- **Error Handling**: Retorne erros customizados que mapeiem para status HTTP corretos (400, 401, 404, 500).
+
+## Comandos de Build
+- Para gerar injeção: `wire ./...`
+- Rodar projeto: `go run cmd/api/main.go`
+
+## Estilo
+- Código sempre formatado com `go fmt`.
+- Comentários em Go devem seguir a convenção `// NomeDaFuncao explica o que faz`.
+- Use nomes de variáveis descritivos, mas evite redundância (ex: em vez de `user.UserName`, use `user.Name`).
