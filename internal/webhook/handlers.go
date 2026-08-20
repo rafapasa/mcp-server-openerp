@@ -13,6 +13,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rafapasa/mcp-server-openerp/internal/cache"
+	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/intent"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
@@ -31,9 +32,10 @@ type WebhookHandler struct {
 	geminiLLM      llm.LLMClient
 	deepseekLLM    llm.LLMClient
 	cacheLayer     *cache.Cache // NOVO: cache real com GetOrSet
+	cfg            *config.Config
 }
 
-func NewWebhookHandler(mcpServer *server.MCPServer, whatsApp *WhatsAppClient, clienteService service.ClienteServiceInterface, transcriber *media.GroqTranscriber, geminiLLM llm.LLMClient, deepseekLLM llm.LLMClient) *WebhookHandler {
+func NewWebhookHandler(mcpServer *server.MCPServer, whatsApp *WhatsAppClient, clienteService service.ClienteServiceInterface, transcriber *media.GroqTranscriber, geminiLLM llm.LLMClient, deepseekLLM llm.LLMClient, cfg *config.Config) *WebhookHandler {
 	return &WebhookHandler{
 		mcpServer:      mcpServer,
 		whatsApp:       whatsApp,
@@ -41,6 +43,7 @@ func NewWebhookHandler(mcpServer *server.MCPServer, whatsApp *WhatsAppClient, cl
 		transcriber:    transcriber,
 		geminiLLM:      geminiLLM,
 		deepseekLLM:    deepseekLLM,
+		cfg:            cfg,
 		// cacheLayer será injetado em routes.go: cache.New(redisClient)
 	}
 }
@@ -106,7 +109,18 @@ type WebhookResponse struct {
 
 // HandleWebhookFiber - POST /webhook - 100% Fiber
 func (h *WebhookHandler) HandleWebhookFiber(c *fiber.Ctx) error {
+	// 1. Valida assinatura PRIMEIRO - antes de qualquer processamento
 	ctx := c.UserContext()
+	ok, err := VerifyWebhookHandlerFiber(c, *h.cfg)
+	if !ok {
+		// Não vaza detalhe pro atacante
+		if !config.IsProduction() {
+			logger.Warn(ctx, err.Error())
+		}
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "unauthorized",
+		})
+	}
 
 	// Fast check: se não tem messages, é evento de status
 	body := c.Body()

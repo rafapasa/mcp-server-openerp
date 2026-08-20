@@ -38,9 +38,17 @@ type Server struct {
 	geminiLLM   llm.LLMClient
 	deepseekLLM llm.LLMClient
 	healthCheck *health.HealthChecker
+	cfg         *config.Config
 }
 
-func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient, transcriber *media.GroqTranscriber, geminiLLM llm.LLMClient, deepseekLLM llm.LLMClient) *Server {
+func NewServer(db *gorm.DB,
+	cache *redis.Client,
+	llmClient llm.LLMClient,
+	transcriber *media.GroqTranscriber,
+	geminiLLM llm.LLMClient,
+	deepseekLLM llm.LLMClient,
+	cfg *config.Config) *Server {
+
 	tenantRepo := repository.NewTenantRepository(db)
 	produtoRepo := repository.NewProdutoRepository(db)
 	pedidoRepo := repository.NewPedidoRepository(db)
@@ -55,7 +63,7 @@ func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient, transc
 
 	mcpServer := server.NewMCPServer(db, cache, llmClient)
 	whatsApp := NewWhatsAppClient()
-	handler := NewWebhookHandler(mcpServer, whatsApp, clienteService, transcriber, geminiLLM, deepseekLLM)
+	handler := NewWebhookHandler(mcpServer, whatsApp, clienteService, transcriber, geminiLLM, deepseekLLM, cfg)
 	hc := health.NewDefaultHealthChecker(db, cache)
 
 	return &Server{
@@ -67,17 +75,17 @@ func NewServer(db *gorm.DB, cache *redis.Client, llmClient llm.LLMClient, transc
 		geminiLLM:   geminiLLM,
 		deepseekLLM: deepseekLLM,
 		healthCheck: hc,
+		cfg:         cfg,
 	}
 }
 
 func (s *Server) Start(addr string) error {
 	metrics.Init()
-	cfg := config.LoadConfigOrDefault()
 	tracing.Init(tracing.Config{
-		Enabled:      cfg.TracingEnabled,
-		Endpoint:     cfg.TracingEndpoint,
-		ServiceName:  cfg.TracingServiceName,
-		SamplingRate: cfg.TracingSamplingRate,
+		Enabled:      s.cfg.TracingEnabled,
+		Endpoint:     s.cfg.TracingEndpoint,
+		ServiceName:  s.cfg.TracingServiceName,
+		SamplingRate: s.cfg.TracingSamplingRate,
 	})
 
 	rateLimiter := middleware.NewRateLimiterFromEnv()
@@ -104,7 +112,7 @@ func (s *Server) Start(addr string) error {
 		c.Set("X-Content-Type-Options", "nosniff")
 		c.Set("X-Frame-Options", "DENY")
 		c.Set("X-XSS-Protection", "1; mode=block")
-		if middleware.IsProduction() {
+		if config.IsProduction() {
 			c.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
 		return c.Next()

@@ -5,13 +5,15 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/rafapasa/mcp-server-openerp/internal/config"
 )
 
 // SecurityHeadersMiddleware adiciona headers de segurança em todas as respostas
 func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 1. HSTS - Força HTTPS (apenas em produção)
-		if IsProduction() {
+		if config.IsProduction() {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
 		}
 
@@ -46,12 +48,6 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-// isProduction verifica se estamos em ambiente de produção
-func IsProduction() bool {
-	env := os.Getenv("ENVIRONMENT")
-	return env == "production" || env == "prod"
 }
 
 // buildCSP constrói a política de segurança de conteúdo

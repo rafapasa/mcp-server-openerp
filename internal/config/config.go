@@ -308,3 +308,8 @@ func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
 	}
 	return defaultValue
 }
+
+func IsProduction() bool {
+	env := os.Getenv("ENVIRONMENT")
+	return env == "production" || env == "prod"
+}
