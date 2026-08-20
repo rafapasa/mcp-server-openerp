@@ -1,87 +1,223 @@
+// internal/intent/classifier.go - FINAL V2 - sem SmallTalkResponse quebrada
 package intent
 
 import (
 	"regexp"
 	"strings"
+	"time"
+	"unicode"
+
+	"golang.org/x/text/runes"
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
 )
 
-type Intent string
+type IntentType int
 
 const (
-	IntentGreeting  Intent = "greeting"   // bom dia, ola, oi
-	IntentSmallTalk Intent = "small_talk" // tudo bem, obrigado, valeu
-	IntentAdd       Intent = "add"        // adiciona, quero, coloca
-	IntentDel       Intent = "del"        // remove, tira
-	IntentUpdate    Intent = "update"     // troca, muda
-	IntentView      Intent = "view"       // ver carrinho, quanto deu
-	IntentCheckout  Intent = "checkout"   // finalizar, fechar pedido
-	IntentOther     Intent = "other"      // cai pro LLM caro
+	IntentNone IntentType = iota
+	IntentGreeting
+	IntentGreetingWithAdd
+	IntentSmallTalk
+	IntentThanks
+	IntentViewCart
+	IntentAdd
+	IntentRemove
+	IntentCheckout
+	IntentOther
 )
 
-var (
-	reGreeting  = regexp.MustCompile(`(?i)^(oi|olá|ola|bom dia|boa tarde|boa noite|e ai|fala|hello|hey)(\s|$|!|,)`)
-	reSmallTalk = regexp.MustCompile(`(?i)(tudo bem|como vai|obrigado|obrigada|valeu|tchau|até|blz|beleza|ok$)`)
-	reAdd       = regexp.MustCompile(`(?i)(adiciona|add|coloca|quero|manda|pede|\+)`)
-	reDel       = regexp.MustCompile(`(?i)(remove|tira|exclui|cancela|-\s)`)
-	reCheckout  = regexp.MustCompile(`(?i)(finaliza|fechar pedido|fecha|checkout|enviar pedido)`)
-	reView      = regexp.MustCompile(`(?i)(ver carrinho|meu carrinho|quanto deu|total)`)
-)
-
-// Classifier rápido - roda ANTES do LLM, economiza 80% de tokens
-func Classify(text string) Intent {
-	t := strings.TrimSpace(strings.ToLower(text))
-	if t == "" {
-		return IntentOther
-	}
-	// 1. Saudação pura - resposta instantânea, sem LLM
-	if reGreeting.MatchString(t) && len(t) < 25 {
-		return IntentGreeting
-	}
-	if reSmallTalk.MatchString(t) && len(t) < 30 {
-		return IntentSmallTalk
-	}
-	// 2. Ações do carrinho
-	if reCheckout.MatchString(t) {
-		return IntentCheckout
-	}
-	if reView.MatchString(t) {
-		return IntentView
-	}
-	if reDel.MatchString(t) {
-		return IntentDel
-	}
-	if reAdd.MatchString(t) {
-		return IntentAdd
-	}
-	// 3. Só se não for nada disso, chama LLM
-	return IntentOther
+type Result struct {
+	Type      IntentType
+	CleanRest string
+	Score     float64
 }
 
-// Respostas humanas pra saudação - sem precisar de DeepSeek/Gemini
+var (
+	reMultiSpace  = regexp.MustCompile(`\s+`)
+	greetingsBase = []string{"bom dia", "boa tarde", "boa noite", "boa madrugada", "ola", "oi", "opa", "e ai", "eae", "fala", "salve"}
+	thanksBase    = []string{"obrigado", "obrigada", "valeu", "vlw", "tmj", "tamo junto", "grato", "obg"}
+	smallTalkBase = []string{"tudo bem", "td bem", "como vai", "beleza", "suave", "tranquilo", "tudo bom", "td bom"}
+	viewBase      = []string{"ver carrinho", "meu carrinho", "ver pedido", "o que tenho", "q tenho", "carrinho"}
+)
+
+func normalize(s string) string {
+	s = strings.ToLower(s)
+	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+	s, _, _ = transform.String(t, s)
+	s = regexp.MustCompile(`([!?.])\1+`).ReplaceAllString(s, "$1")
+	s = reMultiSpace.ReplaceAllString(strings.TrimSpace(s), " ")
+	return s
+}
+
+func levenshtein(a, b string) int {
+	la, lb := len(a), len(b)
+	d := make([][]int, la+1)
+	for i := range d {
+		d[i] = make([]int, lb+1)
+		d[i][0] = i
+	}
+	for j := 0; j <= lb; j++ {
+		d[0][j] = j
+	}
+	for i := 1; i <= la; i++ {
+		for j := 1; j <= lb; j++ {
+			cost := 0
+			if a[i-1] != b[j-1] {
+				cost = 1
+			}
+			d[i][j] = min3(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+cost)
+		}
+	}
+	return d[la][lb]
+}
+
+func min3(a, b, c int) int {
+	if a < b {
+		if a < c {
+			return a
+		}
+		return c
+	}
+	if b < c {
+		return b
+	}
+	return c
+}
+
+func metaphonePT(s string) string {
+	s = normalize(s)
+	r := strings.NewReplacer(
+		"ph", "f", "ç", "s", "ss", "s", "sc", "s", "sç", "s",
+		"lh", "l", "nh", "n", "ão", "am", "ã", "a", "õ", "o",
+		"w", "v", "y", "i", "  ", " ",
+	)
+	return r.Replace(s)
+}
+
+func similarity(a, b string) float64 {
+	aN, bN := normalize(a), normalize(b)
+	if aN == bN {
+		return 1.0
+	}
+	if strings.Contains(aN, bN) || strings.Contains(bN, aN) {
+		return 0.9
+	}
+	if metaphonePT(aN) == metaphonePT(bN) {
+		return 0.85
+	}
+	maxLen := len(aN)
+	if len(bN) > maxLen {
+		maxLen = len(bN)
+	}
+	if maxLen == 0 {
+		return 0
+	}
+	dist := levenshtein(aN, bN)
+	return 1.0 - float64(dist)/float64(maxLen)
+}
+
+func findBestMatch(input string, dict []string) (string, float64) {
+	best := ""
+	bestScore := 0.0
+	for _, w := range dict {
+		s := similarity(input, w)
+		if s > bestScore {
+			bestScore = s
+			best = w
+		}
+	}
+	return best, bestScore
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func ClassifyV2(raw string, lastGreeting time.Time) Result {
+	norm := normalize(raw)
+	if norm == "" {
+		return Result{Type: IntentNone}
+	}
+	// anti-spam saudação 3min
+	if !lastGreeting.IsZero() && time.Since(lastGreeting) < 3*time.Minute {
+		if len(norm) < 15 {
+			_, score := findBestMatch(norm, greetingsBase)
+			if score > 0.7 {
+				return Result{Type: IntentNone}
+			}
+		}
+	}
+	// multi-intento
+	for _, g := range greetingsBase {
+		parts := strings.Fields(norm)
+		if len(parts) == 0 {
+			continue
+		}
+		prefix := strings.Join(parts[:minInt(2, len(parts))], " ")
+		if similarity(prefix, g) > 0.65 || similarity(parts[0], g) > 0.65 {
+			rest := strings.TrimSpace(strings.TrimPrefix(norm, prefix))
+			if len(rest) > 2 {
+				return Result{Type: IntentGreetingWithAdd, CleanRest: rest, Score: 0.85}
+			}
+			return Result{Type: IntentGreeting, Score: 0.85}
+		}
+	}
+	if _, s := findBestMatch(norm, thanksBase); s > 0.75 {
+		return Result{Type: IntentThanks, Score: s}
+	}
+	if _, s := findBestMatch(norm, smallTalkBase); s > 0.7 {
+		return Result{Type: IntentSmallTalk, Score: s}
+	}
+	if _, s := findBestMatch(norm, viewBase); s > 0.75 {
+		return Result{Type: IntentViewCart, Score: s}
+	}
+	if strings.Contains(norm, "tudo bem") && len(norm) < 25 {
+		return Result{Type: IntentGreeting, Score: 0.8}
+	}
+	return Result{Type: IntentOther, CleanRest: norm}
+}
+
+// COMPATIBILIDADE - para seu handlers.go não quebrar
+func Classify(raw string) IntentType {
+	res := ClassifyV2(raw, time.Time{})
+	return res.Type
+}
+
 func GreetingResponse(nome string, hour int) string {
 	saudacao := "Olá"
-	if hour < 12 {
+	if hour >= 5 && hour < 12 {
 		saudacao = "Bom dia"
 	} else if hour < 18 {
 		saudacao = "Boa tarde"
 	} else {
 		saudacao = "Boa noite"
 	}
-	if nome == "" {
-		nome = "por aqui"
+	if nome != "" {
+		return saudacao + ", " + nome + "! 😊 O que vai querer hoje?"
 	}
-	// Respostas variadas pra não parecer robô
-	return saudacao + " " + nome + "! Tudo bem? 😊\nComo posso te ajudar hoje? Posso mostrar o cardápio ou ver seu carrinho."
+	return saudacao + "! 😊 O que vai querer hoje?"
 }
 
-func SmallTalkResponse(text string) string {
-	t := strings.ToLower(text)
-	switch {
-	case strings.Contains(t, "obrigado"), strings.Contains(t, "valeu"):
-		return "Imagina! Sempre à disposição 🙏 Precisa de mais alguma coisa?"
-	case strings.Contains(t, "tudo bem"):
-		return "Tudo ótimo por aqui! E por aí? Bora fazer um pedido?"
-	default:
-		return "Haha, tamo junto! Quer dar uma olhada no cardápio?"
+func SmallTalkResponse(raw string) string {
+	norm := normalize(raw)
+	if strings.Contains(norm, "tudo bem") || strings.Contains(norm, "td bem") {
+		return "Tudo ótimo por aqui! 😊 E com você? O que vai querer hoje?"
 	}
+	if strings.Contains(norm, "obrigado") || strings.Contains(norm, "valeu") || strings.Contains(norm, "obg") {
+		return "Por nada! 😊 Precisa de mais alguma coisa?"
+	}
+	return "Haha, tudo certo! 😊 O que vai querer pedir hoje?"
+}
+
+// Para Thanks separado se quiser
+func ThanksResponse() string {
+	return "Por nada! 😊 Se precisar, estou por aqui."
+}
+
+func ViewCartResponse() string {
+	return "Claro! Deixa eu ver seu carrinho..."
 }

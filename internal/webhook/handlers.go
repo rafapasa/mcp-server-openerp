@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -153,13 +154,36 @@ func (h *WebhookHandler) HandleWebhookFiber(c *fiber.Ctx) error {
 				// Mensagem crua, sem sanitize
 				if message.Type == "text" {
 					raw := strings.TrimSpace(message.Text.Body)
-					if intent.Classify(raw) == intent.IntentGreeting {
-						// Resposta instantânea, sem LLM, sem Redis, sem MySQL
+
+					// Busca last_greet do Redis (sem GetJSON, usa seu Redis client direto)
+					var lastGreeting time.Time
+					// se seu cacheLayer tem redis.Client: h.cacheLayer.Client.Get(...)
+					// por enquanto, simplificado:
+					lastGreetStr, _ := h.cacheLayer.Get(ctx, fmt.Sprintf("last_greet:%d", cliente.ID))
+					if lastGreetStr != "" {
+						lastGreeting, _ = time.Parse(time.RFC3339, lastGreetStr)
+					}
+
+					res := intent.ClassifyV2(raw, lastGreeting)
+
+					switch res.Type {
+					case intent.IntentGreeting:
+						h.cacheLayer.Set(ctx, fmt.Sprintf("last_greet:%d", cliente.ID), time.Now().Format(time.RFC3339), 10*time.Minute)
 						h.whatsApp.SendMessage(cliente.Telefone, intent.GreetingResponse(cliente.Nome, time.Now().Hour()))
 						continue
-					}
-					if intent.Classify(raw) == intent.IntentSmallTalk {
+					case intent.IntentGreetingWithAdd: // "bom dia 2 x-burger"
+						h.cacheLayer.Set(ctx, fmt.Sprintf("last_greet:%d", cliente.ID), time.Now().Format(time.RFC3339), 10*time.Minute)
+						h.whatsApp.SendMessage(cliente.Telefone, intent.GreetingResponse(cliente.Nome, time.Now().Hour()))
+						// já processa o resto como pedido
+						go h.processMessage(context.Background(), cliente, tenantID, res.CleanRest)
+						continue
+					case intent.IntentSmallTalk, intent.IntentThanks:
 						h.whatsApp.SendMessage(cliente.Telefone, intent.SmallTalkResponse(raw))
+						continue
+					case intent.IntentViewCart:
+						// usa cache do carrinho que vamos fazer na issue #8
+						resposta := h.mcpServer.FormatarResumoCarrinho(ctx, cliente.ID, tenantID)
+						h.whatsApp.SendMessage(cliente.Telefone, resposta)
 						continue
 					}
 				}

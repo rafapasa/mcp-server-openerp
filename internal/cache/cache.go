@@ -1,3 +1,4 @@
+// internal/cache/cache.go - COMPLETO com Get, Set, GetJSON, SetJSON
 package cache
 
 import (
@@ -16,53 +17,84 @@ func New(client *redis.Client) *Cache {
 	return &Cache{client: client}
 }
 
-// GetOrSet - padrão que faltava. Só busca no MySQL se não tiver no Redis
+// Get simples - retorna string
+func (c *Cache) Get(ctx context.Context, key string) (string, error) {
+	if c == nil || c.client == nil {
+		return "", redis.Nil
+	}
+	return c.client.Get(ctx, key).Result()
+}
+
+// Set simples
+func (c *Cache) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+	if c == nil || c.client == nil {
+		return nil
+	}
+	return c.client.Set(ctx, key, value, ttl).Err()
+}
+
+// GetJSON - busca JSON e deserializa
+func (c *Cache) GetJSON(ctx context.Context, key string, dest interface{}) error {
+	if c == nil || c.client == nil {
+		return redis.Nil
+	}
+	data, err := c.client.Get(ctx, key).Result()
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal([]byte(data), dest)
+}
+
+// SetJSON - serializa e salva
+func (c *Cache) SetJSON(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+	if c == nil || c.client == nil {
+		return nil
+	}
+	b, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return c.client.Set(ctx, key, b, ttl).Err()
+}
+
+// GetOrSet genérico
 func GetOrSet[T any](c *Cache, ctx context.Context, key string, ttl time.Duration, fn func() (T, error)) (T, error) {
 	var zero T
-	// 1. Tenta Redis
-	val, err := c.client.Get(ctx, key).Result()
-	if err == nil {
-		if err := json.Unmarshal([]byte(val), &zero); err == nil {
-			return zero, nil
-		}
+	if c == nil || c.client == nil {
+		return fn()
 	}
-
-	// 2. Miss - busca na fonte (MySQL)
-	result, err := fn()
+	// tenta cache
+	var cached T
+	err := c.GetJSON(ctx, key, &cached)
+	if err == nil {
+		return cached, nil
+	}
+	// miss - busca origem
+	val, err := fn()
 	if err != nil {
 		return zero, err
 	}
-
-	// 3. Salva no Redis de forma async pra não bloquear resposta
-	data, _ := json.Marshal(result)
-	_ = c.client.Set(ctx, key, data, ttl).Err()
-
-	return result, nil
+	_ = c.SetJSON(ctx, key, val, ttl) // best effort
+	return val, nil
 }
 
-// Invalidate por padrão de tenant - quando atualiza produto, limpa tudo do tenant
-func (c *Cache) InvalidateByTenant(ctx context.Context, tenantID uint, patterns ...string) {
-	for _, p := range patterns {
-		keys, _ := c.client.Keys(ctx, p).Result()
-		if len(keys) > 0 {
-			c.client.Del(ctx, keys...)
-		}
+func (c *Cache) InvalidateByTenant(ctx context.Context, tenantID string, pattern string) error {
+	if c == nil || c.client == nil {
+		return nil
 	}
-	// limpa cardápio específico
-	c.client.Del(ctx) // use sprintf na chamada real
-
-}
-
-// Para carrinho - mantém seu código, mas com wrapper
-func (c *Cache) GetJSON(ctx context.Context, key string, dest interface{}) bool {
-	data, err := c.client.Get(ctx, key).Result()
+	keys, err := c.client.Keys(ctx, pattern).Result()
 	if err != nil {
-		return false
+		return err
 	}
-	return json.Unmarshal([]byte(data), dest) == nil
+	if len(keys) > 0 {
+		return c.client.Del(ctx, keys...).Err()
+	}
+	return nil
 }
 
-func (c *Cache) SetJSON(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
-	data, _ := json.Marshal(value)
-	return c.client.Set(ctx, key, data, ttl).Err()
+func (c *Cache) Delete(ctx context.Context, key string) error {
+	if c == nil || c.client == nil {
+		return nil
+	}
+	return c.client.Del(ctx, key).Err()
 }

@@ -189,7 +189,7 @@ func (h *APIHandlers) UpdatePedidoStatusFiber(c *fiber.Ctx) error {
 	}
 	// Invalida cache dashboard
 	if h.cacheLayer != nil {
-		h.cacheLayer.InvalidateByTenant(ctx, 1, "dashboard:*")
+		h.cacheLayer.InvalidateByTenant(ctx, "1", "dashboard:*")
 	}
 	return writeSuccessFiber(c, "Order status updated", pedido)
 }
