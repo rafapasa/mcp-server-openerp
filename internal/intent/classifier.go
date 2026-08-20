@@ -43,11 +43,43 @@ var (
 
 func normalize(s string) string {
 	s = strings.ToLower(s)
+
+	// Remove acentos
 	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
 	s, _, _ = transform.String(t, s)
-	s = regexp.MustCompile(`([!?.])\1+`).ReplaceAllString(s, "$1")
+
+	// FIX: Go não suporta \1 - colapsa!!!???... manualmente
+	s = collapseRepeatedPunct(s)
+
 	s = reMultiSpace.ReplaceAllString(strings.TrimSpace(s), " ")
 	return s
+}
+
+// colapsa!!! ->!,??? ->?,... ->.
+func collapseRepeatedPunct(s string) string {
+	var b strings.Builder
+	var prev rune
+	var count int
+
+	for _, r := range s {
+		if r == '!' || r == '?' || r == '.' {
+			if r == prev {
+				count++
+				if count == 1 { // já escreveu um, ignora repetidos
+					continue
+				}
+			} else {
+				count = 0
+				b.WriteRune(r)
+			}
+			prev = r
+		} else {
+			b.WriteRune(r)
+			prev = 0
+			count = 0
+		}
+	}
+	return b.String()
 }
 
 func levenshtein(a, b string) int {
