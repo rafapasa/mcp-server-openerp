@@ -95,11 +95,6 @@ endif
 
 .PHONY: deploy
 deploy:
-	@if ! docker network inspect mcp-network > /dev/null 2>&1; then \
-		echo "❌ ERRO: rede mcp-network não existe!"; \
-		echo "👉 Rode primeiro: make init-db"; \
-		exit 1; \
-	fi
-	@echo "🚀 Deploy $(IMAGE_TAG)..."
-	IMAGE_TAG=$(IMAGE_TAG) docker compose -f docker-compose.app.yml up -d --pull always
-	docker image
+	@echo "🚀 Deploy latest..."
+	IMAGE_TAG=latest docker compose -f docker-compose.app.yml up -d --pull always --no-deps
+	@docker ps | grep mcp-server

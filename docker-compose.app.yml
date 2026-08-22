@@ -1,29 +1,20 @@
 services:
   mcp-server:
-    image: rafapasa/mcp-server:${IMAGE_TAG:-latest}
+    image: ${DOCKER_REGISTRY:-ghcr.io/rafapasa/mcp-server-openerp}/mcp-server:${IMAGE_TAG:-latest}
     container_name: mcp-server
     restart: unless-stopped
-    networks:
-      - mcp-network
     ports:
-      - "8080:8080" # api + webhook juntos
+      - "${APP_PORT:-8080}:8080"
     env_file:
       - .env
-    environment:
-      - TZ=America/Sao_Paulo
-      - GIN_MODE=release
-    depends_on:
-      - mysql
-      - redis
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # mysql e redis já vem do docker-compose.db.yml
-  # não precisa duplicar aqui
+    networks:
+      - mcp-network
+    # DEPENDE REMOVIDO - mcp-mysql e mcp-redis já estão no ar em outro compose
+    # depends_on:
+    #   mcp-mysql:
+    #     condition: service_healthy
 
 networks:
   mcp-network:
     external: true
+    name: mcp-network
