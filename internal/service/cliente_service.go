@@ -20,49 +20,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// ClienteServiceInterface define as operações do serviço de clientes
-type ClienteServiceInterface interface {
-	// CRUD Básico
-	Create(ctx context.Context, req *dto.CriarClienteRequest) (*dto.ClienteDTO, error)
-	FindByID(ctx context.Context, id uint) (*dto.ClienteDTO, error)
-	FindByTelefone(ctx context.Context, telefone string, tenantID uint) (*dto.ClienteDTO, error)
-	FindByTenant(ctx context.Context, tenantID uint) ([]dto.ClienteDTO, error)
-	Update(ctx context.Context, id uint, req *dto.AtualizarClienteRequest) (*dto.ClienteDTO, error)
-	Delete(ctx context.Context, id uint) error
-
-	// Buscas Específicas
-	BuscarOuCriarPorTelefone(ctx context.Context, tenantID uint, telefone, nomePerfil string) (*dto.ClienteDTO, error)
-	BuscarPorNome(ctx context.Context, tenantID uint, nome string) ([]dto.ClienteDTO, error)
-	BuscarPorStatus(ctx context.Context, tenantID uint, status string) ([]dto.ClienteDTO, error)
-	BuscarInativos(ctx context.Context, tenantID uint, diasInatividade int) ([]dto.ClienteDTO, error)
-
-	// Validação e Gestão de Clientes
-	ValidarCliente(ctx context.Context, clienteID uint) (*dto.ClienteDTO, error)
-	AtualizarUltimoPedido(ctx context.Context, clienteID uint) error
-	AtualizarStatus(ctx context.Context, clienteID uint, status, motivo string) error
-	InativarCliente(ctx context.Context, clienteID uint, motivo string) error
-	ReativarCliente(ctx context.Context, clienteID uint) error
-
-	// Endereços
-	AdicionarEndereco(ctx context.Context, clienteID uint, req *dto.CriarEnderecoRequest) (*dto.EnderecoDTO, error)
-	ListarEnderecos(ctx context.Context, clienteID uint) ([]dto.EnderecoDTO, error)
-	DefinirEnderecoPrincipal(ctx context.Context, clienteID, enderecoID uint) error
-	RemoverEndereco(ctx context.Context, clienteID, enderecoID uint) error
-
-	// Documentos
-	AtualizarDocumento(ctx context.Context, clienteID uint, inscricaoFederal string) error
-	ValidarDocumento(inscricaoFederal string) (string, error)
-
-	// Status
-	IsAtivo(ctx context.Context, clienteID uint) (bool, error)
-	GetStatus(ctx context.Context, clienteID uint) (string, error)
-
-	// Utilitários
-	ConverterParaDTO(cliente *models.Cliente) *dto.ClienteDTO
-	ListWithFilters(ctx context.Context, tenantID uint, nome, telefone string, page, limit int) ([]dto.ClienteDTO, int64, error)
-	CountByTenant(ctx context.Context, tenantID uint) (int64, error)
-}
-
 // ClienteService implementa o serviço de clientes
 type ClienteService struct {
 	clienteRepo  repository.ClienteRepositoryInterface
@@ -113,7 +70,7 @@ func (s *ClienteService) Create(ctx context.Context, req *dto.CriarClienteReques
 		NomePerfil:       req.NomePerfil,
 		Email:            req.Email,
 		InscricaoFederal: req.InscricaoFederal,
-		Status:           models.StatusClienteAtivo,
+		Status:           models.StatusAtivo.String(),
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
@@ -371,12 +328,12 @@ func (s *ClienteService) AtualizarStatus(ctx context.Context, clienteID uint, st
 
 // InativarCliente inativa um cliente
 func (s *ClienteService) InativarCliente(ctx context.Context, clienteID uint, motivo string) error {
-	return s.AtualizarStatus(ctx, clienteID, models.StatusClienteInativo, motivo)
+	return s.AtualizarStatus(ctx, clienteID, models.StatusInativo.String(), motivo)
 }
 
 // ReativarCliente reativa um cliente
 func (s *ClienteService) ReativarCliente(ctx context.Context, clienteID uint) error {
-	return s.AtualizarStatus(ctx, clienteID, models.StatusClienteAtivo, "Reativado após validação")
+	return s.AtualizarStatus(ctx, clienteID, models.StatusAtivo.String(), "Reativado após validação")
 }
 
 // ============================================

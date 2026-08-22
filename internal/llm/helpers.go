@@ -186,30 +186,7 @@ func CorrigirNomes(ctx context.Context, nomesNaoEncontrados []string, produtosEn
 		listaProdutos = append(listaProdutos, nome)
 	}
 
-	prompt := fmt.Sprintf(`
-Você é um assistente especializado em corrigir nomes de produtos.
-
-PRODUTOS DISPONÍVEIS:
-%s
-
-NOMES NÃO ENCONTRADOS:
-%s
-
-INSTRUÇÕES:
-1. Para cada nome não encontrado, tente encontrar o produto mais similar na lista de disponíveis
-2. Considere:
-   - Typos (ex: "aroz" → "arroz")
-   - Sinônimos (ex: "feijão" → "feijão carioca")
-   - Abreviações (ex: "coca" → "coca-cola")
-   - Erros de digitação comuns
-3. Retorne APENAS o JSON com as correções
-
-FORMATO DE RESPOSTA:
-[
-    {"nome_original": "aroz", "nome_corrigido": "arroz", "quantidade": 1},
-    {"nome_original": "fejão", "nome_corrigido": "feijão carioca", "quantidade": 1}
-]
-`, strings.Join(listaProdutos, "\n"), strings.Join(nomesNaoEncontrados, "\n"))
+	prompt := fmt.Sprintf(PromptCorrigirNomes, strings.Join(listaProdutos, "\n"), strings.Join(nomesNaoEncontrados, "\n"))
 
 	resposta, err := generator(ctx, prompt)
 	if err != nil {

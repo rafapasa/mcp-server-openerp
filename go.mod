@@ -5,6 +5,7 @@ go 1.25.5
 require (
 	github.com/gofiber/adaptor/v2 v2.2.1
 	github.com/gofiber/fiber/v2 v2.52.15
+	github.com/google/wire v0.7.0
 	github.com/hbollon/go-edlib v1.7.0
 	github.com/mark3labs/mcp-go v0.57.0
 	github.com/paemuri/brdoc v1.1.2
@@ -77,6 +78,7 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
+	golang.org/x/crypto v0.55.0
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0
 	gorm.io/driver/mysql v1.6.0

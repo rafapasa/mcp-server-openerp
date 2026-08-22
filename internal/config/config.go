@@ -2,6 +2,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -67,10 +68,9 @@ type Config struct {
 	// ============================================
 	// LLM
 	// ============================================
-	LlmProvider string `mapstructure:"LLM_PROVIDER"`
-	LlmAPIKey   string `mapstructure:"LLM_API_KEY"`
-	LlmModel    string `mapstructure:"LLM_MODEL"`
-	LlmBaseURL  string `mapstructure:"LLM_BASE_URL"`
+	LlmText   string `mapstructure:"LLM_TEXT"`
+	LlmAudio  string `mapstructure:"LLM_AUDIO"`
+	LlmVision string `mapstructure:"LLM_VISION"`
 
 	LlmDeepSeekApiKey   string `mapstructure:"DEEPSEEK_API_KEY"`
 	LlmDeepSeekModel    string `mapstructure:"DEEPSEEK_MODEL"`
@@ -170,10 +170,10 @@ func LoadConfig() (*Config, error) {
 		CORSAllowedHeaders: getEnv("CORS_ALLOWED_HEADERS", "*"),
 
 		// LLM
-		LlmProvider: getEnv("LLM_PROVIDER", ""),
-		LlmAPIKey:   getEnv("LLM_API_KEY", ""),
-		LlmModel:    getEnv("LLM_MODEL", ""),
-		LlmBaseURL:  getEnv("LLM_BASE_URL", ""),
+		LlmText:   getEnv("LLM_TEXT", ""),
+		LlmAudio:  getEnv("LLM_AUDIO", ""),
+		LlmVision: getEnv("LLM_VISION", ""),
+
 		// DeepSeek
 		LlmDeepSeekApiKey: getEnv("DEEPSEEK_API_KEY", ""),
 		LlmDeepSeekModel:  getEnv("DEEPSEEK_MODEL", "deepseek-chat"),
@@ -220,6 +220,7 @@ func LoadConfig() (*Config, error) {
 		HSTSIncludeSubdomains: getEnvAsBool("HSTS_INCLUDE_SUBDOMAINS", true),
 		HSTSPreload:           getEnvAsBool("HSTS_PRELOAD", false),
 	}
+	cfg.ValidateLLM()
 	return cfg, nil
 }
 
@@ -324,4 +325,69 @@ func IsProduction() bool {
 		env = strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
 	}
 	return env == "production" || env == "prod" || env == "prd"
+}
+
+func (c *Config) ValidateLLM() {
+	type fail struct{ Env, Val, Err string }
+	var fails []fail
+	trim := func(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+	isValid := map[string]bool{"openai": true, "groq": true, "gemini": true, "deepseek": true}
+
+	check := func(env, val, sug string) {
+		if strings.TrimSpace(val) == "" {
+			fails = append(fails, fail{env, "(vazio)", fmt.Sprintf("obrigatório (Sugestão \"%s\")", sug)})
+			return
+		}
+		if !isValid[trim(val)] {
+			fails = append(fails, fail{env, val, "inválido"})
+		}
+	}
+	check("LLM_TEXT", c.LlmText, "gemini")
+	check("LLM_AUDIO", c.LlmAudio, "groq")
+	check("LLM_VISION", c.LlmVision, "gemini")
+
+	used := map[string]bool{trim(c.LlmText): true, trim(c.LlmAudio): true, trim(c.LlmVision): true}
+	if used["openai"] && strings.TrimSpace(c.LlmOpenAiApiKey) == "" {
+		fails = append(fails, fail{"OPENAI_API_KEY", "vazia", "precisa p/ openai"})
+	}
+	if used["groq"] && strings.TrimSpace(c.LlmGroqApiKey) == "" {
+		fails = append(fails, fail{"GROQ_API_KEY", "vazia", "precisa p/ groq"})
+	}
+	if used["gemini"] && strings.TrimSpace(c.LlmGeminiApiKey) == "" {
+		fails = append(fails, fail{"GEMINI_API_KEY", "vazia", "precisa p/ gemini"})
+	}
+	if used["deepseek"] && strings.TrimSpace(c.LlmDeepSeekApiKey) == "" {
+		fails = append(fails, fail{"DEEPSEEK_API_KEY", "vazia", "precisa p/ deepseek"})
+	}
+
+	if len(fails) == 0 {
+		return
+	}
+
+	red := "\x1b[31m"
+	reset := "\x1b[0m"
+	bold := "\x1b[1m"
+
+	fmt.Println()
+	fmt.Printf("%s─────────────────────────────────────────────────────────────────────%s", red, reset)
+	fmt.Println()
+	fmt.Printf("%s%s%s\n", bold, "                         OpenERP MCP-Server", reset)
+	fmt.Printf("%s%s%s\n", bold, "          Falha na Validação das Configurações de LLM", reset)
+	fmt.Printf("%s─────────────────────────────────────────────────────────────────────%s", red, reset)
+	fmt.Println()
+	for _, f := range fails {
+		// X vermelho
+		fmt.Printf(" %s✖%s %-12s = %-10s -> %s\n", red, reset, f.Env, f.Val, f.Err)
+	}
+	fmt.Println()
+	fmt.Printf("%s─────────────────────────────────────────────────────────────────────%s", red, reset)
+	fmt.Println()
+	fmt.Println(" LLM suportadas: openai, groq, gemini, deepseek")
+	fmt.Println(" Defina as variáveis no .env e  reinicie")
+	fmt.Printf("%s─────────────────────────────────────────────────────────────────────%s", red, reset)
+	fmt.Println()
+	fmt.Println()
+
+	os.Exit(1)
+
 }

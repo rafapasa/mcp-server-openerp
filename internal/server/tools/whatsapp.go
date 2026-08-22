@@ -9,14 +9,14 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
-	"github.com/rafapasa/mcp-server-openerp/internal/llm"
+	"github.com/rafapasa/mcp-server-openerp/internal/helpers"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"go.uber.org/zap"
 )
 
 // RegisterWhatsAppTools registra as tools relacionadas ao WhatsApp
 func RegisterWhatsAppTools(s ToolRegistrar, deps *Dependencies) {
-	s.RegisterTool(whatsappTool(), whatsappHandler(deps))
+	s.AddTool(whatsappTool(), whatsappHandler(deps))
 }
 
 func whatsappTool() mcp.Tool {
@@ -184,7 +184,7 @@ func handleLLMError(ctx context.Context, err error, mensagem string) *mcp.CallTo
 // ============================================
 
 // processarAdicionar adiciona itens ao carrinho
-func processarAdicionar(ctx context.Context, clienteID, tenantID uint, intencao *llm.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
+func processarAdicionar(ctx context.Context, clienteID, tenantID uint, intencao *dto.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
 	if len(intencao.Itens) == 0 {
 		return mcp.NewToolResultError("Não foi possível identificar itens para adicionar ao carrinho"), nil
 	}
@@ -221,13 +221,13 @@ func processarAdicionar(ctx context.Context, clienteID, tenantID uint, intencao 
 	tempoEstimado := deps.CarrinhoService.CalcularTempoEstimado(carrinho)
 
 	resposta := fmt.Sprintf("✅ Itens adicionados ao carrinho!\n\n%s",
-		FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado))
+		helpers.FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado))
 
 	return mcp.NewToolResultText(resposta), nil
 }
 
 // processarRemover remove itens do carrinho
-func processarRemover(ctx context.Context, clienteID, tenantID uint, intencao *llm.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
+func processarRemover(ctx context.Context, clienteID, tenantID uint, intencao *dto.IntencaoCliente, deps *Dependencies) (*mcp.CallToolResult, error) {
 	if len(intencao.Itens) == 0 {
 		return mcp.NewToolResultError("Não foi possível identificar itens para remover"), nil
 	}
@@ -258,7 +258,7 @@ func processarRemover(ctx context.Context, clienteID, tenantID uint, intencao *l
 	tempoEstimado := deps.CarrinhoService.CalcularTempoEstimado(carrinho)
 
 	resposta := fmt.Sprintf("✅ Itens removidos do carrinho!\n\n%s",
-		FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado))
+		helpers.FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado))
 
 	return mcp.NewToolResultText(resposta), nil
 }
@@ -274,7 +274,7 @@ func processarVisualizar(ctx context.Context, clienteID, tenantID uint, deps *De
 	total := deps.CarrinhoService.CalcularTotal(carrinho)
 	tempoEstimado := deps.CarrinhoService.CalcularTempoEstimado(carrinho)
 
-	resposta := FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado)
+	resposta := helpers.FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado)
 	return mcp.NewToolResultText(resposta), nil
 }
 
@@ -291,7 +291,7 @@ func processarFinalizar(ctx context.Context, clienteID, tenantID uint, clienteNo
 		return mcp.NewToolResultError(fmt.Sprintf("Erro ao finalizar pedido: %v", err)), nil
 	}
 
-	resposta := FormatRespostaPedido(pedidoConfirmado)
+	resposta := helpers.FormatRespostaPedido(pedidoConfirmado)
 	return mcp.NewToolResultText(resposta), nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/helpers"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
@@ -26,7 +27,7 @@ type CarrinhoService struct {
 	cardapioService CardapioServiceInterface
 	pedidoService   PedidoServiceInterface
 	produtoRepo     repository.ProdutoRepository
-	llmClient       llm.LLMClient
+	llmClient       *llm.UnifiedLLM
 	preprocessor    *llm.Preprocessor
 }
 
@@ -36,7 +37,7 @@ func NewCarrinhoService(
 	cardapioService CardapioServiceInterface,
 	pedidoService PedidoServiceInterface,
 	produtoRepo repository.ProdutoRepository,
-	llmClient llm.LLMClient,
+	llmClient *llm.UnifiedLLM,
 ) CarrinhoServiceInterface {
 	return &CarrinhoService{
 		cache:           cache,
@@ -342,7 +343,7 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 
 		// Se encontrou similares, pede LLM para corrigir
 		if len(similares) > 0 {
-			corrigidos, err := s.llmClient.CorrigirNomes(ctx, naoEncontrados, similares)
+			corrigidos, err := llm.CorrigirNomes(ctx, naoEncontrados, similares, s.llmClient.GenerateResponse)
 			if err != nil {
 				logger.Error(ctx, "Erro ao corrigir nomes de produtos com LLM", zap.Error(err), zap.Strings("nomes_nao_encontrados", naoEncontrados))
 			} else {
@@ -389,4 +390,18 @@ func (s *CarrinhoService) BuscarProdutos(ctx context.Context, tenantID, termo st
 // BuscarProdutosLote busca múltiplos produtos de uma vez
 func (s *CarrinhoService) BuscarProdutosLote(ctx context.Context, tenantID string, nomes []string) (map[string]dto.ProdutoItem, error) {
 	return s.produtoRepo.BuscarProdutosLote(ctx, tenantID, nomes)
+}
+
+func (s *CarrinhoService) FormatResumoCarrinho(ctx context.Context, clienteID, tenantID uint) (string, error) {
+	carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
+	if err != nil {
+		return "", err
+	}
+	total := s.CalcularTotal(carrinho)
+	tempo := s.CalcularTempoEstimado(carrinho)
+	return helpers.FormatResumoCarrinho(carrinho.Itens, total, tempo), nil
+}
+
+func (s *CarrinhoService) FormatarPedidoConfirmado(pedido *dto.PedidoConfirmado) string {
+	return helpers.FormatRespostaPedido(pedido)
 }

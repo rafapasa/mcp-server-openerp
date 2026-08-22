@@ -8,17 +8,18 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/helpers"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"go.uber.org/zap"
 )
 
 // RegisterCarrinhoTools registra as tools de gerenciamento de carrinho
 func RegisterCarrinhoTools(s ToolRegistrar, deps *Dependencies) {
-	s.RegisterTool(adicionarAoCarrinhoTool(), adicionarAoCarrinhoHandler(deps))
-	s.RegisterTool(removerDoCarrinhoTool(), removerDoCarrinhoHandler(deps))
-	s.RegisterTool(visualizarCarrinhoTool(), visualizarCarrinhoHandler(deps))
-	s.RegisterTool(finalizarPedidoTool(), finalizarPedidoHandler(deps))
-	s.RegisterTool(limparCarrinhoTool(), limparCarrinhoHandler(deps))
+	s.AddTool(adicionarAoCarrinhoTool(), adicionarAoCarrinhoHandler(deps))
+	s.AddTool(removerDoCarrinhoTool(), removerDoCarrinhoHandler(deps))
+	s.AddTool(visualizarCarrinhoTool(), visualizarCarrinhoHandler(deps))
+	s.AddTool(finalizarPedidoTool(), finalizarPedidoHandler(deps))
+	s.AddTool(limparCarrinhoTool(), limparCarrinhoHandler(deps))
 }
 
 // ============================================
@@ -156,7 +157,7 @@ func adicionarAoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 		)
 
 		resposta := fmt.Sprintf("✅ Adicionado: %dx **%s** ao carrinho!\n\n%s",
-			quantidade, itemNome, FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado))
+			quantidade, itemNome, helpers.FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado))
 
 		return mcp.NewToolResultText(resposta), nil
 	}
@@ -250,7 +251,7 @@ func removerDoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 		)
 
 		resposta := fmt.Sprintf("✅ Removido: %dx **%s** do carrinho!\n\n%s",
-			quantidade, itemNome, FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado))
+			quantidade, itemNome, helpers.FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado))
 
 		return mcp.NewToolResultText(resposta), nil
 	}
@@ -308,7 +309,7 @@ func visualizarCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 		total := deps.CarrinhoService.CalcularTotal(carrinho)
 		tempoEstimado := deps.CarrinhoService.CalcularTempoEstimado(carrinho)
 
-		resposta := FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado)
+		resposta := helpers.FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado)
 		return mcp.NewToolResultText(resposta), nil
 	}
 }
@@ -375,7 +376,7 @@ func finalizarPedidoHandler(deps *Dependencies) server.ToolHandlerFunc {
 			zap.Float64("total", pedidoConfirmado.Total),
 		)
 
-		resposta := FormatRespostaPedido(pedidoConfirmado)
+		resposta := helpers.FormatRespostaPedido(pedidoConfirmado)
 		return mcp.NewToolResultText(resposta), nil
 	}
 }

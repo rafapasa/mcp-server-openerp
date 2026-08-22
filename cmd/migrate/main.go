@@ -13,20 +13,17 @@ func main() {
 	cfg, _ := config.LoadConfig()
 
 	// Conexão com banco de dados
-	db, err := database.NewMySQL(cfg, "")
-	if err != nil {
-		log.Fatalf("Erro ao conectar ao banco: %v", err)
-	}
-	defer db.Close()
+	db := database.NewMySQL(cfg, "")
+	defer database.CloseMySQL(db)
 
 	// Roda migrações
-	if err := database.Migrate(db.GetDB()); err != nil {
+	if err := database.Migrate(db); err != nil {
 		log.Fatalf("Erro na migração: %v", err)
 	}
 
 	// (Opcional) Popula com dados iniciais
 	if os.Getenv("SEED") == "true" {
-		if err := database.Seed(db.GetDB()); err != nil {
+		if err := database.Seed(db); err != nil {
 			log.Fatalf("Erro no seed: %v", err)
 		}
 	}

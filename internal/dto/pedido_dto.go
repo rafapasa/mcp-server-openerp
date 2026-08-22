@@ -36,3 +36,11 @@ type CriarPedidoRequest struct {
 	Observacoes       string          `json:"observacoes"`
 	Origem            string          `json:"origem"`
 }
+
+type PedidoListResponseDTO struct {
+	Pedidos    []PedidoDTO `json:"pedidos"`
+	Total      int64       `json:"total"`
+	Page       int         `json:"page"`
+	Limit      int         `json:"limit"`
+	TotalPages int64       `json:"total_pages"`
+}

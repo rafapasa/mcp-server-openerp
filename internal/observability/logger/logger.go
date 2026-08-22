@@ -1,31 +1,28 @@
-// internal/observability/logger/logger.go
 package logger
 
 import (
 	"os"
-	"sync"
+	"path/filepath"
 
+	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 var (
 	instance *zap.Logger
-	once     sync.Once
 	level    zapcore.Level
 )
 
-// Config contém as configurações do logger
-type Config struct {
+type LoggerConfig struct {
 	Level      string `mapstructure:"LOG_LEVEL"`
 	Encoding   string `mapstructure:"LOG_ENCODING"`
 	OutputPath string `mapstructure:"LOG_OUTPUT_PATH"`
-	LogFile    string `mapstructure:"LOG_FILE"` // NOVO: caminho do arquivo de log
+	LogFile    string `mapstructure:"LOG_FILE"`
 }
 
-// DefaultConfig retorna a configuração padrão
-func DefaultConfig() Config {
-	return Config{
+func DefaultConfig() LoggerConfig {
+	return LoggerConfig{
 		Level:      "info",
 		Encoding:   "json",
 		OutputPath: "stdout",
@@ -33,75 +30,86 @@ func DefaultConfig() Config {
 	}
 }
 
-// Init inicializa o logger
-func Init(cfg Config) error {
-	var err error
-	once.Do(func() {
-		// Define o nível
-		lvl, parseErr := zapcore.ParseLevel(cfg.Level)
-		if parseErr != nil {
-			lvl = zapcore.InfoLevel
-		}
-		level = lvl
-
-		// Encoder config
-		encoderConfig := zapcore.EncoderConfig{
-			TimeKey:        "timestamp",
-			LevelKey:       "level",
-			NameKey:        "logger",
-			CallerKey:      "caller",
-			MessageKey:     "message",
-			StacktraceKey:  "stacktrace",
-			LineEnding:     zapcore.DefaultLineEnding,
-			EncodeLevel:    zapcore.LowercaseLevelEncoder,
-			EncodeTime:     zapcore.ISO8601TimeEncoder,
-			EncodeDuration: zapcore.SecondsDurationEncoder,
-			EncodeCaller:   zapcore.ShortCallerEncoder,
-		}
-
-		encoder := zapcore.NewJSONEncoder(encoderConfig)
-		if cfg.Encoding == "console" {
-			encoder = zapcore.NewConsoleEncoder(encoderConfig)
-		}
-
-		// ============================================
-		// ✅ SAÍDA DUPLA: ARQUIVO + TERMINAL
-		// ============================================
-		var writers []zapcore.WriteSyncer
-
-		// 1. Sempre escreve no terminal (stdout)
-		writers = append(writers, zapcore.AddSync(os.Stdout))
-
-		// 2. Se LOG_FILE estiver configurado, escreve no arquivo
-		if cfg.LogFile != "" && cfg.LogFile != "stdout" {
-			// Cria diretório se não existir
-			// ... (ver código abaixo)
-
-			file, openErr := os.OpenFile(cfg.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-			if openErr == nil {
-				writers = append(writers, zapcore.AddSync(file))
-			}
-		}
-
-		// 3. Se LOG_FILE estiver vazio ou "stdout", usa apenas stdout
-		writeSyncer := zapcore.NewMultiWriteSyncer(writers...)
-
-		core := zapcore.NewCore(encoder, writeSyncer, level)
-		instance = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
-	})
-
-	return err
-}
-
-// GetLogger retorna a instância do logger
-func GetLogger() *zap.Logger {
-	if instance == nil {
-		_ = Init(DefaultConfig())
+func NewLogger(cfg *config.Config) (*zap.Logger, func(), error) {
+	logCfg := LoggerConfig{
+		Level:      cfg.LogLevel,
+		Encoding:   cfg.LogEncoding,
+		OutputPath: "stdout",
+		LogFile:    cfg.LogFile,
 	}
-	return instance
+	if logCfg.LogFile == "" {
+		logCfg.LogFile = "logs/mcp-server.log"
+	}
+
+	lvl, err := zapcore.ParseLevel(logCfg.Level)
+	if err != nil {
+		lvl = zapcore.InfoLevel
+	}
+	level = lvl
+
+	// ===== ENCODER CONFIG - BONITO EM DEV =====
+	encoderConfig := zapcore.EncoderConfig{
+		TimeKey:        "timestamp",
+		LevelKey:       "level",
+		NameKey:        "logger",
+		CallerKey:      "caller",
+		MessageKey:     "message",
+		StacktraceKey:  "stacktrace",
+		LineEnding:     zapcore.DefaultLineEnding,
+		EncodeDuration: zapcore.SecondsDurationEncoder,
+		EncodeCaller:   zapcore.ShortCallerEncoder,
+	}
+
+	isDev := !cfg.IsProduction()
+
+	// COR no console
+	if isDev || logCfg.Encoding == "console" {
+		encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("15:04:05.000")
+		encoderConfig.ConsoleSeparator = " | "
+		encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	} else {
+		encoderConfig.EncodeLevel = zapcore.LowercaseLevelEncoder
+		encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	}
+
+	var encoder zapcore.Encoder
+	if isDev {
+		encoder = zapcore.NewConsoleEncoder(encoderConfig)
+	} else if logCfg.Encoding == "console" {
+		encoder = zapcore.NewConsoleEncoder(encoderConfig)
+	} else {
+		encoder = zapcore.NewJSONEncoder(encoderConfig)
+	}
+
+	// ===== SAÍDA DUPLA: TERMINAL + ARQUIVO =====
+	var writers []zapcore.WriteSyncer
+	writers = append(writers, zapcore.AddSync(os.Stdout))
+
+	if cfg.LogFile != "" && cfg.LogFile != "stdout" {
+		_ = os.MkdirAll(filepath.Dir(cfg.LogFile), 0755)
+		file, err := os.OpenFile(cfg.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err == nil {
+			writers = append(writers, zapcore.AddSync(file))
+		}
+	}
+
+	writeSyncer := zapcore.NewMultiWriteSyncer(writers...)
+	core := zapcore.NewCore(encoder, writeSyncer, level)
+
+	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+
+	cleanup := func() { _ = logger.Sync() }
+	instance = logger
+	return logger, cleanup, nil
 }
 
-// Sync sincroniza os logs
+func GetLogger() *zap.Logger { return instance }
+
+func LogInfo(msg string, fields ...zap.Field) {
+	GetLogger().Info(msg, fields...)
+}
+
 func Sync() error {
 	if instance != nil {
 		return instance.Sync()
@@ -109,10 +117,5 @@ func Sync() error {
 	return nil
 }
 
-func SetLevel(lvl zapcore.Level) {
-	level = lvl
-}
-
-func GetLevel() zapcore.Level {
-	return level
-}
+func SetLevel(lvl zapcore.Level) { level = lvl }
+func GetLevel() zapcore.Level    { return level }

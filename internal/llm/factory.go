@@ -1,36 +1,58 @@
-// internal/llm/factory.go
 package llm
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 )
 
-// NewLLMClient cria um cliente LLM baseado na configuração
-func NewLLMClient(config *config.Config) (LLMClient, error) {
-	provider := strings.ToLower(config.LlmProvider)
-
-	log.Printf("[LLM] Inicializando provedor: %s", provider)
-
+func newLLMClient(provider string, cfg *config.Config) (LLMClient, error) {
 	switch provider {
 	case "openai":
-		return NewOpenAILLM(config), nil
+		return NewOpenAILLM(cfg), nil
 	case "groq":
-		return NewGroqLLM(config), nil
+		return NewGroqLLM(cfg), nil
 	case "gemini":
-		return NewGeminiLLM(config), nil
+		return NewGeminiLLM(cfg), nil
 	case "deepseek":
-		return NewDeepSeekLLM(config), nil
+		return NewDeepSeekLLM(cfg), nil
 	default:
-		return nil, fmt.Errorf("provedor LLM não suportado: %s", provider)
+		return nil, fmt.Errorf("provedor não suportado: %s", provider)
 	}
 }
 
-// NewLLMClientFromEnv cria um cliente LLM usando variáveis de ambiente
-func NewLLMClientFromEnv() (LLMClient, error) {
-	config, _ := config.LoadConfig()
-	return NewLLMClient(config)
+func NewLLMText(cfg *config.Config) TextLLM {
+	provider := strings.ToLower(cfg.LlmText)
+	logger.LogInfo(fmt.Sprintf("[LLM_TEXT] Provider: %s", provider))
+	llm, err := newLLMClient(provider, cfg)
+	if err != nil {
+		logger.Error(context.Background(), fmt.Sprintf("Erro ao criar llm de texto [%s]: %v", provider, err.Error()))
+		return nil
+	}
+	return llm
+}
+
+func NewLLMAudio(cfg *config.Config) AudioLLM {
+	provider := strings.ToLower(cfg.LlmAudio)
+	logger.LogInfo(fmt.Sprintf("[LLM_AUDIO] Provider: %s", provider))
+	llm, err := newLLMClient(provider, cfg)
+	if err != nil {
+		logger.Error(context.Background(), fmt.Sprintf("Erro ao criar llm de audio [%s]: %v", provider, err.Error()))
+		return nil
+	}
+	return llm
+}
+
+func NewLLMVision(cfg *config.Config) VisionLLM {
+	provider := strings.ToLower(cfg.LlmVision)
+	logger.LogInfo(fmt.Sprintf("[LLM_VISION] Provider: %s", provider))
+	llm, err := newLLMClient(provider, cfg)
+	if err != nil {
+		logger.Error(context.Background(), fmt.Sprintf("Erro ao criar llm de vision [%s]: %v", provider, err.Error()))
+		return nil
+	}
+	return llm
 }

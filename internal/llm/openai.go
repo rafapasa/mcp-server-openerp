@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
@@ -21,53 +20,47 @@ type OpenAILLM struct {
 	apiKey  string
 	model   string
 	baseURL string
+	cfg     *config.Config
 }
 
 // NewOpenAILLM cria um novo cliente OpenAI
-func NewOpenAILLM(config *config.Config) LLMClient {
-	baseURL := config.LlmBaseURL
-	if baseURL == "" {
-		baseURL = os.Getenv("OPENAI_BASE_URL")
-	}
-	if baseURL == "" {
-		baseURL = "https://api.openai.com/v1/chat/completions"
-	}
+func NewOpenAILLM(cfg *config.Config) LLMClient {
+	baseURL := "https://api.openai.com/v1/chat/completions"
 
-	model := config.LlmModel
-	if model == "" {
-		model = os.Getenv("OPENAI_MODEL")
-	}
+	model := cfg.LlmOpenAiModel
 	if model == "" {
 		model = "gpt-4o-mini"
 	}
 
-	apiKey := config.LlmAPIKey
+	apiKey := cfg.LlmOpenAiApiKey
 	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
+		logger.Warn(context.Background(), "API_KEY para OpemIA não informada")
 	}
 
 	return &OpenAILLM{
 		apiKey:  apiKey,
 		model:   model,
 		baseURL: baseURL,
+		cfg:     cfg,
 	}
 }
 
-// Generate envia um prompt para a OpenAI
 func (llm *OpenAILLM) Generate(prompt string) (string, error) {
 	return llm.GenerateWithContext(context.Background(), prompt)
 }
 
-// GenerateWithContext envia um prompt com contexto
 func (llm *OpenAILLM) GenerateWithContext(ctx context.Context, prompt string) (string, error) {
 	if llm.apiKey == "" {
 		return "", fmt.Errorf("OPENAI_API_KEY não configurada")
 	}
 
+	// Usa system prompt universal curto
+	systemPrompt := fmt.Sprintf(PromptSystemBaseShort, "Estabelecimento", "geral")
+
 	requestBody := map[string]interface{}{
 		"model": llm.model,
 		"messages": []map[string]string{
-			{"role": "system", "content": "Você é um assistente especializado em extrair pedidos de fast-food. Retorne apenas JSON válido."},
+			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": prompt},
 		},
 		"temperature":     0.1,
@@ -130,52 +123,29 @@ func (llm *OpenAILLM) GetProvider() string {
 	return "openai"
 }
 
-// ExtractIntent extrai a intenção do cliente da mensagem usando OpenAI
-func (llm *OpenAILLM) ExtractIntent(ctx context.Context, mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error) {
-	// A implementação é IDÊNTICA à do Gemini, apenas muda o cliente
-	// Poderíamos extrair para uma função comum, mas vamos manter por enquanto
-	logger.Debug(ctx, "Chamando LLM para extrair intenção", zap.String("provider", llm.GetProvider()), zap.String("model", llm.GetModel()), zap.Int("prompt_size", len(mensagem)))
+func (llm *OpenAILLM) ExtractIntent(ctx context.Context, mensagem string, cardapio []dto.ProdutoItem) (*dto.IntencaoCliente, error) {
 	if llm.apiKey == "" {
 		return nil, fmt.Errorf("OPENAI_API_KEY não configurada")
 	}
 
-	cardapioStr := formatarCardapioParaPrompt(cardapio)
+	logger.Debug(ctx, "Chamando LLM para extrair intenção",
+		zap.String("provider", llm.GetProvider()),
+		zap.String("model", llm.GetModel()),
+		zap.Int("prompt_size", len(mensagem)),
+	)
 
-	prompt := fmt.Sprintf(`
-Você é um assistente de atendimento especializado em interpretar pedidos de clientes para estabelecimentos comerciais (restaurantes, mercados, farmácias).
+	catalogoStr := formatarCardapioParaPrompt(cardapio)
 
-CARDÁPIO DISPONÍVEL:
-%s
-
-MENSAGEM DO CLIENTE:
-"%s"
-
-INSTRUÇÕES:
-1. Identifique a INTENÇÃO do cliente com base na mensagem:
-   - "adicionar" ou "add": cliente quer adicionar itens ao carrinho
-   - "remover" ou "remove": cliente quer remover itens do carrinho
-   - "finalizar" ou "confirmar" ou "fechar": cliente quer finalizar o pedido
-   - "limpar" ou "clear": cliente quer limpar todo o carrinho
-   - "visualizar": cliente quer ver o carrinho atual (padrão)
-
-2. Se a intenção for "adicionar" ou "remover", extraia os itens mencionados:
-   - nome: nome do item (use o nome exato do cardápio quando possível)
-   - quantidade: número de unidades (padrão: 1)
-   - observacao: observações como "sem cebola", "bem passado", etc.
-
-3. Para "finalizar", "limpar" ou "visualizar", a lista de itens deve estar vazia.
-
-4. Retorne APENAS o JSON, sem texto adicional.
-
-FORMATO DE RESPOSTA (JSON):
-{
-  "acao": "adicionar",
-  "itens": [
-    {"nome": "X-Bacon", "quantidade": 2, "observacao": "sem cebola"}
-  ],
-  "mensagem": "quero um x-bacon e uma coca"
-}
-`, cardapioStr, mensagem)
+	// Usa prompt universal - tenant genérico aqui, o service que chama deve passar tenant real no futuro
+	// Para manter assinatura atual, usamos placeholders genéricos
+	prompt := fmt.Sprintf(PromptExtractIntentUniversal,
+		"Estabelecimento", // Nome
+		"geral",           // Nicho - vai ser substituído por tenant.Segmento quando refatorar service
+		"misto",           // Tipo entrega
+		catalogoStr,
+		mensagem,
+		"", // histórico vazio - service pode injetar depois
+	)
 
 	resposta, err := llm.GenerateWithContext(ctx, prompt)
 	if err != nil {
@@ -188,7 +158,7 @@ FORMATO DE RESPOSTA (JSON):
 		zap.String("model", llm.GetModel()),
 		zap.Int("response_size", len(resposta)))
 
-	var intencao IntencaoCliente
+	var intencao dto.IntencaoCliente
 	if err := json.Unmarshal([]byte(resposta), &intencao); err != nil {
 		if jsonStr := extractJSONFromText(resposta); jsonStr != "" {
 			if err := json.Unmarshal([]byte(jsonStr), &intencao); err != nil {
@@ -210,7 +180,7 @@ FORMATO DE RESPOSTA (JSON):
 			if !encontrou {
 				similar := encontrarItemSimilar(cardapio, item.Nome)
 				if similar != "" {
-					intencao.Itens[i].Nome = similar // Corrigido para usar o nome similar
+					intencao.Itens[i].Nome = similar
 					logger.Info(ctx, "Item corrigido", zap.String("original", item.Nome), zap.String("corrigido", similar))
 				}
 				logger.Warn(ctx, "Item não encontrado no cardápio", zap.String("item_nome", item.Nome))
@@ -237,5 +207,21 @@ func (llm *OpenAILLM) CorrigirNomes(ctx context.Context, nomesNaoEncontrados []s
 }
 
 func (llm *OpenAILLM) GenerateWithImage(ctx context.Context, prompt, b64Data, mimeType string) (string, error) {
-	return "", fmt.Errorf("vision não suportado no provider %s, use gemini", llm.GetProvider())
+	return "", fmt.Errorf(PromptVisionNotSupported, llm.GetProvider())
+}
+
+func (llm *OpenAILLM) GenerateWithAudio(ctx context.Context, promp string, audioBytes []byte) (string, error) {
+	return "", fmt.Errorf(PromptAudioNotSupported, llm.GetProvider())
+}
+
+func (llm *OpenAILLM) GenerateResponse(ctx context.Context, prompt string) (string, error) {
+	return llm.GenerateWithContext(ctx, PromptGenerateWithAudio)
+}
+
+func (llm *OpenAILLM) DescribeImage(ctx context.Context, image []byte, prompt string) (string, error) {
+	return llm.GenerateWithImage(ctx, prompt, string(image), "")
+}
+
+func (llm *OpenAILLM) TranscribeAudio(ctx context.Context, audio []byte) (string, error) {
+	return llm.GenerateWithAudio(ctx, PromptGenerateWithAudio, audio)
 }

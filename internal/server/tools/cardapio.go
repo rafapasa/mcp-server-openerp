@@ -16,7 +16,7 @@ import (
 
 // RegisterCardapioTools registra as tools de cardápio
 func RegisterCardapioTools(s ToolRegistrar, deps *Dependencies) {
-	s.RegisterTool(consultarCardapioTool(), consultarCardapioHandler(deps))
+	s.AddTool(consultarCardapioTool(), consultarCardapioHandler(deps))
 }
 
 func consultarCardapioTool() mcp.Tool {

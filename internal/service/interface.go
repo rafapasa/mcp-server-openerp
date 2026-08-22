@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/models"
 )
 
 // CarrinhoServiceInterface define as operações do serviço de carrinho
@@ -17,6 +18,8 @@ type CarrinhoServiceInterface interface {
 	FinalizarCarrinho(ctx context.Context, clienteID, tenantID uint, clienteNome string) (*dto.PedidoConfirmado, error)
 	CalcularTotal(carrinho *dto.Carrinho) float64
 	CalcularTempoEstimado(carrinho *dto.Carrinho) int
+	FormatResumoCarrinho(ctx context.Context, clienteID, tenantID uint) (string, error)
+	FormatarPedidoConfirmado(pedido *dto.PedidoConfirmado) string
 }
 
 // ============================================
@@ -64,3 +67,59 @@ type PedidoServiceInterface interface {
 // ============================================
 // CLIENTE SERVICE
 // ============================================
+
+// ClienteServiceInterface define as operações do serviço de clientes
+type ClienteServiceInterface interface {
+	// CRUD Básico
+	Create(ctx context.Context, req *dto.CriarClienteRequest) (*dto.ClienteDTO, error)
+	FindByID(ctx context.Context, id uint) (*dto.ClienteDTO, error)
+	FindByTelefone(ctx context.Context, telefone string, tenantID uint) (*dto.ClienteDTO, error)
+	FindByTenant(ctx context.Context, tenantID uint) ([]dto.ClienteDTO, error)
+	Update(ctx context.Context, id uint, req *dto.AtualizarClienteRequest) (*dto.ClienteDTO, error)
+	Delete(ctx context.Context, id uint) error
+
+	// Buscas Específicas
+	BuscarOuCriarPorTelefone(ctx context.Context, tenantID uint, telefone, nomePerfil string) (*dto.ClienteDTO, error)
+	BuscarPorNome(ctx context.Context, tenantID uint, nome string) ([]dto.ClienteDTO, error)
+	BuscarPorStatus(ctx context.Context, tenantID uint, status string) ([]dto.ClienteDTO, error)
+	BuscarInativos(ctx context.Context, tenantID uint, diasInatividade int) ([]dto.ClienteDTO, error)
+
+	// Validação e Gestão de Clientes
+	ValidarCliente(ctx context.Context, clienteID uint) (*dto.ClienteDTO, error)
+	AtualizarUltimoPedido(ctx context.Context, clienteID uint) error
+	AtualizarStatus(ctx context.Context, clienteID uint, status, motivo string) error
+	InativarCliente(ctx context.Context, clienteID uint, motivo string) error
+	ReativarCliente(ctx context.Context, clienteID uint) error
+
+	// Endereços
+	AdicionarEndereco(ctx context.Context, clienteID uint, req *dto.CriarEnderecoRequest) (*dto.EnderecoDTO, error)
+	ListarEnderecos(ctx context.Context, clienteID uint) ([]dto.EnderecoDTO, error)
+	DefinirEnderecoPrincipal(ctx context.Context, clienteID, enderecoID uint) error
+	RemoverEndereco(ctx context.Context, clienteID, enderecoID uint) error
+
+	// Documentos
+	AtualizarDocumento(ctx context.Context, clienteID uint, inscricaoFederal string) error
+	ValidarDocumento(inscricaoFederal string) (string, error)
+
+	// Status
+	IsAtivo(ctx context.Context, clienteID uint) (bool, error)
+	GetStatus(ctx context.Context, clienteID uint) (string, error)
+
+	// Utilitários
+	ConverterParaDTO(cliente *models.Cliente) *dto.ClienteDTO
+	ListWithFilters(ctx context.Context, tenantID uint, nome, telefone string, page, limit int) ([]dto.ClienteDTO, int64, error)
+	CountByTenant(ctx context.Context, tenantID uint) (int64, error)
+}
+
+type AuthServiceInterface interface {
+	Authenticate(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponse, error)
+	ValidateToken(tokenString string) (*Claims, error)
+}
+
+type TenantServiceInterface interface {
+	GetByID(ctx context.Context, id uint) (*dto.TenantDTO, error)
+	GetByCNPJ(ctx context.Context, cnpj string) (*dto.TenantDTO, error)
+	List(ctx context.Context) ([]dto.TenantDTO, error)
+	Create(ctx context.Context, input dto.CreateTenantDTO) (*dto.TenantDTO, error)
+	GetPromptContext(ctx context.Context, tenantID uint) (nome, segmento string, err error)
+}

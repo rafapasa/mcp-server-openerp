@@ -17,33 +17,42 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/intent"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
-	"github.com/rafapasa/mcp-server-openerp/internal/media"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
-	"github.com/rafapasa/mcp-server-openerp/internal/server"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 	"go.uber.org/zap"
 )
 
 type WebhookHandler struct {
-	mcpServer      *server.MCPServer
-	whatsApp       *WhatsAppClient
-	clienteService service.ClienteServiceInterface
-	transcriber    *media.GroqTranscriber
-	geminiLLM      llm.LLMClient
-	deepseekLLM    llm.LLMClient
-	cacheLayer     *cache.Cache
-	cfg            *config.Config
+	whatsApp        *WhatsAppClient
+	tenantService   service.TenantServiceInterface
+	clienteService  service.ClienteServiceInterface
+	cardapioService service.CardapioServiceInterface
+	carrinhoService service.CarrinhoServiceInterface
+	pedidoService   service.PedidoServiceInterface
+	llmClient       *llm.UnifiedLLM
+	cacheLayer      *cache.Cache
+	cfg             *config.Config
 }
 
-func NewWebhookHandler(mcpServer *server.MCPServer, whatsApp *WhatsAppClient, clienteService service.ClienteServiceInterface, transcriber *media.GroqTranscriber, geminiLLM llm.LLMClient, deepseekLLM llm.LLMClient, cfg *config.Config) *WebhookHandler {
+func NewWebhookHandler(
+	whatsApp *WhatsAppClient,
+	tenantService service.TenantServiceInterface,
+	clienteService service.ClienteServiceInterface,
+	cardapioService service.CardapioServiceInterface,
+	carrinhoService service.CarrinhoServiceInterface,
+	pedidoService service.PedidoServiceInterface,
+	llmClient *llm.UnifiedLLM,
+	cfg *config.Config,
+) *WebhookHandler {
 	return &WebhookHandler{
-		mcpServer:      mcpServer,
-		whatsApp:       whatsApp,
-		clienteService: clienteService,
-		transcriber:    transcriber,
-		geminiLLM:      geminiLLM,
-		deepseekLLM:    deepseekLLM,
-		cfg:            cfg,
+		whatsApp:        whatsApp,
+		tenantService:   tenantService,
+		clienteService:  clienteService,
+		cardapioService: cardapioService,
+		carrinhoService: carrinhoService,
+		pedidoService:   pedidoService,
+		llmClient:       llmClient,
+		cfg:             cfg,
 	}
 }
 
@@ -198,7 +207,7 @@ func (h *WebhookHandler) processWebhookAsync(ctx context.Context, body []byte) {
 
 					var lastGreeting time.Time
 					if h.cacheLayer != nil {
-						if lastGreetStr, _ := h.cacheLayer.Get(ctx, fmt.Sprintf("last_greet:%d", cliente.ID)); lastGreetStr != "" {
+						if lastGreetStr, _ := h.cacheLayer.Get(fmt.Sprintf("last_greet:%d", cliente.ID)); lastGreetStr != "" {
 							lastGreeting, _ = time.Parse(time.RFC3339, lastGreetStr)
 						}
 					}
@@ -208,13 +217,13 @@ func (h *WebhookHandler) processWebhookAsync(ctx context.Context, body []byte) {
 					switch res.Type {
 					case intent.IntentGreeting:
 						if h.cacheLayer != nil {
-							h.cacheLayer.Set(ctx, fmt.Sprintf("last_greet:%d", cliente.ID), time.Now().Format(time.RFC3339), 10*time.Minute)
+							h.cacheLayer.Set(fmt.Sprintf("last_greet:%d", cliente.ID), time.Now().Format(time.RFC3339), 10*time.Minute)
 						}
 						h.whatsApp.SendMessage(cliente.Telefone, intent.GreetingResponse(cliente.Nome, time.Now().Hour()))
 						continue
 					case intent.IntentGreetingWithAdd:
 						if h.cacheLayer != nil {
-							h.cacheLayer.Set(ctx, fmt.Sprintf("last_greet:%d", cliente.ID), time.Now().Format(time.RFC3339), 10*time.Minute)
+							h.cacheLayer.Set(fmt.Sprintf("last_greet:%d", cliente.ID), time.Now().Format(time.RFC3339), 10*time.Minute)
 						}
 						h.whatsApp.SendMessage(cliente.Telefone, intent.GreetingResponse(cliente.Nome, time.Now().Hour()))
 						h.processMessage(ctx, cliente, tenantID, res.CleanRest)
@@ -223,7 +232,7 @@ func (h *WebhookHandler) processWebhookAsync(ctx context.Context, body []byte) {
 						h.whatsApp.SendMessage(cliente.Telefone, intent.SmallTalkResponse(raw))
 						continue
 					case intent.IntentViewCart:
-						resposta := h.mcpServer.FormatarResumoCarrinho(ctx, cliente.ID, tenantID)
+						resposta, _ := h.carrinhoService.FormatResumoCarrinho(ctx, cliente.ID, tenantID)
 						h.whatsApp.SendMessage(cliente.Telefone, resposta)
 						continue
 					}
@@ -296,44 +305,68 @@ func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *d
 		}
 		audioBytes, err := h.whatsApp.DownloadMedia(mediaID)
 		if err != nil {
-			logger.Error(ctx, "Erro ao baixar audio", zap.Error(err))
 			h.whatsApp.SendMessage(cliente.Telefone, "⚠ Não consegui baixar seu áudio. Pode enviar por texto?")
 			return
 		}
-		transcribed, err := h.transcriber.Transcribe(ctx, audioBytes)
+		transcribed, err := h.llmClient.TranscribeAudio(ctx, audioBytes)
 		if err != nil {
-			logger.Error(ctx, "Erro transcrição Groq", zap.Error(err))
 			h.whatsApp.SendMessage(cliente.Telefone, "⚠ Não entendi seu áudio. Pode digitar?")
 			return
 		}
-		logger.Info(ctx, "Áudio transcrito", zap.String("texto", transcribed))
 		textoFinal = transcribed
 
-	case "image":
-		imgBytes, err := h.whatsApp.DownloadMedia(message.Image.ID)
-		if err != nil {
-			logger.Error(ctx, "Erro ao baixar imagem", zap.Error(err))
-			return
+	case "image", "document":
+		var mediaID, mime, caption string
+		if message.Type == "image" {
+			mediaID = message.Image.ID
+			mime = message.Image.MimeType
+			caption = message.Image.Caption
+		} else {
+			mediaID = message.Document.ID
+			mime = message.Document.MimeType
+			caption = message.Document.Filename
 		}
-		b64 := base64.StdEncoding.EncodeToString(imgBytes)
-		mime := message.Image.MimeType
 		if mime == "" {
 			mime = "image/jpeg"
 		}
-		promptVision := `Você é atendente. Analise imagem. Se receita: JSON {"tipo":"receita","texto_receita":"..."} Se produto/pedido: {"tipo":"pedido","descricao":"..."}. Só JSON.`
-		visionResp, err := h.geminiLLM.GenerateWithImage(ctx, promptVision, b64, mime)
+
+		imgBytes, err := h.whatsApp.DownloadMedia(mediaID)
 		if err != nil {
-			textoFinal = message.Image.Caption
+			logger.Error(ctx, "Erro baixar midia", zap.Error(err))
+			return
+		}
+
+		// PEGA TENANT + CATÁLOGO PRA PREENCHER O PROMPT
+		tenant, _ := h.tenantService.GetByID(ctx, tenantID)
+		cardapio, _ := h.cardapioService.GetCardapio(ctx, tenantID)
+		cardapioStr := h.formatCardapioParaPrompt(cardapio)
+
+		// USA A CONSTANTE!
+		prompt := fmt.Sprintf(llm.PromptGenerateWithImage,
+			tenant.Nome,              // %s nome empresa
+			tenant.Segmento,          // %s tipo (farmacia, autopeças)
+			caption,                  // TAREFA PRINCIPAL
+			cardapioStr,              // CATÁLOGO
+			"Cliente: "+cliente.Nome, // Contexto extra
+		)
+
+		b64 := base64.StdEncoding.EncodeToString(imgBytes)
+		visionResp, err := h.llmClient.DescribeImage(ctx, []byte(b64), prompt)
+		if err != nil {
+			textoFinal = caption
 			if textoFinal == "" {
 				textoFinal = "Cliente enviou imagem"
 			}
 		} else {
+			// tenta extrair JSON que o prompt pede
 			var parsed map[string]interface{}
 			if json.Unmarshal([]byte(visionResp), &parsed) == nil {
-				if t, ok := parsed["texto_receita"]; ok {
-					textoFinal = t.(string)
-				} else if d, ok := parsed["descricao"]; ok {
-					textoFinal = d.(string)
+				if t, ok := parsed["texto_receita"].(string); ok {
+					textoFinal = t
+				} else if d, ok := parsed["descricao"].(string); ok {
+					textoFinal = d
+				} else if txt, ok := parsed["texto"].(string); ok {
+					textoFinal = txt
 				} else {
 					textoFinal = visionResp
 				}
@@ -341,27 +374,24 @@ func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *d
 				textoFinal = visionResp
 			}
 		}
-		if message.Image.Caption != "" {
-			textoFinal = textoFinal + " " + message.Image.Caption
+		if caption != "" && !strings.Contains(textoFinal, caption) {
+			textoFinal = textoFinal + " " + caption
 		}
-
-	case "document":
-		docBytes, err := h.whatsApp.DownloadMedia(message.Document.ID)
-		if err != nil {
-			return
-		}
-		b64 := base64.StdEncoding.EncodeToString(docBytes)
-		visionResp, _ := h.geminiLLM.GenerateWithImage(ctx, "Extraia texto desta receita em JSON {\"texto\":\"\"}", b64, message.Document.MimeType)
-		textoFinal = visionResp
 
 	default:
-		logger.Warn(ctx, "Tipo não suportado", zap.String("type", message.Type))
 		return
 	}
 
 	h.processMessage(ctx, cliente, tenantID, textoFinal)
 }
 
+func (h *WebhookHandler) formatCardapioParaPrompt(produtos []dto.ProdutoItem) string {
+	var sb strings.Builder
+	for _, p := range produtos {
+		sb.WriteString(fmt.Sprintf("- %s: R$ %.2f\n", p.Nome, p.Preco))
+	}
+	return sb.String()
+}
 func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.ClienteDTO, tenantID uint, mensagem string) {
 	logger.Info(ctx, "MSG RECEBIDA",
 		zap.Uint("cliente_id", cliente.ID),
@@ -378,7 +408,7 @@ func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.Client
 		"cardapio:"+strconv.Itoa(int(tenantID)),
 		5*time.Minute,
 		func() ([]dto.ProdutoItem, error) {
-			c, err := h.mcpServer.GetCardapio(tenantID)
+			c, err := h.cardapioService.GetCardapio(ctx, tenantID)
 			if err != nil {
 				return nil, err
 			}
@@ -390,7 +420,7 @@ func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.Client
 		return
 	}
 
-	intencao, err := h.mcpServer.ExtractIntent(ctx, mensagem, cardapio)
+	intencao, err := h.llmClient.ExtractIntent(ctx, mensagem, cardapio)
 	if err != nil {
 		logger.Error(ctx, "Erro ao extrair intenção", zap.Error(err))
 		h.whatsApp.SendMessage(cliente.Telefone, "⚠ Tive um problema técnico. Tente novamente.")
@@ -403,28 +433,28 @@ func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.Client
 	switch intencao.Acao {
 	case "adicionar", "add":
 		for _, item := range intencao.Itens {
-			h.mcpServer.AdicionarItemCarrinho(ctx, cliente.ID, tenantID, dto.ItemCarrinho{
+			h.carrinhoService.AdicionarItem(ctx, cliente.ID, tenantID, dto.ItemCarrinho{
 				Nome: item.Nome, Quantidade: item.Quantidade, Observacao: item.Observacao, Preco: item.PrecoUnitario,
 			})
 		}
-		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, cliente.ID, tenantID)
+		resposta, _ = h.carrinhoService.FormatResumoCarrinho(ctx, cliente.ID, tenantID)
 	case "remover", "remove":
 		for _, item := range intencao.Itens {
-			h.mcpServer.RemoverItemCarrinho(ctx, cliente.ID, tenantID, item.Nome, item.Quantidade)
+			h.carrinhoService.RemoverItem(ctx, cliente.ID, tenantID, item.Nome, item.Quantidade)
 		}
-		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, cliente.ID, tenantID)
+		resposta, _ = h.carrinhoService.FormatResumoCarrinho(ctx, cliente.ID, tenantID)
 	case "finalizar", "confirmar":
-		pedido, err := h.mcpServer.FinalizarCarrinho(ctx, cliente.ID, tenantID, cliente.Nome)
+		pedido, err := h.carrinhoService.FinalizarCarrinho(ctx, cliente.ID, tenantID, cliente.Nome)
 		if err != nil {
 			resposta = "❌ Erro ao finalizar pedido."
 		} else {
-			resposta = h.mcpServer.FormatarRespostaPedido(ctx, pedido)
+			resposta = h.carrinhoService.FormatarPedidoConfirmado(pedido)
 		}
 	case "limpar", "clear":
-		h.mcpServer.LimparCarrinho(ctx, cliente.ID, tenantID)
+		h.carrinhoService.LimparCarrinho(ctx, cliente.ID, tenantID)
 		resposta = "🗑 Carrinho limpo!"
 	default:
-		resposta = h.mcpServer.FormatarResumoCarrinho(ctx, cliente.ID, tenantID)
+		resposta, _ = h.carrinhoService.FormatResumoCarrinho(ctx, cliente.ID, tenantID)
 	}
 
 	logger.Info(ctx, "Resposta enviada", zap.String("resposta", resposta))

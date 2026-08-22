@@ -1,4 +1,3 @@
-// internal/llm/interface.go
 package llm
 
 import (
@@ -8,23 +7,22 @@ import (
 )
 
 type LLMClient interface {
-	Generate(prompt string) (string, error)
-	GenerateWithContext(ctx context.Context, prompt string) (string, error)
-	// NOVO - vision (Gemini). Providers sem vision retornam erro ou fallback para Generate
-	GenerateWithImage(ctx context.Context, prompt, b64Data, mimeType string) (string, error)
-	GetModel() string
 	GetProvider() string
-	ExtractIntent(ctx context.Context, mensagem string, cardapio []dto.ProdutoItem) (*IntencaoCliente, error)
-	CorrigirNomes(ctx context.Context, nomesNaoEncontrados []string, produtosEncontrados map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error)
+	GetModel() string
+	ExtractIntent(ctx context.Context, mensagem string, cardapio []dto.ProdutoItem) (*dto.IntencaoCliente, error)
+	GenerateResponse(ctx context.Context, prompt string) (string, error)
+	TranscribeAudio(ctx context.Context, audio []byte) (string, error)
+	DescribeImage(ctx context.Context, image []byte, prompt string) (string, error)
 }
 
-type IntencaoCliente struct {
-	Acao     string                `json:"acao"`
-	Itens    []dto.ItemPedidoInput `json:"itens,omitempty"`
-	Mensagem string                `json:"mensagem,omitempty"`
+type TextLLM interface {
+	LLMClient
 }
 
-// Opcional: interface pra quem tem audio
-type Transcriber interface {
-	Transcribe(ctx context.Context, audioBytes []byte) (string, error)
+type AudioLLM interface {
+	LLMClient
+}
+
+type VisionLLM interface {
+	LLMClient
 }

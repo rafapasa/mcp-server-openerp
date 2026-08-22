@@ -14,7 +14,7 @@ import (
 
 // RegisterPedidoTools registra as tools de pedido
 func RegisterPedidoTools(s ToolRegistrar, deps *Dependencies) {
-	s.RegisterTool(processarPedidoTool(), processarPedidoHandler(deps))
+	s.AddTool(processarPedidoTool(), processarPedidoHandler(deps))
 }
 
 func processarPedidoTool() mcp.Tool {

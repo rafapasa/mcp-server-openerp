@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ type MySQL struct {
 }
 
 // NewMySQL cria uma nova conexão com o MySQL
-func NewMySQL(cfg *config.Config, dsn ...string) (*MySQL, error) {
+func NewMySQL(cfg *config.Config, dsn ...string) *gorm.DB {
 	isTest := len(dsn) > 0 && dsn[0] != ""
 
 	var logLevel gormlogger.LogLevel
@@ -58,13 +59,15 @@ func NewMySQL(cfg *config.Config, dsn ...string) (*MySQL, error) {
 	// Abrir conexão
 	db, err := gorm.Open(mysql.Open(getConnectionString(cfg, dsn...)), gormConfig)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao conectar ao banco de dados: %w", err)
+		logger.Error(context.Background(), fmt.Sprintf("erro ao conectar ao banco de dados: %v", err))
+		return nil
 	}
 
 	// Obter a instância do *sql.DB para configurar o pool de conexões
 	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, fmt.Errorf("erro ao obter o *sql.DB: %w", err)
+		logger.Error(context.Background(), fmt.Sprintf("erro ao obter o *sql.DB: %v", err))
+		return nil
 	}
 
 	// Configurar o pool de conexões
@@ -74,7 +77,8 @@ func NewMySQL(cfg *config.Config, dsn ...string) (*MySQL, error) {
 
 	// Testar a conexão
 	if err := sqlDB.Ping(); err != nil {
-		return nil, fmt.Errorf("erro ao testar conexão com o banco: %w", err)
+		logger.Error(context.Background(), fmt.Sprintf("erro ao testar conexão com o banco: %v", err))
+		return nil
 	}
 
 	// Loga só uma vez com zap, não com log padrão
@@ -91,7 +95,7 @@ func NewMySQL(cfg *config.Config, dsn ...string) (*MySQL, error) {
 		}
 	}()
 
-	return &MySQL{DB: db}, nil
+	return db
 }
 
 func getConnectionString(cfg *config.Config, dsn ...string) string {
@@ -102,8 +106,8 @@ func getConnectionString(cfg *config.Config, dsn ...string) string {
 }
 
 // Close fecha a conexão com o banco de dados
-func (m *MySQL) Close() error {
-	sqlDB, err := m.DB.DB()
+func CloseMySQL(db *gorm.DB) error {
+	sqlDB, err := db.DB()
 	if err != nil {
 		return err
 	}
