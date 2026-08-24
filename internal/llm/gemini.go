@@ -36,6 +36,7 @@ func NewGeminiLLM(cfg *config.Config) LLMClient {
 		cfg:     cfg,
 	}
 }
+
 func (llm *GeminiLLM) Generate(p string) (string, error) {
 	return llm.GenerateWithContext(context.Background(), p)
 }
@@ -186,9 +187,11 @@ func (llm *GeminiLLM) ExtractIntent(ctx context.Context, mensagem string, cardap
 	}
 	return &intencao, nil
 }
+
 func (llm *GeminiLLM) CorrigirNomes(ctx context.Context, n []string, p map[string]dto.ProdutoItem) ([]dto.ItemPedidoInput, error) {
 	return CorrigirNomes(ctx, n, p, llm.GenerateWithContext)
 }
+
 func (llm *GeminiLLM) DescribeImage(ctx context.Context, image []byte, prompt string) (string, error) {
 	return llm.GenerateWithImage(ctx, prompt, string(image), "")
 }

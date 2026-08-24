@@ -1,4 +1,4 @@
-// internal/webhook/handlers.go - FINAL 100% FIBER - CORRIGIDO
+// internal/webhook/handlers.go - FINAL 100% FIBER - Issue #8 FECHADO
 package webhook
 
 import (
@@ -56,7 +56,6 @@ func NewWebhookHandler(
 	}
 }
 
-// Injeção do cache - chamar em routes.go
 func (h *WebhookHandler) SetCache(c *cache.Cache) {
 	h.cacheLayer = c
 }
@@ -120,58 +119,43 @@ type WebhookResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
-// HandleWebhookFiber - POST /webhook
 func (h *WebhookHandler) HandleWebhookFiber(c *fiber.Ctx) error {
-	// Contexto Fiber - use Background com trace, UserContext() no Fiber é vazio
 	ctx := context.Background()
-
-	logger.Info(ctx, "WEBHOOK ENTRADA",
+	logger.Info(
+		ctx, "WEBHOOK ENTRADA",
 		zap.String("method", c.Method()),
 		zap.String("path", c.Path()),
 		zap.String("ip", c.IP()),
 		zap.String("headers", string(c.Request().Header.Header())),
 		zap.String("body", string(c.Body())),
 	)
-
-	// 1. Valida assinatura PRIMEIRO
 	ok, err := VerifyWebhookHandlerFiber(c, *h.cfg)
 	if !ok {
 		logger.Warn(ctx, "Validação HMAC falhou", zap.Error(err))
 		return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
 	}
-
-	// 2. Fast check - ACK RÁPIDO pro Meta
 	body := c.Body()
 	if !strings.Contains(string(body), "\"messages\"") {
 		logger.Debug(ctx, "Evento de status ignorado")
 		return c.Status(200).JSON(WebhookResponse{Success: true})
 	}
-
-	// 3. Parse
 	var req WebhookRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		logger.Error(ctx, "Erro ao parsear JSON", zap.Error(err))
-		return c.Status(200).JSON(WebhookResponse{Success: true}) // retorna 200 mesmo com erro pra Meta não reenviar
+		return c.Status(200).JSON(WebhookResponse{Success: true})
 	}
-
-	// 4. Responde 200 IMEDIATAMENTE e processa em background
-	// Copia body pra goroutine não perder referência
 	bodyCopy := make([]byte, len(body))
 	copy(bodyCopy, body)
-
 	go h.processWebhookAsync(context.Background(), bodyCopy)
-
 	return c.Status(200).JSON(WebhookResponse{Success: true, Message: "ok"})
 }
 
-// Processamento assíncrono - aqui pode demorar
 func (h *WebhookHandler) processWebhookAsync(ctx context.Context, body []byte) {
 	var req WebhookRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		logger.Error(ctx, "Erro parse async", zap.Error(err))
 		return
 	}
-
 	for _, entry := range req.Entry {
 		for _, change := range entry.Changes {
 			if change.Field != "messages" || len(change.Value.Messages) == 0 {
@@ -188,56 +172,56 @@ func (h *WebhookHandler) processWebhookAsync(ctx context.Context, body []byte) {
 				}
 				tenantPhone := change.Value.Metadata.DisplayPhoneNumber
 				tenantPhoneID := change.Value.Metadata.PhoneNumberID
-
 				tenantID, err := h.getTenantID(ctx, tenantPhone, tenantPhoneID)
 				if err != nil || tenantID == 0 {
 					logger.Warn(ctx, "Tenant não encontrado", zap.String("tenantPhone", tenantPhone))
 					continue
 				}
-
 				cliente, err := h.clienteService.BuscarOuCriarPorTelefone(ctx, tenantID, userPhone, userName)
 				if err != nil {
 					logger.Error(ctx, "Erro ao processar cliente", zap.Error(err))
 					continue
 				}
-
-				// FAST PATH
+				// FAST PATH TEXT - Issue #8: View sem LLM
 				if message.Type == "text" {
 					raw := strings.TrimSpace(message.Text.Body)
-
 					var lastGreeting time.Time
 					if h.cacheLayer != nil {
 						if lastGreetStr, _ := h.cacheLayer.Get(fmt.Sprintf("last_greet:%d", cliente.ID)); lastGreetStr != "" {
 							lastGreeting, _ = time.Parse(time.RFC3339, lastGreetStr)
 						}
 					}
-
 					res := intent.ClassifyV2(raw, lastGreeting)
-
 					switch res.Type {
 					case intent.IntentGreeting:
 						if h.cacheLayer != nil {
 							h.cacheLayer.Set(fmt.Sprintf("last_greet:%d", cliente.ID), time.Now().Format(time.RFC3339), 10*time.Minute)
 						}
+						logger.Info(ctx, "FAST-PATH Greeting - sem LLM", zap.String("msg", raw))
 						h.whatsApp.SendMessage(cliente.Telefone, intent.GreetingResponse(cliente.Nome, time.Now().Hour()))
 						continue
 					case intent.IntentGreetingWithAdd:
 						if h.cacheLayer != nil {
 							h.cacheLayer.Set(fmt.Sprintf("last_greet:%d", cliente.ID), time.Now().Format(time.RFC3339), 10*time.Minute)
 						}
+						logger.Info(ctx, "FAST-PATH GreetingWithAdd", zap.String("cleanRest", res.CleanRest))
 						h.whatsApp.SendMessage(cliente.Telefone, intent.GreetingResponse(cliente.Nome, time.Now().Hour()))
 						h.processMessage(ctx, cliente, tenantID, res.CleanRest)
 						continue
 					case intent.IntentSmallTalk, intent.IntentThanks:
+						logger.Info(ctx, "FAST-PATH SmallTalk/Thanks - sem LLM", zap.String("msg", raw))
 						h.whatsApp.SendMessage(cliente.Telefone, intent.SmallTalkResponse(raw))
 						continue
 					case intent.IntentViewCart:
+						logger.Info(ctx, "FAST-PATH ViewCart - sem LLM, GetOrSet 2m", zap.String("msg", raw), zap.Uint("cliente_id", cliente.ID))
 						resposta, _ := h.carrinhoService.FormatResumoCarrinho(ctx, cliente.ID, tenantID)
+						if resposta == "" {
+							resposta = "🛒 Seu carrinho está vazio. Me diga o que quer adicionar!"
+						}
 						h.whatsApp.SendMessage(cliente.Telefone, resposta)
 						continue
 					}
 				}
-
 				msgCopy := message
 				h.processMessageWithMedia(ctx, cliente, tenantID, msgCopy)
 			}
@@ -245,7 +229,6 @@ func (h *WebhookHandler) processWebhookAsync(ctx context.Context, body []byte) {
 	}
 }
 
-// HandleVerifyWebhookFiber - GET /webhook
 func (h *WebhookHandler) HandleVerifyWebhookFiber(c *fiber.Ctx) error {
 	ctx := context.Background()
 	mode := c.Query("hub.mode")
@@ -255,7 +238,6 @@ func (h *WebhookHandler) HandleVerifyWebhookFiber(c *fiber.Ctx) error {
 	if expectedToken == "" {
 		expectedToken = strings.TrimSpace(h.cfg.WhatsAppVerifyToken)
 	}
-
 	if mode == "subscribe" && token == expectedToken && challenge != "" {
 		c.Set("Content-Type", "text/plain")
 		logger.Info(ctx, "Webhook verificado com sucesso", zap.String("mode", mode))
@@ -291,13 +273,12 @@ func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *d
 		MimeType string `json:"mime_type"`
 		Filename string `json:"filename"`
 	} `json:"document"`
-}) {
+},
+) {
 	var textoFinal string
-
 	switch message.Type {
 	case "text":
 		textoFinal = strings.TrimSpace(message.Text.Body)
-
 	case "audio", "voice":
 		mediaID := message.Audio.ID
 		if message.Type == "voice" {
@@ -314,7 +295,6 @@ func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *d
 			return
 		}
 		textoFinal = transcribed
-
 	case "image", "document":
 		var mediaID, mime, caption string
 		if message.Type == "image" {
@@ -329,27 +309,22 @@ func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *d
 		if mime == "" {
 			mime = "image/jpeg"
 		}
-
 		imgBytes, err := h.whatsApp.DownloadMedia(mediaID)
 		if err != nil {
 			logger.Error(ctx, "Erro baixar midia", zap.Error(err))
 			return
 		}
-
-		// PEGA TENANT + CATÁLOGO PRA PREENCHER O PROMPT
 		tenant, _ := h.tenantService.GetByID(ctx, tenantID)
 		cardapio, _ := h.cardapioService.GetCardapio(ctx, tenantID)
 		cardapioStr := h.formatCardapioParaPrompt(cardapio)
-
-		// USA A CONSTANTE!
-		prompt := fmt.Sprintf(llm.PromptGenerateWithImage,
-			tenant.Nome,              // %s nome empresa
-			tenant.Segmento,          // %s tipo (farmacia, autopeças)
-			caption,                  // TAREFA PRINCIPAL
-			cardapioStr,              // CATÁLOGO
-			"Cliente: "+cliente.Nome, // Contexto extra
+		prompt := fmt.Sprintf(
+			llm.PromptGenerateWithImage,
+			tenant.Nome,
+			tenant.Segmento,
+			caption,
+			cardapioStr,
+			"Cliente: "+cliente.Nome,
 		)
-
 		b64 := base64.StdEncoding.EncodeToString(imgBytes)
 		visionResp, err := h.llmClient.DescribeImage(ctx, []byte(b64), prompt)
 		if err != nil {
@@ -358,7 +333,6 @@ func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *d
 				textoFinal = "Cliente enviou imagem"
 			}
 		} else {
-			// tenta extrair JSON que o prompt pede
 			var parsed map[string]interface{}
 			if json.Unmarshal([]byte(visionResp), &parsed) == nil {
 				if t, ok := parsed["texto_receita"].(string); ok {
@@ -377,11 +351,9 @@ func (h *WebhookHandler) processMessageWithMedia(ctx context.Context, cliente *d
 		if caption != "" && !strings.Contains(textoFinal, caption) {
 			textoFinal = textoFinal + " " + caption
 		}
-
 	default:
 		return
 	}
-
 	h.processMessage(ctx, cliente, tenantID, textoFinal)
 }
 
@@ -392,8 +364,10 @@ func (h *WebhookHandler) formatCardapioParaPrompt(produtos []dto.ProdutoItem) st
 	}
 	return sb.String()
 }
+
 func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.ClienteDTO, tenantID uint, mensagem string) {
-	logger.Info(ctx, "MSG RECEBIDA",
+	logger.Info(
+		ctx, "MSG RECEBIDA",
 		zap.Uint("cliente_id", cliente.ID),
 		zap.String("telefone", cliente.Telefone),
 		zap.String("nome", cliente.Nome),
@@ -401,7 +375,19 @@ func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.Client
 		zap.String("mensagem", mensagem),
 	)
 
-	// FIX: GetOrSet genérico precisa do tipo [[]dto.ProdutoItem]
+	// FIX Issue #8 - FAST-PATH também no processMessage (vem de áudio/imagem transcrita)
+	viewCheck := intent.ClassifyV2(mensagem, time.Time{})
+	if viewCheck.Type == intent.IntentViewCart {
+		logger.Info(ctx, "FAST-PATH ViewCart no processMessage - sem LLM, GetOrSet 2m", zap.String("mensagem", mensagem))
+		resposta, _ := h.carrinhoService.FormatResumoCarrinho(ctx, cliente.ID, tenantID)
+		if resposta == "" {
+			resposta = "🛒 Seu carrinho está vazio. Me diga o que quer adicionar!"
+		}
+		logger.Info(ctx, "Resposta enviada", zap.String("resposta", resposta))
+		h.whatsApp.SendMessage(cliente.Telefone, resposta)
+		return
+	}
+
 	cardapio, err := cache.GetOrSet(
 		h.cacheLayer,
 		ctx,
@@ -426,9 +412,7 @@ func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.Client
 		h.whatsApp.SendMessage(cliente.Telefone, "⚠ Tive um problema técnico. Tente novamente.")
 		return
 	}
-
 	logger.Info(ctx, "Intenção extraída", zap.Any("intencao", intencao))
-
 	var resposta string
 	switch intencao.Acao {
 	case "adicionar", "add":
@@ -456,7 +440,6 @@ func (h *WebhookHandler) processMessage(ctx context.Context, cliente *dto.Client
 	default:
 		resposta, _ = h.carrinhoService.FormatResumoCarrinho(ctx, cliente.ID, tenantID)
 	}
-
 	logger.Info(ctx, "Resposta enviada", zap.String("resposta", resposta))
 	h.whatsApp.SendMessage(cliente.Telefone, resposta)
 }

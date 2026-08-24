@@ -1,0 +1,1 @@
+  intencao, err := h.llmClient.ExtractIntent(ctx, mensagem, cardapio)
