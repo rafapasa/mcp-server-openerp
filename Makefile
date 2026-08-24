@@ -101,6 +101,25 @@ deploy:
 
 
 
-.PHONY: logs logs-tail ps status
+.PHONY: logs logs-tail logs-info logs-warn logs-err logs-debug ps status
+
 logs:
 	docker logs -f mcp-server --tail=100
+
+logs-tail:
+	docker logs mcp-server --tail=200
+
+logs-info:
+	docker logs -f mcp-server --tail=500 2>&1 | grep --color=always -E "INFO|Iniciando|MySQL conectado|Redis conectado|HttpServer"
+
+logs-warn:
+	docker logs -f mcp-server --tail=500 2>&1 | grep --color=always -E "WARN"
+
+logs-err:
+	docker logs -f mcp-server --tail=500 2>&1 | grep --color=always -E "ERROR|ERRO|FAIL|✖|panic|fatal"
+
+logs-debug:
+	docker logs -f mcp-server --tail=500 2>&1 | grep --color=always -E "DEBUG|Provider"
+
+ps status:
+	docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep mcp
