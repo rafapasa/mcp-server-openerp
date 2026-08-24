@@ -98,3 +98,9 @@ deploy:
 	@echo "🚀 Deploy latest..."
 	IMAGE_TAG=latest docker compose -f docker-compose.app.yml up -d --pull always --no-deps
 	@docker ps | grep mcp-server
+
+
+
+.PHONY: logs logs-tail ps status
+logs:
+	docker logs -f mcp-server --tail=100
