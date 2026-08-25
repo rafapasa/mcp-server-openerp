@@ -91,7 +91,7 @@ endif
 	docker push $(DOCKER_USERNAME)/mcp-server:latest
 	docker push $(DOCKER_USERNAME)/mcp-stdio:$(IMAGE_TAG)
 	docker push $(DOCKER_USERNAME)/mcp-stdio:latest
-	@echo "✅ Build $(IMAGE_TAG) + latest enviado"
+	@echo "✅ Build $(IMAGE_TAG) + latest enviado para $(DOCKER_USERNAME)/mcp-server"
 
 .PHONY: deploy
 deploy:

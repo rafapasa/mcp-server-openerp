@@ -1,6 +1,6 @@
 services:
   mcp-server:
-    image: ${DOCKER_REGISTRY:-ghcr.io/rafapasa/mcp-server-openerp}/mcp-server:${IMAGE_TAG:-latest}
+    image: ${DOCKER_USERNAME:-rafapasa}/mcp-server:${IMAGE_TAG:-latest}
     container_name: mcp-server
     restart: unless-stopped
     ports:
@@ -9,10 +9,6 @@ services:
       - .env
     networks:
       - mcp-network
-    # DEPENDE REMOVIDO - mcp-mysql e mcp-redis já estão no ar em outro compose
-    # depends_on:
-    #   mcp-mysql:
-    #     condition: service_healthy
 
 networks:
   mcp-network:
