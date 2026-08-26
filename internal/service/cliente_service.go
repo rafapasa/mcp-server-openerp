@@ -45,21 +45,22 @@ func NewClienteService(
 func (s *ClienteService) Create(ctx context.Context, req *dto.CriarClienteRequest) (*dto.ClienteDTO, error) {
 	// 1. Valida dados
 	if err := s.validateCreateRequest(req); err != nil {
+		logger.Error(ctx, err.Error())
 		return nil, err
 	}
 
 	// 2. Verifica se cliente já existe
-	existing, _ := s.clienteRepo.FindByTelefone(ctx, req.Telefone, fmt.Sprintf("%d", req.TenantID))
-	if existing != nil && existing.ID > 0 {
+	clienteDto, _ := s.FindByTelefone(ctx, req.Telefone, req.TenantID)
+	if clienteDto != nil && clienteDto.ID > 0 {
 		// Se existir e estiver ativo, retorna o existente
-		if existing.IsAtivo() {
-			return s.ConverterParaDTO(existing), nil
+		if clienteDto.Status == models.StatusAtivo.String() {
+			return clienteDto, nil
 		}
 		// Se existir mas estiver inativo, reativa
-		if err := s.ReativarCliente(ctx, existing.ID); err != nil {
+		if err := s.ReativarCliente(ctx, clienteDto.ID); err != nil {
 			return nil, fmt.Errorf("erro ao reativar cliente: %w", err)
 		}
-		return s.ConverterParaDTO(existing), nil
+		return clienteDto, nil
 	}
 
 	// 3. Cria cliente
@@ -80,7 +81,8 @@ func (s *ClienteService) Create(ctx context.Context, req *dto.CriarClienteReques
 		return nil, fmt.Errorf("erro ao criar cliente: %w", err)
 	}
 
-	logger.Info(ctx, "Cliente criado com sucesso",
+	logger.Info(
+		ctx, "Cliente criado com sucesso",
 		zap.Uint("cliente_id", cliente.ID),
 		zap.String("telefone", cliente.Telefone),
 	)
@@ -103,7 +105,7 @@ func (s *ClienteService) FindByID(ctx context.Context, id uint) (*dto.ClienteDTO
 
 // FindByTelefone busca um cliente pelo telefone
 func (s *ClienteService) FindByTelefone(ctx context.Context, telefone string, tenantID uint) (*dto.ClienteDTO, error) {
-	cliente, err := s.clienteRepo.FindByTelefone(ctx, telefone, fmt.Sprintf("%d", tenantID))
+	cliente, err := s.clienteRepo.FindByTelefone(ctx, telefone, tenantID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -159,7 +161,8 @@ func (s *ClienteService) Update(ctx context.Context, id uint, req *dto.Atualizar
 		return nil, fmt.Errorf("erro ao atualizar cliente: %w", err)
 	}
 
-	logger.Info(ctx, "Cliente atualizado",
+	logger.Info(
+		ctx, "Cliente atualizado",
 		zap.Uint("cliente_id", cliente.ID),
 	)
 
@@ -189,7 +192,7 @@ func (s *ClienteService) Delete(ctx context.Context, id uint) error {
 // BuscarOuCriarPorTelefone busca um cliente pelo telefone ou cria um novo
 func (s *ClienteService) BuscarOuCriarPorTelefone(ctx context.Context, tenantID uint, telefone, nomePerfil string) (*dto.ClienteDTO, error) {
 	// 1. Busca cliente existente
-	cliente, err := s.clienteRepo.FindByTelefone(ctx, telefone, fmt.Sprintf("%d", tenantID))
+	cliente, err := s.clienteRepo.FindByTelefone(ctx, telefone, tenantID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, fmt.Errorf("erro ao buscar cliente: %w", err)
 	}
@@ -211,7 +214,8 @@ func (s *ClienteService) BuscarOuCriarPorTelefone(ctx context.Context, tenantID 
 		if !s.compararNomes(cliente.NomePerfil, nomePerfil) {
 			// Se os nomes são diferentes, pergunta ao usuário
 			// Aqui você pode implementar a validação interativa
-			logger.Warn(ctx, "Nome do perfil diferente do salvo",
+			logger.Warn(
+				ctx, "Nome do perfil diferente do salvo",
 				zap.String("salvo", cliente.NomePerfil),
 				zap.String("atual", nomePerfil),
 			)
@@ -383,7 +387,8 @@ func (s *ClienteService) AdicionarEndereco(ctx context.Context, clienteID uint, 
 		return nil, fmt.Errorf("erro ao criar endereço: %w", err)
 	}
 
-	logger.Info(ctx, "Endereço adicionado ao cliente",
+	logger.Info(
+		ctx, "Endereço adicionado ao cliente",
 		zap.Uint("cliente_id", clienteID),
 		zap.Uint("endereco_id", endereco.ID),
 	)
@@ -470,7 +475,8 @@ func (s *ClienteService) AtualizarDocumento(ctx context.Context, clienteID uint,
 		return fmt.Errorf("erro ao atualizar documento: %w", err)
 	}
 
-	logger.Info(ctx, "Documento do cliente atualizado",
+	logger.Info(
+		ctx, "Documento do cliente atualizado",
 		zap.Uint("cliente_id", clienteID),
 		zap.String("tipo", tipo),
 	)

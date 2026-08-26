@@ -4,9 +4,11 @@ import (
 	"context"
 	"time"
 
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 )
 
 // ClienteRepositoryInterface define as operações do repositório de clientes
@@ -14,7 +16,7 @@ type ClienteRepositoryInterface interface {
 	// CRUD Básico
 	Create(ctx context.Context, cliente *models.Cliente) error
 	FindByID(ctx context.Context, id uint) (*models.Cliente, error)
-	FindByTelefone(ctx context.Context, telefone string, tenantID string) (*models.Cliente, error)
+	FindByTelefone(ctx context.Context, telefone string, tenantID uint) (*models.Cliente, error)
 	FindByTenant(ctx context.Context, tenantID string) ([]models.Cliente, error)
 	Update(ctx context.Context, cliente *models.Cliente) error
 	Delete(ctx context.Context, id uint) error
@@ -73,7 +75,7 @@ func (r *ClienteRepository) FindByID(ctx context.Context, id uint) (*models.Clie
 }
 
 // FindByTelefone busca um cliente pelo telefone
-func (r *ClienteRepository) FindByTelefone(ctx context.Context, telefone string, tenantID string) (*models.Cliente, error) {
+func (r *ClienteRepository) FindByTelefone(ctx context.Context, telefone string, tenantID uint) (*models.Cliente, error) {
 	var cliente models.Cliente
 	err := r.db.WithContext(ctx).
 		Where("telefone = ? AND tenant_id = ?", telefone, tenantID).
@@ -82,6 +84,11 @@ func (r *ClienteRepository) FindByTelefone(ctx context.Context, telefone string,
 		}).
 		First(&cliente).Error
 	if err != nil {
+		logger.Error(
+			ctx, "erro executando consulta SQL",
+			zap.String("SQL", r.db.Commit().Statement.TableExpr.SQL),
+			zap.String("Erro", err.Error()),
+		)
 		return nil, err
 	}
 	return &cliente, nil

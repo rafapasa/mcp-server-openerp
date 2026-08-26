@@ -84,6 +84,7 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 	// 1. Busca cardápio (com cache do cardapioService)
 	cardapio, err := s.cardapioService.GetCardapio(ctx, tenantID)
 	if err != nil {
+		logger.Error(ctx, err.Error())
 		return "", fmt.Errorf("erro cardápio: %w", err)
 	}
 

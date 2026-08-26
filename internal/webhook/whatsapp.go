@@ -33,10 +33,12 @@ func NewWhatsAppClient() *WhatsAppClient {
 	}
 }
 
+// SendMessage sends a WhatsApp message to the specified recipient.
 func (w *WhatsAppClient) SendMessage(to, message string) error {
 	return w.SendMessageCtx(context.Background(), to, message)
 }
 
+// SendMessageCtx sends a WhatsApp message using the provided context.
 func (w *WhatsAppClient) SendMessageCtx(ctx context.Context, to, message string) error {
 	logger.Debug(
 		ctx, "Enviando mensagem WhatsApp",
@@ -68,6 +70,7 @@ func (w *WhatsAppClient) SendMessageCtx(ctx context.Context, to, message string)
 
 	resp, err := w.client.Do(req)
 	if err != nil {
+		logger.Error(ctx, err.Error())
 		return err
 	}
 	defer resp.Body.Close()

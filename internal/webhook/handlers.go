@@ -102,8 +102,10 @@ func (h *WebhookHandler) HandleWebhookFiber(c *fiber.Ctx) error {
 		token := c.Query("hub.verify_token")
 		challenge := c.Query("hub.challenge")
 		if mode == "subscribe" && token == h.cfg.WhatsAppVerifyToken {
+			logger.Info(ctx, "Verificação de segurança do webhook realizada com sucesso")
 			return c.Status(200).SendString(challenge)
 		}
+		logger.Warn(ctx, "Falha na verificação de segurança do webhook ")
 		return c.Status(403).SendString("forbidden")
 	}
 
@@ -177,7 +179,10 @@ func (h *WebhookHandler) processEntries(ctx context.Context, req WebhookRequest)
 				}
 
 				if resposta != "" {
-					_ = h.whatsApp.SendMessage(msg.From, resposta)
+					err = h.whatsApp.SendMessage(msg.From, resposta)
+					if err != nil {
+						logger.Error(ctx, err.Error())
+					}
 				}
 			}
 		}
@@ -268,17 +273,18 @@ func (h *WebhookHandler) getOrCreateCliente(ctx context.Context, telefone, nome 
 	if err != nil {
 		return nil, err
 	}
-	if cliente == nil {
+	if cliente == nil && len(nome) > 0 {
 		cliente, err = h.clienteService.Create(ctx, &dto.CriarClienteRequest{
 			TenantID: tenantID,
 			Telefone: telefone,
 			Nome:     nome,
 		})
 		if err != nil {
+			logger.Error(ctx, err.Error())
 			return nil, err
 		}
 	}
-	return cliente, err
+	return cliente, nil
 }
 
 func (h *WebhookHandler) getTenantID(_ context.Context, phoneNumber, phoneNumberID string) (uint, error) {
