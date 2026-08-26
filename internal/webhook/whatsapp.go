@@ -26,7 +26,7 @@ func NewWhatsAppClient() *WhatsAppClient {
 	return &WhatsAppClient{
 		apiURL:      os.Getenv("WHATSAPP_API_URL"), // ex: https://graph.facebook.com/v20.0
 		accessToken: os.Getenv("WHATSAPP_ACCESS_TOKEN"),
-		phoneNumber: os.Getenv("WHATSAPP_PHONE_NUMBER_ID"), // ID, não número
+		phoneNumber: os.Getenv("WHATSAPP_PHONE_NUMBER"),
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 		},
