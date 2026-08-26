@@ -49,7 +49,8 @@ func VerifyWebhookHandlerFiber(c *fiber.Ctx, cfg config.Config) (bool, error) {
 	}
 
 	if !hmac.Equal(receivedMAC, expectedMAC) {
-		logger.Warn(c.UserContext(), "Assinatura inválida do webhook",
+		logger.Warn(
+			c.UserContext(), "Assinatura inválida do webhook",
 			zap.String("remote_ip", c.IP()),
 			zap.Int("body_len", len(c.Body())),
 			// NÃO loga expected/received/secret
