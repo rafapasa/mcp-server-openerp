@@ -5,10 +5,10 @@ import "time"
 
 // ItemCarrinho representa um item no carrinho
 type ItemCarrinho struct {
-	Nome       string  `json:"nome"`
-	Quantidade int     `json:"quantidade"`
-	Observacao string  `json:"observacao,omitempty"`
-	Preco      float64 `json:"preco"`
+	ProdutoItem ProdutoItem `json:"produto_item"`
+	Quantidade  int         `json:"quantidade"`
+	Observacao  string      `json:"observacao,omitempty"`
+	Preco       float64     `json:"preco"`
 }
 
 // Carrinho representa o carrinho de um cliente

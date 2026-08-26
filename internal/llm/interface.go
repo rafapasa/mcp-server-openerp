@@ -2,16 +2,13 @@ package llm
 
 import (
 	"context"
-
-	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
 type LLMClient interface {
 	GetProvider() string
 	GetModel() string
-	ExtractIntent(ctx context.Context, mensagem string, cardapio []dto.ProdutoItem) (*dto.IntencaoCliente, error)
 	GenerateResponse(ctx context.Context, prompt string) (string, error)
-	TranscribeAudio(ctx context.Context, audio []byte) (string, error)
+	TranscribeAudio(ctx context.Context, audio []byte, prompt string) (string, error)
 	DescribeImage(ctx context.Context, image []byte, prompt string) (string, error)
 }
 

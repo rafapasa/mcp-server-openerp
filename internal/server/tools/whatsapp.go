@@ -20,21 +20,26 @@ func RegisterWhatsAppTools(s ToolRegistrar, deps *Dependencies) {
 }
 
 func whatsappTool() mcp.Tool {
-	return mcp.NewTool("processar_mensagem_whatsapp",
+	return mcp.NewTool(
+		"processar_mensagem_whatsapp",
 		mcp.WithDescription("Recebe uma mensagem de WhatsApp, detecta a intenção (adicionar, remover, finalizar, visualizar) e processa"),
-		mcp.WithString("mensagem",
+		mcp.WithString(
+			"mensagem",
 			mcp.Required(),
 			mcp.Description("Mensagem enviada pelo cliente no WhatsApp"),
 		),
-		mcp.WithString("tenant_id",
+		mcp.WithString(
+			"tenant_id",
 			mcp.Required(),
 			mcp.Description("ID do estabelecimento (tenant)"),
 		),
-		mcp.WithString("cliente_id",
+		mcp.WithString(
+			"cliente_id",
 			mcp.Required(),
 			mcp.Description("ID do cliente no WhatsApp (número de telefone)"),
 		),
-		mcp.WithString("cliente_nome",
+		mcp.WithString(
+			"cliente_nome",
 			mcp.Description("Nome do cliente (opcional)"),
 		),
 	)
@@ -65,7 +70,8 @@ func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
 
 		clienteNome, _ := GetString(args, "cliente_nome")
 
-		logger.Info(ctx, "Processando mensagem de WhatsApp via tool",
+		logger.Info(
+			ctx, "Processando mensagem de WhatsApp via tool",
 			zap.Uint("cliente_id", clienteID),
 			zap.Uint("tenant_id", tenantID),
 			zap.String("mensagem", mensagem),
@@ -74,7 +80,8 @@ func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
 		// Busca cardápio
 		cardapio, err := deps.CardapioService.GetCardapio(ctx, tenantID)
 		if err != nil {
-			logger.Error(ctx, "Erro ao buscar cardápio",
+			logger.Error(
+				ctx, "Erro ao buscar cardápio",
 				zap.Error(err),
 				zap.Uint("tenant_id", tenantID),
 			)
@@ -116,7 +123,8 @@ func whatsappHandler(deps *Dependencies) server.ToolHandlerFunc {
 
 // handleLLMError trata erros da LLM e retorna mensagem amigável
 func handleLLMError(ctx context.Context, err error, mensagem string) *mcp.CallToolResult {
-	logger.Error(ctx, "Erro ao processar mensagem com LLM",
+	logger.Error(
+		ctx, "Erro ao processar mensagem com LLM",
 		zap.Error(err),
 		zap.String("mensagem", mensagem),
 	)
@@ -130,7 +138,8 @@ func handleLLMError(ctx context.Context, err error, mensagem string) *mcp.CallTo
 		strings.Contains(errMsgLower, "high demand") ||
 		strings.Contains(errMsgLower, "temporarily indisponível") {
 
-		logger.Warn(ctx, "LLM indisponível, retornando mensagem amigável",
+		logger.Warn(
+			ctx, "LLM indisponível, retornando mensagem amigável",
 			zap.Error(err),
 		)
 
@@ -146,7 +155,8 @@ func handleLLMError(ctx context.Context, err error, mensagem string) *mcp.CallTo
 	if strings.Contains(errMsgLower, "timeout") ||
 		strings.Contains(errMsgLower, "deadline") {
 
-		logger.Warn(ctx, "LLM timeout, retornando mensagem amigável",
+		logger.Warn(
+			ctx, "LLM timeout, retornando mensagem amigável",
 			zap.Error(err),
 		)
 
@@ -161,7 +171,8 @@ func handleLLMError(ctx context.Context, err error, mensagem string) *mcp.CallTo
 		strings.Contains(errMsgLower, "invalid api key") ||
 		strings.Contains(errMsgLower, "403") {
 
-		logger.Error(ctx, "Erro de autenticação com LLM",
+		logger.Error(
+			ctx, "Erro de autenticação com LLM",
 			zap.Error(err),
 		)
 
@@ -189,22 +200,24 @@ func processarAdicionar(ctx context.Context, clienteID, tenantID uint, intencao 
 		return mcp.NewToolResultError("Não foi possível identificar itens para adicionar ao carrinho"), nil
 	}
 
-	logger.Info(ctx, "Adicionando itens ao carrinho",
+	logger.Info(
+		ctx, "Adicionando itens ao carrinho",
 		zap.Uint("cliente_id", clienteID),
 		zap.Int("itens_count", len(intencao.Itens)),
 	)
 
 	for _, item := range intencao.Itens {
 		carrinhoItem := dto.ItemCarrinho{
-			Nome:       item.Nome,
-			Quantidade: item.Quantidade,
-			Observacao: item.Observacao,
-			Preco:      item.PrecoUnitario,
+			ProdutoItem: item.ProdutoItem,
+			Quantidade:  item.Quantidade,
+			Observacao:  item.Observacao,
+			Preco:       item.PrecoUnitario,
 		}
 		if err := deps.CarrinhoService.AdicionarItem(ctx, clienteID, tenantID, carrinhoItem); err != nil {
-			logger.Error(ctx, "Erro ao adicionar item ao carrinho",
+			logger.Error(
+				ctx, "Erro ao adicionar item ao carrinho",
 				zap.Error(err),
-				zap.String("item_nome", item.Nome),
+				zap.String("item_nome", item.ProdutoItem.Nome),
 			)
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao adicionar item: %v", err)), nil
 		}
@@ -232,16 +245,18 @@ func processarRemover(ctx context.Context, clienteID, tenantID uint, intencao *d
 		return mcp.NewToolResultError("Não foi possível identificar itens para remover"), nil
 	}
 
-	logger.Info(ctx, "Removendo itens do carrinho",
+	logger.Info(
+		ctx, "Removendo itens do carrinho",
 		zap.Uint("cliente_id", clienteID),
 		zap.Int("itens_count", len(intencao.Itens)),
 	)
 
 	for _, item := range intencao.Itens {
-		if err := deps.CarrinhoService.RemoverItem(ctx, clienteID, tenantID, item.Nome, item.Quantidade); err != nil {
-			logger.Error(ctx, "Erro ao remover item do carrinho",
+		if err := deps.CarrinhoService.RemoverItem(ctx, clienteID, tenantID, item.ProdutoItem.Nome, item.Quantidade); err != nil {
+			logger.Error(
+				ctx, "Erro ao remover item do carrinho",
 				zap.Error(err),
-				zap.String("item_nome", item.Nome),
+				zap.String("item_nome", item.ProdutoItem.Nome),
 			)
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao remover item: %v", err)), nil
 		}
@@ -280,7 +295,8 @@ func processarVisualizar(ctx context.Context, clienteID, tenantID uint, deps *De
 
 // processarFinalizar finaliza o pedido
 func processarFinalizar(ctx context.Context, clienteID, tenantID uint, clienteNome string, deps *Dependencies) (*mcp.CallToolResult, error) {
-	logger.Info(ctx, "Finalizando pedido",
+	logger.Info(
+		ctx, "Finalizando pedido",
 		zap.Uint("cliente_id", clienteID),
 		zap.Uint("tenant_id", tenantID),
 	)
@@ -297,7 +313,8 @@ func processarFinalizar(ctx context.Context, clienteID, tenantID uint, clienteNo
 
 // processarLimpar limpa o carrinho
 func processarLimpar(ctx context.Context, clienteID, tenantID uint, deps *Dependencies) (*mcp.CallToolResult, error) {
-	logger.Info(ctx, "Limpando carrinho",
+	logger.Info(
+		ctx, "Limpando carrinho",
 		zap.Uint("cliente_id", clienteID),
 		zap.Uint("tenant_id", tenantID),
 	)

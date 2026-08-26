@@ -20,7 +20,7 @@ func FormatResumoCarrinho(itens []dto.ItemCarrinho, total float64, tempoEstimado
 	for _, item := range itens {
 		totalItem := item.Preco * float64(item.Quantidade)
 		sb.WriteString(fmt.Sprintf("• %dx **%s** - R$ %.2f\n",
-			item.Quantidade, item.Nome, totalItem))
+			item.Quantidade, item.ProdutoItem.Nome, totalItem))
 		if item.Observacao != "" {
 			sb.WriteString(fmt.Sprintf("  _Obs: %s_\n", item.Observacao))
 		}
@@ -53,7 +53,7 @@ func FormatRespostaPedido(pedido *dto.PedidoConfirmado) string {
 	for _, item := range pedido.Itens {
 		totalItem := item.PrecoUnitario * float64(item.Quantidade)
 		sb.WriteString(fmt.Sprintf("• %dx **%s** - R$ %.2f\n",
-			item.Quantidade, item.Nome, totalItem))
+			item.Quantidade, item.ProdutoItem.Nome, totalItem))
 		if item.Observacao != "" {
 			sb.WriteString(fmt.Sprintf("  _Obs: %s_\n", item.Observacao))
 		}

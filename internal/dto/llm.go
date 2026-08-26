@@ -1,7 +1,7 @@
 package dto
 
 type IntencaoCliente struct {
-	Acao     string            `json:"acao"`
-	Itens    []ItemPedidoInput `json:"itens,omitempty"`
-	Mensagem string            `json:"mensagem,omitempty"`
+	Acao     string         `json:"acao"`
+	Itens    []ItemCarrinho `json:"itens,omitempty"`
+	Mensagem string         `json:"mensagem,omitempty"`
 }

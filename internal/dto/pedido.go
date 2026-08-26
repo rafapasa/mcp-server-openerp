@@ -3,10 +3,10 @@ package dto
 
 // ItemPedidoInput representa um item do pedido (entrada)
 type ItemPedidoInput struct {
-	Nome          string  `json:"nome"`
-	Quantidade    int     `json:"quantidade"`
-	Observacao    string  `json:"observacao"`
-	PrecoUnitario float64 `json:"preco_unitario,omitempty"`
+	ProdutoItem   ProdutoItem `json:"produto_item"`
+	Quantidade    int         `json:"quantidade"`
+	Observacao    string      `json:"observacao"`
+	PrecoUnitario float64     `json:"preco_unitario,omitempty"`
 }
 
 // PedidoExtraido representa o pedido extraído pela IA

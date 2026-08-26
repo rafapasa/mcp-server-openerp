@@ -37,6 +37,24 @@ type CriarPedidoRequest struct {
 	Origem            string          `json:"origem"`
 }
 
+// Total retorna o valor total do pedido
+func (r *CriarPedidoRequest) Total() float32 {
+	var total float64
+	for _, item := range r.Itens {
+		total += float64(item.Quantidade) * item.Preco
+	}
+	return float32(total)
+}
+
+// Se quiser em float64 (recomendado pro seu Pedido.Total que é float64):
+func (r *CriarPedidoRequest) TotalFloat64() float64 {
+	var total float64
+	for _, item := range r.Itens {
+		total += float64(item.Quantidade) * item.Preco
+	}
+	return total
+}
+
 type PedidoListResponseDTO struct {
 	Pedidos    []PedidoDTO `json:"pedidos"`
 	Total      int64       `json:"total"`

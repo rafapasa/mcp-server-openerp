@@ -56,3 +56,27 @@ func (s Status) IsValid() error {
 	}
 	return fmt.Errorf("status inválido: %d. Valores válidos são 1 (Ativo), 2 (Inativo), 3 (Bloqueado)", s)
 }
+
+type TaskType string
+
+const (
+	TaskExtractKeywords TaskType = "extract_keywords"
+	TaskResolveIDs      TaskType = "resolve_ids"
+	TaskGreeting        TaskType = "greeting"
+	TaskTranscribe      TaskType = "transcribe"
+	TaskVision          TaskType = "vision"
+)
+
+type MessageSource string
+
+const (
+	SourceText  MessageSource = "text"
+	SourceAudio MessageSource = "audio"
+	SourceImage MessageSource = "image"
+)
+
+// routing final:
+// - Se msg veio de áudio -> TaskTranscribe (groq) faz transcribe + extract keywords
+// - Se veio de imagem -> TaskVision (gemini) faz describe + extract keywords
+// - Se veio de texto -> LLM_TEXT extrai keywords
+// - ResolveIDs sempre LLM_TEXT (texto puro, independente da origem)

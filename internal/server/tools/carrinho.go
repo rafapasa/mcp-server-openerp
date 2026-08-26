@@ -27,25 +27,31 @@ func RegisterCarrinhoTools(s ToolRegistrar, deps *Dependencies) {
 // ============================================
 
 func adicionarAoCarrinhoTool() mcp.Tool {
-	return mcp.NewTool("adicionar_ao_carrinho",
+	return mcp.NewTool(
+		"adicionar_ao_carrinho",
 		mcp.WithDescription("Adiciona um ou mais itens ao carrinho do cliente"),
-		mcp.WithString("cliente_id",
+		mcp.WithString(
+			"cliente_id",
 			mcp.Required(),
 			mcp.Description("ID do cliente (número de telefone)"),
 		),
-		mcp.WithString("tenant_id",
+		mcp.WithString(
+			"tenant_id",
 			mcp.Required(),
 			mcp.Description("ID do estabelecimento"),
 		),
-		mcp.WithString("item_nome",
+		mcp.WithString(
+			"item_nome",
 			mcp.Required(),
 			mcp.Description("Nome do item a ser adicionado"),
 		),
-		mcp.WithNumber("quantidade",
+		mcp.WithNumber(
+			"quantidade",
 			mcp.Description("Quantidade do item (padrão: 1)"),
 			mcp.DefaultNumber(1),
 		),
-		mcp.WithString("observacao",
+		mcp.WithString(
+			"observacao",
 			mcp.Description("Observações sobre o item (ex: sem cebola)"),
 		),
 	)
@@ -84,7 +90,8 @@ func adicionarAoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 
 		observacao, _ := GetString(args, "observacao")
 
-		logger.Info(ctx, "Adicionando item ao carrinho",
+		logger.Info(
+			ctx, "Adicionando item ao carrinho",
 			zap.Uint("cliente_id", clienteID),
 			zap.Uint("tenant_id", tenantID),
 			zap.String("item_nome", itemNome),
@@ -94,7 +101,8 @@ func adicionarAoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 		// Busca cardápio para validar e obter preço
 		cardapio, err := deps.CardapioService.GetCardapio(ctx, tenantID)
 		if err != nil {
-			logger.Error(ctx, "Erro ao buscar cardápio",
+			logger.Error(
+				ctx, "Erro ao buscar cardápio",
 				zap.Error(err),
 				zap.Uint("tenant_id", tenantID),
 			)
@@ -106,18 +114,23 @@ func adicionarAoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 			return mcp.NewToolResultError("Cardápio não encontrado para este estabelecimento"), nil
 		}
 
-		existe, preco := deps.CardapioService.ItemExisteNoCardapio(cardapio, itemNome)
-		if !existe {
+		produtoItem, err := deps.CardapioService.ItemExisteNoCardapio(cardapio, itemNome)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if produtoItem == nil {
 			similar := deps.CardapioService.EncontrarItemSimilar(cardapio, itemNome)
 			if similar != "" {
-				_, preco = deps.CardapioService.ItemExisteNoCardapio(cardapio, similar)
-				logger.Info(ctx, "Item corrigido",
+				produtoItem, err = deps.CardapioService.ItemExisteNoCardapio(cardapio, similar)
+				logger.Info(
+					ctx, "Item corrigido",
 					zap.String("original", itemNome),
 					zap.String("corrigido", similar),
 				)
 				itemNome = similar
 			} else {
-				logger.Warn(ctx, "Item não encontrado no cardápio",
+				logger.Warn(
+					ctx, "Item não encontrado no cardápio",
 					zap.String("item_nome", itemNome),
 					zap.Uint("tenant_id", tenantID),
 				)
@@ -126,14 +139,15 @@ func adicionarAoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 		}
 
 		item := dto.ItemCarrinho{
-			Nome:       itemNome,
-			Quantidade: quantidade,
-			Observacao: observacao,
-			Preco:      preco,
+			ProdutoItem: *produtoItem,
+			Quantidade:  quantidade,
+			Observacao:  observacao,
+			Preco:       *&produtoItem.Preco,
 		}
 
 		if err := deps.CarrinhoService.AdicionarItem(ctx, clienteID, tenantID, item); err != nil {
-			logger.Error(ctx, "Erro ao adicionar item ao carrinho",
+			logger.Error(
+				ctx, "Erro ao adicionar item ao carrinho",
 				zap.Error(err),
 				zap.String("item_nome", itemNome),
 				zap.Uint("cliente_id", clienteID),
@@ -150,7 +164,8 @@ func adicionarAoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 		total := deps.CarrinhoService.CalcularTotal(carrinho)
 		tempoEstimado := deps.CarrinhoService.CalcularTempoEstimado(carrinho)
 
-		logger.Info(ctx, "Item adicionado com sucesso",
+		logger.Info(
+			ctx, "Item adicionado com sucesso",
 			zap.String("item_nome", itemNome),
 			zap.Int("total_itens", len(carrinho.Itens)),
 			zap.Float64("total", total),
@@ -168,21 +183,26 @@ func adicionarAoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 // ============================================
 
 func removerDoCarrinhoTool() mcp.Tool {
-	return mcp.NewTool("remover_do_carrinho",
+	return mcp.NewTool(
+		"remover_do_carrinho",
 		mcp.WithDescription("Remove um item do carrinho do cliente"),
-		mcp.WithString("cliente_id",
+		mcp.WithString(
+			"cliente_id",
 			mcp.Required(),
 			mcp.Description("ID do cliente (número de telefone)"),
 		),
-		mcp.WithString("tenant_id",
+		mcp.WithString(
+			"tenant_id",
 			mcp.Required(),
 			mcp.Description("ID do estabelecimento"),
 		),
-		mcp.WithString("item_nome",
+		mcp.WithString(
+			"item_nome",
 			mcp.Required(),
 			mcp.Description("Nome do item a ser removido"),
 		),
-		mcp.WithNumber("quantidade",
+		mcp.WithNumber(
+			"quantidade",
 			mcp.Description("Quantidade a remover (padrão: 1, remova 0 para remover todos)"),
 			mcp.DefaultNumber(1),
 		),
@@ -220,7 +240,8 @@ func removerDoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 			quantidade = int(qtd)
 		}
 
-		logger.Info(ctx, "Removendo item do carrinho",
+		logger.Info(
+			ctx, "Removendo item do carrinho",
 			zap.Uint("cliente_id", clienteID),
 			zap.Uint("tenant_id", tenantID),
 			zap.String("item_nome", itemNome),
@@ -228,7 +249,8 @@ func removerDoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 		)
 
 		if err := deps.CarrinhoService.RemoverItem(ctx, clienteID, tenantID, itemNome, quantidade); err != nil {
-			logger.Error(ctx, "Erro ao remover item do carrinho",
+			logger.Error(
+				ctx, "Erro ao remover item do carrinho",
 				zap.Error(err),
 				zap.String("item_nome", itemNome),
 				zap.Uint("cliente_id", clienteID),
@@ -245,7 +267,8 @@ func removerDoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 		total := deps.CarrinhoService.CalcularTotal(carrinho)
 		tempoEstimado := deps.CarrinhoService.CalcularTempoEstimado(carrinho)
 
-		logger.Info(ctx, "Item removido com sucesso",
+		logger.Info(
+			ctx, "Item removido com sucesso",
 			zap.String("item_nome", itemNome),
 			zap.Int("total_itens", len(carrinho.Itens)),
 		)
@@ -262,13 +285,16 @@ func removerDoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 // ============================================
 
 func visualizarCarrinhoTool() mcp.Tool {
-	return mcp.NewTool("visualizar_carrinho",
+	return mcp.NewTool(
+		"visualizar_carrinho",
 		mcp.WithDescription("Visualiza o carrinho atual do cliente com itens, total e tempo estimado"),
-		mcp.WithString("cliente_id",
+		mcp.WithString(
+			"cliente_id",
 			mcp.Required(),
 			mcp.Description("ID do cliente (número de telefone)"),
 		),
-		mcp.WithString("tenant_id",
+		mcp.WithString(
+			"tenant_id",
 			mcp.Required(),
 			mcp.Description("ID do estabelecimento"),
 		),
@@ -295,7 +321,8 @@ func visualizarCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		logger.Debug(ctx, "Visualizando carrinho",
+		logger.Debug(
+			ctx, "Visualizando carrinho",
 			zap.Uint("cliente_id", clienteID),
 			zap.Uint("tenant_id", tenantID),
 		)
@@ -319,17 +346,21 @@ func visualizarCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 // ============================================
 
 func finalizarPedidoTool() mcp.Tool {
-	return mcp.NewTool("finalizar_pedido",
+	return mcp.NewTool(
+		"finalizar_pedido",
 		mcp.WithDescription("Finaliza o pedido convertendo o carrinho em um pedido confirmado"),
-		mcp.WithString("cliente_id",
+		mcp.WithString(
+			"cliente_id",
 			mcp.Required(),
 			mcp.Description("ID do cliente (número de telefone)"),
 		),
-		mcp.WithString("tenant_id",
+		mcp.WithString(
+			"tenant_id",
 			mcp.Required(),
 			mcp.Description("ID do estabelecimento"),
 		),
-		mcp.WithString("cliente_nome",
+		mcp.WithString(
+			"cliente_nome",
 			mcp.Description("Nome do cliente (opcional)"),
 		),
 	)
@@ -357,21 +388,24 @@ func finalizarPedidoHandler(deps *Dependencies) server.ToolHandlerFunc {
 
 		clienteNome, _ := GetString(args, "cliente_nome")
 
-		logger.Info(ctx, "Finalizando pedido",
+		logger.Info(
+			ctx, "Finalizando pedido",
 			zap.Uint("cliente_id", clienteID),
 			zap.Uint("tenant_id", tenantID),
 		)
 
 		pedidoConfirmado, err := deps.CarrinhoService.FinalizarCarrinho(ctx, clienteID, tenantID, clienteNome)
 		if err != nil {
-			logger.Error(ctx, "Erro ao finalizar pedido",
+			logger.Error(
+				ctx, "Erro ao finalizar pedido",
 				zap.Error(err),
 				zap.Uint("cliente_id", clienteID),
 			)
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao finalizar pedido: %v", err)), nil
 		}
 
-		logger.Info(ctx, "Pedido finalizado com sucesso",
+		logger.Info(
+			ctx, "Pedido finalizado com sucesso",
 			zap.Int("pedido_id", pedidoConfirmado.ID),
 			zap.Float64("total", pedidoConfirmado.Total),
 		)
@@ -386,13 +420,16 @@ func finalizarPedidoHandler(deps *Dependencies) server.ToolHandlerFunc {
 // ============================================
 
 func limparCarrinhoTool() mcp.Tool {
-	return mcp.NewTool("limpar_carrinho",
+	return mcp.NewTool(
+		"limpar_carrinho",
 		mcp.WithDescription("Limpa todo o carrinho do cliente"),
-		mcp.WithString("cliente_id",
+		mcp.WithString(
+			"cliente_id",
 			mcp.Required(),
 			mcp.Description("ID do cliente (número de telefone)"),
 		),
-		mcp.WithString("tenant_id",
+		mcp.WithString(
+			"tenant_id",
 			mcp.Required(),
 			mcp.Description("ID do estabelecimento"),
 		),
@@ -419,13 +456,15 @@ func limparCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		logger.Info(ctx, "Limpando carrinho",
+		logger.Info(
+			ctx, "Limpando carrinho",
 			zap.Uint("cliente_id", clienteID),
 			zap.Uint("tenant_id", tenantID),
 		)
 
 		if err := deps.CarrinhoService.LimparCarrinho(ctx, clienteID, tenantID); err != nil {
-			logger.Error(ctx, "Erro ao limpar carrinho",
+			logger.Error(
+				ctx, "Erro ao limpar carrinho",
 				zap.Error(err),
 				zap.Uint("cliente_id", clienteID),
 			)

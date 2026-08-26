@@ -12,14 +12,16 @@ import (
 // CarrinhoServiceInterface define as operações do serviço de carrinho
 type CarrinhoServiceInterface interface {
 	AdicionarItem(ctx context.Context, clienteID, tenantID uint, item dto.ItemCarrinho) error
-	RemoverItem(ctx context.Context, clienteID, tenantID uint, nome string, quantidade int) error
+	RemoverItem(ctx context.Context, clienteID, tenantID uint, itemCarrinho dto.ItemCarrinho, quantidade int) error
 	GetCarrinho(ctx context.Context, clienteID, tenantID uint) (*dto.Carrinho, error)
 	LimparCarrinho(ctx context.Context, clienteID, tenantID uint) error
 	FinalizarCarrinho(ctx context.Context, clienteID, tenantID uint, clienteNome string) (*dto.PedidoConfirmado, error)
 	CalcularTotal(carrinho *dto.Carrinho) float64
 	CalcularTempoEstimado(carrinho *dto.Carrinho) int
-	FormatResumoCarrinho(ctx context.Context, clienteID, tenantID uint) (string, error)
+	FormatResumoCarrinho(ctx context.Context, carrinho *dto.Carrinho) (string, error)
+	FormatResumoCarrinhoByCliente(ctx context.Context, clienteID, tenantID uint) (string, error)
 	FormatarPedidoConfirmado(pedido *dto.PedidoConfirmado) string
+	ProcessarMensagem(ctx context.Context, clienteID, tenantID uint, input dto.MessageInput) (string, error)
 }
 
 // ============================================
@@ -30,7 +32,7 @@ type CardapioServiceInterface interface {
 	// Existing methods
 	GetCardapio(ctx context.Context, tenantID uint) ([]dto.ProdutoItem, error)
 	BuscarProdutoPorNome(ctx context.Context, tenantID string, nome string) (*dto.ProdutoItem, error)
-	ItemExisteNoCardapio(cardapio []dto.ProdutoItem, nome string) (bool, float64)
+	ItemExisteNoCardapio(cardapio []dto.ProdutoItem, nome string) (*dto.ProdutoItem, error)
 	EncontrarItemSimilar(cardapio []dto.ProdutoItem, nome string) string
 	FormatarCardapio(cardapio []dto.ProdutoItem) string
 
