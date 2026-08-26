@@ -1,12 +1,9 @@
-// internal/server/api_handlers.go - COMPLETO - WIRE READY
 package server
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/rafapasa/mcp-server-openerp/internal/cache"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
@@ -18,7 +15,6 @@ type APIHandlers struct {
 	clienteService  service.ClienteServiceInterface
 	pedidoService   service.PedidoServiceInterface
 	cardapioService service.CardapioServiceInterface
-	cache           *cache.Cache
 }
 
 func NewAPIHandlers(
@@ -28,14 +24,10 @@ func NewAPIHandlers(
 	cardapioService service.CardapioServiceInterface,
 ) *APIHandlers {
 	return &APIHandlers{
-		authService:     authService,
-		clienteService:  clienteService,
-		pedidoService:   pedidoService,
-		cardapioService: cardapioService,
+		authService: authService, clienteService: clienteService,
+		pedidoService: pedidoService, cardapioService: cardapioService,
 	}
 }
-
-func (h *APIHandlers) SetCache(c *cache.Cache) { h.cache = c }
 
 // POST /api/v1/login
 func (h *APIHandlers) LoginFiber(c *fiber.Ctx) error {
@@ -43,7 +35,6 @@ func (h *APIHandlers) LoginFiber(c *fiber.Ctx) error {
 	if err := c.BodyParser(&loginRequest); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 	}
-	// seu auth aqui
 	token, err := h.authService.Authenticate(c.Context(), loginRequest)
 	if err != nil {
 		return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
@@ -105,11 +96,11 @@ func (h *APIHandlers) UpdatePedidoStatusFiber(c *fiber.Ctx) error {
 
 // GET /api/v1/clientes
 func (h *APIHandlers) ListClientesFiber(c *fiber.Ctx) error {
-	tenantID, err := strconv.Atoi(c.Get("X-Tenant-ID"))
+	tenantID, err := h.getTenantIdByHeaderFiber(c)
 	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err})
+		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
 	}
-	clientes, err := h.clienteService.FindByTenant(c.Context(), uint(tenantID))
+	clientes, err := h.clienteService.FindByTenant(c.Context(), tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -129,21 +120,22 @@ func (h *APIHandlers) GetClienteFiber(c *fiber.Ctx) error {
 // GET /api/v1/clientes/:id/pedidos
 func (h *APIHandlers) GetClientePedidosFiber(c *fiber.Ctx) error {
 	id, _ := strconv.Atoi(c.Params("id"))
-	limit, _ := strconv.Atoi(c.Params("limit"))
-	page, _ := strconv.Atoi(c.Params("page"))
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	if limit <= 0 {
+		limit = 20
+	}
+	if page <= 0 {
+		page = 1
+	}
 	pedidos, total, err := h.pedidoService.ListByCliente(c.Context(), uint(id), page, limit)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	resp := dto.PedidoListResponseDTO{
-		Pedidos:    pedidos,
-		Total:      total,
-		Page:       page,
-		Limit:      limit,
+		Pedidos: pedidos, Total: total, Page: page, Limit: limit,
 		TotalPages: (total + int64(limit) - 1) / int64(limit),
 	}
-
 	return c.JSON(resp)
 }
 
@@ -162,13 +154,6 @@ func (h *APIHandlers) ListProdutosFiber(c *fiber.Ctx) error {
 	tenantID, err := h.getTenantIdByHeaderFiber(c)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
-	}
-	// tenta cache
-	cacheKey := "produtos:" + fmt.Sprint(tenantID)
-	if h.cache != nil {
-		if cached, err := h.cache.Get(cacheKey); err == nil && cached != "" {
-			return c.SendString(cached)
-		}
 	}
 	produtos, err := h.cardapioService.GetCardapio(c.Context(), tenantID)
 	if err != nil {

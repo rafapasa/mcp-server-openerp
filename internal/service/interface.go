@@ -32,6 +32,7 @@ type CardapioServiceInterface interface {
 	// Existing methods
 	GetCardapio(ctx context.Context, tenantID uint) ([]dto.ProdutoItem, error)
 	BuscarProdutoPorNome(ctx context.Context, tenantID string, nome string) (*dto.ProdutoItem, error)
+	BuscarProdutoPorIdNoCardapio(cardapio []dto.ProdutoItem, produtoID uint) (*dto.ProdutoItem, error)
 	ItemExisteNoCardapio(cardapio []dto.ProdutoItem, nome string) (*dto.ProdutoItem, error)
 	EncontrarItemSimilar(cardapio []dto.ProdutoItem, nome string) string
 	FormatarCardapio(cardapio []dto.ProdutoItem) string

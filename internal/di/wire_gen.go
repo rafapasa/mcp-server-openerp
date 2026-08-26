@@ -30,8 +30,7 @@ func InitializeApp() (*server.HttpServer, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := provideRedisClient(redis)
-	cardapioServiceInterface := service.NewCardapioService(produtoRepository, tenantRepository, client)
+	cardapioServiceInterface := service.NewCardapioService(produtoRepository, tenantRepository, redis)
 	pedidoRepository := repository.NewPedidoRepository(db)
 	pedidoServiceInterface := service.NewPedidoService(pedidoRepository, cardapioServiceInterface)
 	unifiedLLM := llm.NewUnifiedLLM(configConfig)
@@ -45,9 +44,9 @@ func InitializeApp() (*server.HttpServer, error) {
 	apiHandlers := server.NewAPIHandlers(authServiceInterface, clienteServiceInterface, pedidoServiceInterface, cardapioServiceInterface)
 	whatsAppClient := webhook.NewWhatsAppClient()
 	tenantServiceInterface := service.NewTenantService(tenantRepository)
-	webhookHandler := webhook.NewWebhookHandler(whatsAppClient, tenantServiceInterface, clienteServiceInterface, cardapioServiceInterface, carrinhoServiceInterface, pedidoServiceInterface, unifiedLLM, configConfig)
+	webhookHandler := webhook.NewWebhookHandler(whatsAppClient, tenantServiceInterface, clienteServiceInterface, carrinhoServiceInterface, redis, configConfig)
 	healthChecker := health.NewHealthChecker()
-	httpServer := server.NewHttpServer(configConfig, mcpServer, apiHandlers, webhookHandler, healthChecker, redis)
+	httpServer := server.NewHttpServer(configConfig, mcpServer, apiHandlers, webhookHandler, healthChecker)
 	return httpServer, nil
 }
 
@@ -63,8 +62,7 @@ func InitializeMCPServer() (*server.MCPServer, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := provideRedisClient(redis)
-	cardapioServiceInterface := service.NewCardapioService(produtoRepository, tenantRepository, client)
+	cardapioServiceInterface := service.NewCardapioService(produtoRepository, tenantRepository, redis)
 	pedidoRepository := repository.NewPedidoRepository(db)
 	pedidoServiceInterface := service.NewPedidoService(pedidoRepository, cardapioServiceInterface)
 	unifiedLLM := llm.NewUnifiedLLM(configConfig)

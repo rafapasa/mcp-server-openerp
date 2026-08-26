@@ -1,4 +1,4 @@
-// internal/server/tools/pedido.go
+// internal/server/tools/pedido.go - COMPLETO - usando dto existente
 package tools
 
 import (
@@ -12,32 +12,19 @@ import (
 	"go.uber.org/zap"
 )
 
-// RegisterPedidoTools registra as tools de pedido
 func RegisterPedidoTools(s ToolRegistrar, deps *Dependencies) {
 	s.AddTool(processarPedidoTool(), processarPedidoHandler(deps))
 }
 
 func processarPedidoTool() mcp.Tool {
-	return mcp.NewTool("processar_pedido_restaurante",
-		mcp.WithDescription("Processa um pedido manualmente (usado pelo dashboard do estabelecimento)"),
-		mcp.WithString("tenant_id",
-			mcp.Required(),
-			mcp.Description("ID do estabelecimento"),
-		),
-		mcp.WithString("cliente_id",
-			mcp.Required(),
-			mcp.Description("ID do cliente"),
-		),
-		mcp.WithString("cliente_nome",
-			mcp.Description("Nome do cliente"),
-		),
-		mcp.WithArray("itens",
-			mcp.Required(),
-			mcp.Description("Lista de itens do pedido"),
-		),
-		mcp.WithString("observacoes",
-			mcp.Description("Observações gerais do pedido"),
-		),
+	return mcp.NewTool(
+		"processar_pedido_restaurante",
+		mcp.WithDescription("Processa pedido manual. Cada item DEVE ter produto_id (ID MySQL obtido via consultar_cardapio). Validação segura por ID."),
+		mcp.WithString("tenant_id", mcp.Required()),
+		mcp.WithString("cliente_id", mcp.Required()),
+		mcp.WithString("cliente_nome"),
+		mcp.WithArray("itens", mcp.Required(), mcp.Description(`[{"produto_id": 123, "quantidade": 1, "observacao": "sem cebola"}] - produto_id obrigatório`)),
+		mcp.WithString("observacoes"),
 	)
 }
 
@@ -45,62 +32,90 @@ func processarPedidoHandler(deps *Dependencies) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := GetArguments(request)
 		if err != nil {
-			logger.Warn(ctx, "Erro ao extrair argumentos", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		tenantID, err := GetUintRequired(args, "tenant_id")
 		if err != nil {
-			logger.Warn(ctx, "tenant_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		clienteID, err := GetUintRequired(args, "cliente_id")
 		if err != nil {
-			logger.Warn(ctx, "cliente_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
-		itens, err := GetItems(args)
-		if err != nil {
-			logger.Warn(ctx, "Erro ao extrair itens", zap.Error(err))
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
 		clienteNome, _ := GetString(args, "cliente_nome")
 		observacoes, _ := GetString(args, "observacoes")
 
-		logger.Info(ctx, "Processando pedido via dashboard",
-			zap.Uint("tenant_id", tenantID),
-			zap.Uint("cliente_id", clienteID),
-			zap.String("cliente_nome", clienteNome),
-			zap.Int("itens_count", len(itens)),
-		)
+		rawItens, ok := args["itens"]
+		if !ok {
+			return mcp.NewToolResultError("itens é obrigatório"), nil
+		}
+		itensSlice, ok := rawItens.([]interface{})
+		if !ok || len(itensSlice) == 0 {
+			return mcp.NewToolResultError("itens deve ser array não vazio"), nil
+		}
+
+		// Carrega cardápio 1x - evita N+1
+		cardapio, err := deps.CardapioService.GetCardapio(ctx, tenantID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar cardápio: %v", err)), nil
+		}
+
+		var itensValidados []dto.ItemPedidoInput
+		for idx, raw := range itensSlice {
+			m, ok := raw.(map[string]interface{})
+			if !ok {
+				return mcp.NewToolResultError(fmt.Sprintf("item[%d] inválido", idx)), nil
+			}
+			prodIDRaw, ok := m["produto_id"]
+			if !ok {
+				return mcp.NewToolResultError(fmt.Sprintf("item[%d] sem produto_id - use consultar_cardapio", idx)), nil
+			}
+			prodIDFloat, ok := prodIDRaw.(float64)
+			if !ok || prodIDFloat <= 0 {
+				return mcp.NewToolResultError(fmt.Sprintf("item[%d] produto_id inválido", idx)), nil
+			}
+			produtoID := uint(prodIDFloat)
+
+			produto, err := deps.CardapioService.BuscarProdutoPorIdNoCardapio(cardapio, produtoID)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("item[%d]: %v", idx, err)), nil
+			}
+			if !produto.Disponivel {
+				return mcp.NewToolResultError(fmt.Sprintf("item[%d] [%d] %s indisponível", idx, produto.ID, produto.Nome)), nil
+			}
+
+			qtd := 1
+			if q, ok := m["quantidade"].(float64); ok && q > 0 {
+				qtd = int(q)
+			}
+			obs := ""
+			if o, ok := m["observacao"].(string); ok {
+				obs = o
+			}
+
+			// Usa seu DTO existente
+			itensValidados = append(itensValidados, dto.ItemPedidoInput{
+				ProdutoItem:   *produto,
+				Quantidade:    qtd,
+				Observacao:    obs,
+				PrecoUnitario: produto.Preco,
+			})
+		}
+
+		logger.Info(ctx, "Processando pedido B2B por ID", zap.Uint("tenant_id", tenantID), zap.Int("itens", len(itensValidados)))
 
 		pedidoExtraido := &dto.PedidoExtraido{
-			Itens:       itens,
+			Itens:       itensValidados,
 			Observacoes: observacoes,
 		}
 
 		pedidoConfirmado, err := deps.PedidoService.ProcessarPedido(ctx, tenantID, clienteID, clienteNome, pedidoExtraido)
 		if err != nil {
-			logger.Error(ctx, "Erro ao processar pedido",
-				zap.Error(err),
-				zap.Uint("tenant_id", tenantID),
-				zap.Uint("cliente_id", clienteID),
-			)
-			return mcp.NewToolResultError(fmt.Sprintf("Erro ao processar pedido: %v", err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("Erro ao processar: %v", err)), nil
 		}
 
-		logger.Info(ctx, "Pedido processado com sucesso",
-			zap.Int("pedido_id", pedidoConfirmado.ID),
-			zap.Float64("total", pedidoConfirmado.Total),
-			zap.String("status", pedidoConfirmado.Status),
-		)
-
-		return mcp.NewToolResultText(
-			fmt.Sprintf("✅ Pedido #%d processado com sucesso!\nTotal: R$ %.2f",
-				pedidoConfirmado.ID, pedidoConfirmado.Total),
-		), nil
+		mensagem := fmt.Sprintf("✅ Pedido #%d | Total R$ %.2f | %d itens validados por ID MySQL",
+			pedidoConfirmado.ID, pedidoConfirmado.Total, len(itensValidados))
+		return mcp.NewToolResultText(mensagem), nil
 	}
 }

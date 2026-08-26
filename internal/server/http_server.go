@@ -10,7 +10,6 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/rafapasa/mcp-server-openerp/internal/cache"
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/health"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
@@ -30,7 +29,6 @@ type HttpServer struct {
 	webhookHandler *webhook.WebhookHandler
 	healthCheck    *health.HealthChecker
 	cfg            *config.Config
-	cacheLayer     *cache.Cache
 }
 
 // NewHttpServer - 100% Wire Ready - NÃO CRIA REPO/SERVICE DENTRO
@@ -40,13 +38,8 @@ func NewHttpServer(
 	apiHandlers *APIHandlers,
 	webhookHandler *webhook.WebhookHandler,
 	healthCheck *health.HealthChecker,
-	cacheLayer *cache.Cache,
 ) *HttpServer {
 	// Wire não chama SetCache automaticamente, injeta manual aqui
-	if cacheLayer != nil {
-		apiHandlers.SetCache(cacheLayer)
-		webhookHandler.SetCache(cacheLayer)
-	}
 
 	return &HttpServer{
 		mcpServer:      mcpServer,
@@ -54,7 +47,6 @@ func NewHttpServer(
 		webhookHandler: webhookHandler,
 		healthCheck:    healthCheck,
 		cfg:            cfg,
-		cacheLayer:     cacheLayer,
 	}
 }
 
@@ -101,7 +93,7 @@ func (s *HttpServer) buildFiber() *fiber.App {
 	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
 	// 2. WEBHOOK WHATSAPP - 100% Fiber
-	app.Get("/webhook", s.webhookHandler.HandleVerifyWebhookFiber)
+	app.Get("/webhook", s.webhookHandler.HandleWebhookFiber)
 	app.Post("/webhook", s.webhookHandler.HandleWebhookFiber)
 
 	// 3. API PAINEL
@@ -125,8 +117,8 @@ func (s *HttpServer) buildFiber() *fiber.App {
 	// app.Get("/mcp/sse", adaptor.HTTPHandler(s.mcpServer.SSEHandler()))
 	// app.Post("/mcp/messages", adaptor.HTTPHandler(s.mcpServer.MessageHandler()))
 
-	logger.GetLogger().Info("HttpServer Fiber montado",
-		zap.Bool("cache_enabled", s.cacheLayer != nil),
+	logger.GetLogger().Info(
+		"HttpServer Fiber montado",
 		zap.Strings("routes", []string{"/health", "/ready", "/metrics", "/webhook", "/api/v1", "/mcp"}),
 	)
 

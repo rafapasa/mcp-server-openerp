@@ -1,4 +1,4 @@
-// internal/server/tools/carrinho.go
+// internal/server/tools/carrinho.go - COMPLETO - FLUXO NOVO ID MySQL
 package tools
 
 import (
@@ -13,7 +13,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// RegisterCarrinhoTools registra as tools de gerenciamento de carrinho
 func RegisterCarrinhoTools(s ToolRegistrar, deps *Dependencies) {
 	s.AddTool(adicionarAoCarrinhoTool(), adicionarAoCarrinhoHandler(deps))
 	s.AddTool(removerDoCarrinhoTool(), removerDoCarrinhoHandler(deps))
@@ -23,37 +22,17 @@ func RegisterCarrinhoTools(s ToolRegistrar, deps *Dependencies) {
 }
 
 // ============================================
-// adicionar_ao_carrinho
+// adicionar_ao_carrinho - ID MySQL
 // ============================================
-
 func adicionarAoCarrinhoTool() mcp.Tool {
 	return mcp.NewTool(
 		"adicionar_ao_carrinho",
-		mcp.WithDescription("Adiciona um ou mais itens ao carrinho do cliente"),
-		mcp.WithString(
-			"cliente_id",
-			mcp.Required(),
-			mcp.Description("ID do cliente (número de telefone)"),
-		),
-		mcp.WithString(
-			"tenant_id",
-			mcp.Required(),
-			mcp.Description("ID do estabelecimento"),
-		),
-		mcp.WithString(
-			"item_nome",
-			mcp.Required(),
-			mcp.Description("Nome do item a ser adicionado"),
-		),
-		mcp.WithNumber(
-			"quantidade",
-			mcp.Description("Quantidade do item (padrão: 1)"),
-			mcp.DefaultNumber(1),
-		),
-		mcp.WithString(
-			"observacao",
-			mcp.Description("Observações sobre o item (ex: sem cebola)"),
-		),
+		mcp.WithDescription("Adiciona item ao carrinho usando ID do cardápio. Use consultar_cardapio para obter o ID."),
+		mcp.WithString("cliente_id", mcp.Required(), mcp.Description("ID do cliente")),
+		mcp.WithString("tenant_id", mcp.Required(), mcp.Description("ID do estabelecimento")),
+		mcp.WithNumber("produto_id", mcp.Required(), mcp.Description("ID do produto no MySQL - obtido via consultar_cardapio")),
+		mcp.WithNumber("quantidade", mcp.Description("Quantidade"), mcp.DefaultNumber(1)),
+		mcp.WithString("observacao", mcp.Description("Observações ex: sem cebola")),
 	)
 }
 
@@ -61,151 +40,85 @@ func adicionarAoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := GetArguments(request)
 		if err != nil {
-			logger.Warn(ctx, "Erro ao extrair argumentos", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		clienteID, err := GetUintRequired(args, "cliente_id")
 		if err != nil {
-			logger.Warn(ctx, "cliente_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		tenantID, err := GetUintRequired(args, "tenant_id")
 		if err != nil {
-			logger.Warn(ctx, "tenant_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
-		itemNome, err := GetStringRequired(args, "item_nome")
+		produtoID, err := GetUintRequired(args, "produto_id")
 		if err != nil {
-			logger.Warn(ctx, "item_nome inválido", zap.Error(err))
-			return mcp.NewToolResultError(err.Error()), nil
+			return mcp.NewToolResultError("produto_id é obrigatório - use consultar_cardapio para obter o ID"), nil
 		}
-
 		quantidade := 1
 		if qtd, ok := args["quantidade"].(float64); ok && qtd > 0 {
 			quantidade = int(qtd)
 		}
-
 		observacao, _ := GetString(args, "observacao")
 
-		logger.Info(
-			ctx, "Adicionando item ao carrinho",
-			zap.Uint("cliente_id", clienteID),
-			zap.Uint("tenant_id", tenantID),
-			zap.String("item_nome", itemNome),
-			zap.Int("quantidade", quantidade),
-		)
+		logger.Info(ctx, "Adicionando item ao carrinho B2B",
+			zap.Uint("cliente_id", clienteID), zap.Uint("tenant_id", tenantID),
+			zap.Uint("produto_id", produtoID), zap.Int("quantidade", quantidade))
 
-		// Busca cardápio para validar e obter preço
 		cardapio, err := deps.CardapioService.GetCardapio(ctx, tenantID)
 		if err != nil {
-			logger.Error(
-				ctx, "Erro ao buscar cardápio",
-				zap.Error(err),
-				zap.Uint("tenant_id", tenantID),
-			)
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar cardápio: %v", err)), nil
 		}
-
 		if len(cardapio) == 0 {
-			logger.Warn(ctx, "Cardápio vazio", zap.Uint("tenant_id", tenantID))
-			return mcp.NewToolResultError("Cardápio não encontrado para este estabelecimento"), nil
+			return mcp.NewToolResultError("Cardápio vazio para este estabelecimento"), nil
 		}
 
-		produtoItem, err := deps.CardapioService.ItemExisteNoCardapio(cardapio, itemNome)
+		produtoItem, err := deps.CardapioService.BuscarProdutoPorIdNoCardapio(cardapio, produtoID)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return nil, err
 		}
 		if produtoItem == nil {
-			similar := deps.CardapioService.EncontrarItemSimilar(cardapio, itemNome)
-			if similar != "" {
-				produtoItem, err = deps.CardapioService.ItemExisteNoCardapio(cardapio, similar)
-				logger.Info(
-					ctx, "Item corrigido",
-					zap.String("original", itemNome),
-					zap.String("corrigido", similar),
-				)
-				itemNome = similar
-			} else {
-				logger.Warn(
-					ctx, "Item não encontrado no cardápio",
-					zap.String("item_nome", itemNome),
-					zap.Uint("tenant_id", tenantID),
-				)
-				return mcp.NewToolResultError(fmt.Sprintf("Item '%s' não encontrado no cardápio", itemNome)), nil
-			}
+			return mcp.NewToolResultError(fmt.Sprintf("Produto ID %d não existe no tenant %d", produtoID, tenantID)), nil
+		}
+		if !produtoItem.Disponivel {
+			return mcp.NewToolResultError(fmt.Sprintf("Produto [%d] %s indisponível", produtoItem.ID, produtoItem.Nome)), nil
 		}
 
 		item := dto.ItemCarrinho{
 			ProdutoItem: *produtoItem,
 			Quantidade:  quantidade,
 			Observacao:  observacao,
-			Preco:       *&produtoItem.Preco,
+			Preco:       produtoItem.Preco,
 		}
 
 		if err := deps.CarrinhoService.AdicionarItem(ctx, clienteID, tenantID, item); err != nil {
-			logger.Error(
-				ctx, "Erro ao adicionar item ao carrinho",
-				zap.Error(err),
-				zap.String("item_nome", itemNome),
-				zap.Uint("cliente_id", clienteID),
-			)
-			return mcp.NewToolResultError(fmt.Sprintf("Erro ao adicionar item: %v", err)), nil
+			logger.Error(ctx, "Erro ao adicionar item", zap.Error(err))
+			return mcp.NewToolResultError(fmt.Sprintf("Erro ao adicionar: %v", err)), nil
 		}
 
 		carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 		if err != nil {
-			logger.Error(ctx, "Erro ao buscar carrinho", zap.Error(err))
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
 		}
-
 		total := deps.CarrinhoService.CalcularTotal(carrinho)
-		tempoEstimado := deps.CarrinhoService.CalcularTempoEstimado(carrinho)
+		tempo := deps.CarrinhoService.CalcularTempoEstimado(carrinho)
 
-		logger.Info(
-			ctx, "Item adicionado com sucesso",
-			zap.String("item_nome", itemNome),
-			zap.Int("total_itens", len(carrinho.Itens)),
-			zap.Float64("total", total),
-		)
-
-		resposta := fmt.Sprintf("✅ Adicionado: %dx **%s** ao carrinho!\n\n%s",
-			quantidade, itemNome, helpers.FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado))
-
+		resposta := fmt.Sprintf("✅ Adicionado: %dx [%d] %s ao carrinho!\n\n%s",
+			quantidade, produtoItem.ID, produtoItem.Nome, helpers.FormatResumoCarrinho(carrinho.Itens, total, tempo))
 		return mcp.NewToolResultText(resposta), nil
 	}
 }
 
 // ============================================
-// remover_do_carrinho
+// remover_do_carrinho - ID MySQL
 // ============================================
-
 func removerDoCarrinhoTool() mcp.Tool {
 	return mcp.NewTool(
 		"remover_do_carrinho",
-		mcp.WithDescription("Remove um item do carrinho do cliente"),
-		mcp.WithString(
-			"cliente_id",
-			mcp.Required(),
-			mcp.Description("ID do cliente (número de telefone)"),
-		),
-		mcp.WithString(
-			"tenant_id",
-			mcp.Required(),
-			mcp.Description("ID do estabelecimento"),
-		),
-		mcp.WithString(
-			"item_nome",
-			mcp.Required(),
-			mcp.Description("Nome do item a ser removido"),
-		),
-		mcp.WithNumber(
-			"quantidade",
-			mcp.Description("Quantidade a remover (padrão: 1, remova 0 para remover todos)"),
-			mcp.DefaultNumber(1),
-		),
+		mcp.WithDescription("Remove item do carrinho por ID do produto"),
+		mcp.WithString("cliente_id", mcp.Required()),
+		mcp.WithString("tenant_id", mcp.Required()),
+		mcp.WithNumber("produto_id", mcp.Required(), mcp.Description("ID do produto")),
+		mcp.WithNumber("quantidade", mcp.Description("Qtd a remover, 0 remove todos"), mcp.DefaultNumber(1)),
 	)
 }
 
@@ -213,69 +126,51 @@ func removerDoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := GetArguments(request)
 		if err != nil {
-			logger.Warn(ctx, "Erro ao extrair argumentos", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		clienteID, err := GetUintRequired(args, "cliente_id")
 		if err != nil {
-			logger.Warn(ctx, "cliente_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		tenantID, err := GetUintRequired(args, "tenant_id")
 		if err != nil {
-			logger.Warn(ctx, "tenant_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
-		itemNome, err := GetStringRequired(args, "item_nome")
+		produtoID, err := GetUintRequired(args, "produto_id")
 		if err != nil {
-			logger.Warn(ctx, "item_nome inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		quantidade := 1
-		if qtd, ok := args["quantidade"].(float64); ok && qtd > 0 {
+		if qtd, ok := args["quantidade"].(float64); ok {
 			quantidade = int(qtd)
 		}
 
-		logger.Info(
-			ctx, "Removendo item do carrinho",
-			zap.Uint("cliente_id", clienteID),
-			zap.Uint("tenant_id", tenantID),
-			zap.String("item_nome", itemNome),
-			zap.Int("quantidade", quantidade),
-		)
-
-		if err := deps.CarrinhoService.RemoverItem(ctx, clienteID, tenantID, itemNome, quantidade); err != nil {
-			logger.Error(
-				ctx, "Erro ao remover item do carrinho",
-				zap.Error(err),
-				zap.String("item_nome", itemNome),
-				zap.Uint("cliente_id", clienteID),
-			)
-			return mcp.NewToolResultError(fmt.Sprintf("Erro ao remover item: %v", err)), nil
+		cardapio, err := deps.CardapioService.GetCardapio(ctx, tenantID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar cardápio: %v", err)), nil
+		}
+		produto, err := deps.CardapioService.BuscarProdutoPorIdNoCardapio(cardapio, produtoID)
+		if err != nil {
+			return nil, err
+		}
+		if produto == nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Produto ID %d não existe no tenant %d", produtoID, tenantID)), nil
+		}
+		itemCarrinho := dto.ItemCarrinho{
+			ProdutoItem: *produto,
+			Quantidade:  quantidade,
 		}
 
+		if err := deps.CarrinhoService.RemoverItem(ctx, clienteID, tenantID, itemCarrinho, quantidade); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Erro ao remover: %v", err)), nil
+		}
 		carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 		if err != nil {
-			logger.Error(ctx, "Erro ao buscar carrinho", zap.Error(err))
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
 		}
-
 		total := deps.CarrinhoService.CalcularTotal(carrinho)
-		tempoEstimado := deps.CarrinhoService.CalcularTempoEstimado(carrinho)
-
-		logger.Info(
-			ctx, "Item removido com sucesso",
-			zap.String("item_nome", itemNome),
-			zap.Int("total_itens", len(carrinho.Itens)),
-		)
-
-		resposta := fmt.Sprintf("✅ Removido: %dx **%s** do carrinho!\n\n%s",
-			quantidade, itemNome, helpers.FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado))
-
+		tempo := deps.CarrinhoService.CalcularTempoEstimado(carrinho)
+		resposta := fmt.Sprintf("✅ Removido!\n\n%s", helpers.FormatResumoCarrinho(carrinho.Itens, total, tempo))
 		return mcp.NewToolResultText(resposta), nil
 	}
 }
@@ -283,21 +178,12 @@ func removerDoCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 // ============================================
 // visualizar_carrinho
 // ============================================
-
 func visualizarCarrinhoTool() mcp.Tool {
 	return mcp.NewTool(
 		"visualizar_carrinho",
-		mcp.WithDescription("Visualiza o carrinho atual do cliente com itens, total e tempo estimado"),
-		mcp.WithString(
-			"cliente_id",
-			mcp.Required(),
-			mcp.Description("ID do cliente (número de telefone)"),
-		),
-		mcp.WithString(
-			"tenant_id",
-			mcp.Required(),
-			mcp.Description("ID do estabelecimento"),
-		),
+		mcp.WithDescription("Visualiza carrinho atual com total e tempo estimado"),
+		mcp.WithString("cliente_id", mcp.Required()),
+		mcp.WithString("tenant_id", mcp.Required()),
 	)
 }
 
@@ -305,64 +191,36 @@ func visualizarCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := GetArguments(request)
 		if err != nil {
-			logger.Warn(ctx, "Erro ao extrair argumentos", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		clienteID, err := GetUintRequired(args, "cliente_id")
 		if err != nil {
-			logger.Warn(ctx, "cliente_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		tenantID, err := GetUintRequired(args, "tenant_id")
 		if err != nil {
-			logger.Warn(ctx, "tenant_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
-		logger.Debug(
-			ctx, "Visualizando carrinho",
-			zap.Uint("cliente_id", clienteID),
-			zap.Uint("tenant_id", tenantID),
-		)
-
 		carrinho, err := deps.CarrinhoService.GetCarrinho(ctx, clienteID, tenantID)
 		if err != nil {
-			logger.Error(ctx, "Erro ao buscar carrinho", zap.Error(err))
 			return mcp.NewToolResultError(fmt.Sprintf("Erro ao buscar carrinho: %v", err)), nil
 		}
-
 		total := deps.CarrinhoService.CalcularTotal(carrinho)
-		tempoEstimado := deps.CarrinhoService.CalcularTempoEstimado(carrinho)
-
-		resposta := helpers.FormatResumoCarrinho(carrinho.Itens, total, tempoEstimado)
-		return mcp.NewToolResultText(resposta), nil
+		tempo := deps.CarrinhoService.CalcularTempoEstimado(carrinho)
+		return mcp.NewToolResultText(helpers.FormatResumoCarrinho(carrinho.Itens, total, tempo)), nil
 	}
 }
 
 // ============================================
 // finalizar_pedido
 // ============================================
-
 func finalizarPedidoTool() mcp.Tool {
 	return mcp.NewTool(
 		"finalizar_pedido",
-		mcp.WithDescription("Finaliza o pedido convertendo o carrinho em um pedido confirmado"),
-		mcp.WithString(
-			"cliente_id",
-			mcp.Required(),
-			mcp.Description("ID do cliente (número de telefone)"),
-		),
-		mcp.WithString(
-			"tenant_id",
-			mcp.Required(),
-			mcp.Description("ID do estabelecimento"),
-		),
-		mcp.WithString(
-			"cliente_nome",
-			mcp.Description("Nome do cliente (opcional)"),
-		),
+		mcp.WithDescription("Finaliza pedido convertendo carrinho em pedido confirmado"),
+		mcp.WithString("cliente_id", mcp.Required()),
+		mcp.WithString("tenant_id", mcp.Required()),
+		mcp.WithString("cliente_nome", mcp.Description("Nome do cliente opcional")),
 	)
 }
 
@@ -370,69 +228,35 @@ func finalizarPedidoHandler(deps *Dependencies) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := GetArguments(request)
 		if err != nil {
-			logger.Warn(ctx, "Erro ao extrair argumentos", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		clienteID, err := GetUintRequired(args, "cliente_id")
 		if err != nil {
-			logger.Warn(ctx, "cliente_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		tenantID, err := GetUintRequired(args, "tenant_id")
 		if err != nil {
-			logger.Warn(ctx, "tenant_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		clienteNome, _ := GetString(args, "cliente_nome")
 
-		logger.Info(
-			ctx, "Finalizando pedido",
-			zap.Uint("cliente_id", clienteID),
-			zap.Uint("tenant_id", tenantID),
-		)
-
-		pedidoConfirmado, err := deps.CarrinhoService.FinalizarCarrinho(ctx, clienteID, tenantID, clienteNome)
+		pedido, err := deps.CarrinhoService.FinalizarCarrinho(ctx, clienteID, tenantID, clienteNome)
 		if err != nil {
-			logger.Error(
-				ctx, "Erro ao finalizar pedido",
-				zap.Error(err),
-				zap.Uint("cliente_id", clienteID),
-			)
-			return mcp.NewToolResultError(fmt.Sprintf("Erro ao finalizar pedido: %v", err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("Erro ao finalizar: %v", err)), nil
 		}
-
-		logger.Info(
-			ctx, "Pedido finalizado com sucesso",
-			zap.Int("pedido_id", pedidoConfirmado.ID),
-			zap.Float64("total", pedidoConfirmado.Total),
-		)
-
-		resposta := helpers.FormatRespostaPedido(pedidoConfirmado)
-		return mcp.NewToolResultText(resposta), nil
+		return mcp.NewToolResultText(helpers.FormatRespostaPedido(pedido)), nil
 	}
 }
 
 // ============================================
 // limpar_carrinho
 // ============================================
-
 func limparCarrinhoTool() mcp.Tool {
 	return mcp.NewTool(
 		"limpar_carrinho",
 		mcp.WithDescription("Limpa todo o carrinho do cliente"),
-		mcp.WithString(
-			"cliente_id",
-			mcp.Required(),
-			mcp.Description("ID do cliente (número de telefone)"),
-		),
-		mcp.WithString(
-			"tenant_id",
-			mcp.Required(),
-			mcp.Description("ID do estabelecimento"),
-		),
+		mcp.WithString("cliente_id", mcp.Required()),
+		mcp.WithString("tenant_id", mcp.Required()),
 	)
 }
 
@@ -440,37 +264,19 @@ func limparCarrinhoHandler(deps *Dependencies) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := GetArguments(request)
 		if err != nil {
-			logger.Warn(ctx, "Erro ao extrair argumentos", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		clienteID, err := GetUintRequired(args, "cliente_id")
 		if err != nil {
-			logger.Warn(ctx, "cliente_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		tenantID, err := GetUintRequired(args, "tenant_id")
 		if err != nil {
-			logger.Warn(ctx, "tenant_id inválido", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
-		logger.Info(
-			ctx, "Limpando carrinho",
-			zap.Uint("cliente_id", clienteID),
-			zap.Uint("tenant_id", tenantID),
-		)
-
 		if err := deps.CarrinhoService.LimparCarrinho(ctx, clienteID, tenantID); err != nil {
-			logger.Error(
-				ctx, "Erro ao limpar carrinho",
-				zap.Error(err),
-				zap.Uint("cliente_id", clienteID),
-			)
-			return mcp.NewToolResultError(fmt.Sprintf("Erro ao limpar carrinho: %v", err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("Erro ao limpar: %v", err)), nil
 		}
-
-		return mcp.NewToolResultText("🗑️ Carrinho limpo com sucesso!\n\nAdicione novos itens usando: *quero um X-Bacon*"), nil
+		return mcp.NewToolResultText("🗑 Carrinho limpo com sucesso!"), nil
 	}
 }

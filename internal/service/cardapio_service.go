@@ -210,3 +210,25 @@ func (s *cardapioService) ListWithFilters(ctx context.Context, tenantID uint, ca
 	}
 	return result, total, nil
 }
+
+// internal/service/cardapio_service.go
+
+// BuscarProdutoPorIdNoCardapio busca produto por ID MySQL no slice já carregado do cardápio
+// Usado pelas tools B2B (adicionar_ao_carrinho) para validar ID antes de chamar CarrinhoService
+func (s *cardapioService) BuscarProdutoPorIdNoCardapio(cardapio []dto.ProdutoItem, produtoID uint) (*dto.ProdutoItem, error) {
+	if len(cardapio) == 0 {
+		return nil, fmt.Errorf("cardápio vazio")
+	}
+	if produtoID == 0 {
+		return nil, fmt.Errorf("produtoID inválido")
+	}
+
+	for i := range cardapio {
+		if cardapio[i].ID == produtoID {
+			// retorna ponteiro pro item do slice original, não cópia do range
+			return &cardapio[i], nil
+		}
+	}
+
+	return nil, fmt.Errorf("produto ID %d não encontrado no cardápio", produtoID)
+}
