@@ -5,14 +5,14 @@ const (
 
 	PromptExtractKeywords = `
 Você é extrator de pedidos. TEXTO: "%s"
-Retorne APENAS JSON: {"keywords":["x bacon","coca cola"]}
+Retorne APENAS JSON: {"keywords":[{"nome": "x bacon", "qtd":2},{"nome": "coca cola", "qtd":1}]}
 Sem markdown, sem texto extra.
 `
 
 	PromptResolverIDs = `
 Cardápio (id - nome):
 %s
-Keywords: %s
+Keywords e suas quantidades: %s
 Retorne APENAS JSON: {"itens":[{"id":12,"qtd":1,"obs":""}]}
 Lista completa para validação:
 %s

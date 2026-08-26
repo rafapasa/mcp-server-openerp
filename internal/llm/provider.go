@@ -13,9 +13,23 @@ import (
 	"go.uber.org/zap"
 )
 
+type LLMKeywordItemResult struct {
+	Nome       string  `json:"nome"`
+	Quantidade float32 `json:"qtd"`
+}
+
 // ============ STRUCTS - DONO É O PROVIDER ============
 type LLMKeywordResult struct {
-	Keywords []string `json:"keywords"`
+	Keywords []LLMKeywordItemResult `json:"keywords"`
+}
+
+// ToString formats the keyword result as a list of strings.
+func (l *LLMKeywordResult) ToString() []string {
+	var result []string
+	for _, item := range l.Keywords {
+		result = append(result, fmt.Sprintf("Keywords:%s  Quantidade:%g", item.Nome, item.Quantidade))
+	}
+	return result
 }
 
 type LLMResolverResult struct {
@@ -203,7 +217,7 @@ func (u *UnifiedLLM) ExtractIntent(ctx context.Context, input dto.MessageInput, 
 	kwRes := LLMKeywordResult{}
 	if err := json.Unmarshal([]byte(extractJSON(rawKw)), &kwRes); err != nil {
 		logger.Error(ctx, "[PROVIDER] Parse keywords falhou", zap.Error(err))
-		kwRes.Keywords = []string{}
+		kwRes.Keywords = []LLMKeywordItemResult{}
 	}
 	logger.Info(ctx, "[PROVIDER] Keywords", zap.Any("keywords", kwRes.Keywords))
 
@@ -213,8 +227,8 @@ func (u *UnifiedLLM) ExtractIntent(ctx context.Context, input dto.MessageInput, 
 
 	// Resolve IDs sempre texto
 	lista := formatCardapioForPrompt(cardapio)
-	promptIds := fmt.Sprintf(PromptResolverIDs, lista, strings.Join(kwRes.Keywords, ", "), lista)
-	rawIds, err := u.textClient.GenerateResponse(ctx, promptIds)
+	promptIDs := fmt.Sprintf(PromptResolverIDs, lista, strings.Join(kwRes.ToString(), ", "), lista)
+	rawIds, err := u.textClient.GenerateResponse(ctx, promptIDs)
 	if err != nil {
 		logger.Error(ctx, "[PROVIDER] Erro resolver IDs", zap.Error(err))
 		return nil, err
@@ -251,7 +265,7 @@ func mapResolverToCarrinho(res LLMResolverResult, cardapio []dto.ProdutoItem) []
 			if qtd <= 0 {
 				qtd = 1
 			}
-			out = append(out, dto.ItemCarrinho{ProdutoItem: prod, Quantidade: qtd, Observacao: it.Obs})
+			out = append(out, dto.ItemCarrinho{ProdutoItem: prod, Quantidade: qtd, Observacao: it.Obs, Preco: prod.Preco})
 		}
 	}
 	return out
