@@ -34,7 +34,8 @@ func InitializeApp() (*server.HttpServer, error) {
 	pedidoRepository := repository.NewPedidoRepository(db)
 	pedidoServiceInterface := service.NewPedidoService(pedidoRepository, cardapioServiceInterface)
 	unifiedLLM := llm.NewUnifiedLLM(configConfig)
-	carrinhoServiceInterface := service.NewCarrinhoService(redis, cardapioServiceInterface, pedidoServiceInterface, produtoRepository, unifiedLLM)
+	llmServiceInterface := service.NewLLMService(unifiedLLM, cardapioServiceInterface)
+	carrinhoServiceInterface := service.NewCarrinhoService(redis, cardapioServiceInterface, pedidoServiceInterface, produtoRepository, llmServiceInterface)
 	mcpServer := server.NewMCPServer(configConfig, cardapioServiceInterface, pedidoServiceInterface, carrinhoServiceInterface, unifiedLLM)
 	userRepositoryInterface := repository.NewUserRepository(db)
 	authServiceInterface := service.NewAuthService(userRepositoryInterface, configConfig)
@@ -66,7 +67,8 @@ func InitializeMCPServer() (*server.MCPServer, error) {
 	pedidoRepository := repository.NewPedidoRepository(db)
 	pedidoServiceInterface := service.NewPedidoService(pedidoRepository, cardapioServiceInterface)
 	unifiedLLM := llm.NewUnifiedLLM(configConfig)
-	carrinhoServiceInterface := service.NewCarrinhoService(redis, cardapioServiceInterface, pedidoServiceInterface, produtoRepository, unifiedLLM)
+	llmServiceInterface := service.NewLLMService(unifiedLLM, cardapioServiceInterface)
+	carrinhoServiceInterface := service.NewCarrinhoService(redis, cardapioServiceInterface, pedidoServiceInterface, produtoRepository, llmServiceInterface)
 	mcpServer := server.NewMCPServer(configConfig, cardapioServiceInterface, pedidoServiceInterface, carrinhoServiceInterface, unifiedLLM)
 	return mcpServer, nil
 }

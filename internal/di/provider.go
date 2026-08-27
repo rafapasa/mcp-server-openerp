@@ -1,3 +1,4 @@
+// internal/di/provider.go
 package di
 
 import (
@@ -18,9 +19,8 @@ var providerSetLLM = wire.NewSet(
 	llm.NewUnifiedLLM,
 )
 
-// Providers que resolvem o []string
 func provideGormDB(cfg *config.Config) *gorm.DB {
-	return database.NewMySQL(cfg) // seu NewMySQL recebe *config.Config, não []string
+	return database.NewMySQL(cfg)
 }
 
 func provideRedis(cfg *config.Config) (*database.Redis, error) {
@@ -35,7 +35,6 @@ var providerSetObservability = wire.NewSet(
 	health.NewHealthChecker,
 )
 
-// ... resto igual
 var providerSetConfig = wire.NewSet(
 	config.LoadConfig,
 )
@@ -54,14 +53,17 @@ var providerSetRepository = wire.NewSet(
 	repository.NewEnderecoRepository,
 	repository.NewUserRepository,
 )
+
 var providerSetService = wire.NewSet(
 	service.NewTenantService,
 	service.NewAuthService,
 	service.NewCardapioService,
+	service.NewLLMService, // UnifiedLLM + CardapioServiceInterface
 	service.NewPedidoService,
 	service.NewClienteService,
-	service.NewCarrinhoService,
+	service.NewCarrinhoService, // agora recebe LLMServiceInterface
 )
+
 var providerSetHandlers = wire.NewSet(
 	server.NewMCPServer,
 	server.NewHttpServer,

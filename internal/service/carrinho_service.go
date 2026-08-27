@@ -22,7 +22,7 @@ type CarrinhoService struct {
 	cardapioService CardapioServiceInterface
 	pedidoService   PedidoServiceInterface
 	produtoRepo     repository.ProdutoRepository
-	llmClient       *llm.UnifiedLLM
+	llmService      LLMServiceInterface
 }
 
 func NewCarrinhoService(
@@ -30,14 +30,14 @@ func NewCarrinhoService(
 	cardapioService CardapioServiceInterface,
 	pedidoService PedidoServiceInterface,
 	produtoRepo repository.ProdutoRepository,
-	llmClient *llm.UnifiedLLM,
+	llmService LLMServiceInterface,
 ) CarrinhoServiceInterface {
 	return &CarrinhoService{
 		cache:           cache,
 		cardapioService: cardapioService,
 		pedidoService:   pedidoService,
 		produtoRepo:     produtoRepo,
-		llmClient:       llmClient,
+		llmService:      llmService,
 	}
 }
 
@@ -45,7 +45,6 @@ func (s *CarrinhoService) getKey(clienteID, tenantID uint) string {
 	return fmt.Sprintf("carrinho:%d:%d", tenantID, clienteID)
 }
 
-// GetCarrinho - só Redis, sem MySQL
 func (s *CarrinhoService) GetCarrinho(ctx context.Context, clienteID, tenantID uint) (*dto.Carrinho, error) {
 	key := s.getKey(clienteID, tenantID)
 	carrinho, err := cache.GetOrSet(s.cache, ctx, key, 2*time.Minute, func() (*dto.Carrinho, error) {
@@ -72,7 +71,7 @@ func (s *CarrinhoService) saveCarrinho(ctx context.Context, carrinho *dto.Carrin
 	return nil
 }
 
-// ProcessarMensagem - DONO DO WORKFLOW
+// ProcessarMensagem - DONO DO WORKFLOW (cardápio pequeno via ResolveItemsByMenu)
 func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tenantID uint, input dto.MessageInput) (string, error) {
 	logger.Info(
 		ctx, "[CARRINHO] Processando mensagem",
@@ -81,32 +80,45 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 		zap.String("source", string(input.Source)),
 	)
 
-	// 1. Busca cardápio (com cache do cardapioService)
 	cardapio, err := s.cardapioService.GetCardapio(ctx, tenantID)
 	if err != nil {
 		logger.Error(ctx, err.Error())
 		return "", fmt.Errorf("erro cardápio: %w", err)
 	}
 
-	// 2. Chama LLM com retry
 	intencao, err := llm.RetryWithBackoff(ctx, llm.DefaultRetryConfig(), func() (*dto.IntencaoCliente, error) {
-		return s.llmClient.ExtractIntent(ctx, input, cardapio)
+		return s.llmService.ResolveItemsByMenu(ctx, tenantID, input, cardapio)
 	})
 	if err != nil {
-		logger.Error(ctx, "Erro ExtractIntent", zap.Error(err))
+		logger.Error(ctx, "Erro ResolveItemsByMenu", zap.Error(err))
 		return "⚠️ Tive um problema técnico, tenta de novo por favor.", nil
 	}
 
-	logger.Info(ctx, "Intenção detectada", zap.String("acao", intencao.Acao), zap.Int("itens", len(intencao.Itens)))
+	logger.Info(
+		ctx, "Intenção detectada",
+		zap.String("acao", intencao.Acao),
+		zap.Int("itens", len(intencao.Itens)),
+	)
 
-	// 3. Executa ação
 	switch intencao.Acao {
+	case "conversa":
+		if intencao.Resposta != "" {
+			return intencao.Resposta, nil
+		}
+		return "Olá! 😊 Como posso ajudar?", nil
+
 	case "visualizar", "ver", "mostrar", "carrinho":
 		return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
 
 	case "limpar", "clear", "esvaziar":
 		_ = s.LimparCarrinho(ctx, clienteID, tenantID)
 		return "🗑️ Carrinho limpo!", nil
+
+	case "listar_categorias":
+		return s.cardapioService.ListarCategoriasHumanizado(cardapio), nil
+
+	case "listar_produtos":
+		return s.cardapioService.ListarProdutosHumanizado(cardapio, intencao.Filtro), nil
 
 	case "remover", "remove", "tirar":
 		if len(intencao.Itens) == 0 {
@@ -127,12 +139,10 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 		}
 		return s.FormatarPedidoConfirmado(pedido), nil
 
-	default: // adicionar, add
+	default: // adicionar
 		if len(intencao.Itens) == 0 {
-			// sem itens -> mostra carrinho
 			return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
 		}
-		// OTIMIZADO: busca carrinho 1x, adiciona todos, salva 1x
 		carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
 		if err != nil {
 			return "", err
@@ -147,7 +157,6 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 	}
 }
 
-// mergeItem - adiciona ou soma quantidade, sem ir no Redis a cada loop
 func (s *CarrinhoService) mergeItem(carrinho *dto.Carrinho, item dto.ItemCarrinho) *dto.Carrinho {
 	for i, existing := range carrinho.Itens {
 		if existing.ProdutoItem.ID == item.ProdutoItem.ID {

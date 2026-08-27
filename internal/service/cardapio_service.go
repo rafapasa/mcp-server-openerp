@@ -9,6 +9,7 @@ import (
 
 	"github.com/rafapasa/mcp-server-openerp/internal/cache"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 	"go.uber.org/zap"
@@ -32,7 +33,6 @@ func NewCardapioService(
 	}
 }
 
-// GetCardapio - com cache 1h via cache.Cache
 func (s *cardapioService) GetCardapio(ctx context.Context, tenantID uint) ([]dto.ProdutoItem, error) {
 	cacheKey := fmt.Sprintf("cardapio:%d", tenantID)
 
@@ -66,11 +66,9 @@ func (s *cardapioService) GetCardapio(ctx context.Context, tenantID uint) ([]dto
 	return cardapio, nil
 }
 
-// BuscarProdutoPorNome - mantém assinatura original com string (front usa string), mas aceita uint também internamente
 func (s *cardapioService) BuscarProdutoPorNome(ctx context.Context, tenantID string, nome string) (*dto.ProdutoItem, error) {
 	var tenantIDUint uint
 	if _, err := fmt.Sscan(tenantID, &tenantIDUint); err != nil {
-		// tenta parse direto se já for número
 		return nil, fmt.Errorf("tenant_id inválido: %w", err)
 	}
 	produto, err := s.produtoRepo.FindByNome(ctx, tenantIDUint, nome)
@@ -92,7 +90,6 @@ func (s *cardapioService) BuscarProdutoPorNome(ctx context.Context, tenantID str
 	}, nil
 }
 
-// ItemExisteNoCardapio - mantém pro front e pro pedido_service legado, agora sem fuzzy agressivo
 func (s *cardapioService) ItemExisteNoCardapio(cardapio []dto.ProdutoItem, nome string) (*dto.ProdutoItem, error) {
 	nomeLower := strings.ToLower(strings.TrimSpace(nome))
 	for _, item := range cardapio {
@@ -107,7 +104,6 @@ func (s *cardapioService) ItemExisteNoCardapio(cardapio []dto.ProdutoItem, nome 
 	return nil, fmt.Errorf("Produto %s não localizado", nome)
 }
 
-// EncontrarItemSimilar - mantém pro front
 func (s *cardapioService) EncontrarItemSimilar(cardapio []dto.ProdutoItem, nome string) string {
 	nomeLower := strings.ToLower(strings.TrimSpace(nome))
 	bestMatch := ""
@@ -141,7 +137,6 @@ func similarityScore(a, b string) int {
 	return score
 }
 
-// FormatarCardapio - mantém pro front
 func (s *cardapioService) FormatarCardapio(cardapio []dto.ProdutoItem) string {
 	var sb strings.Builder
 	sb.WriteString("CARDÁPIO:\n")
@@ -157,6 +152,86 @@ func (s *cardapioService) FormatarCardapio(cardapio []dto.ProdutoItem) string {
 		}
 		sb.WriteString("\n")
 	}
+	return sb.String()
+}
+
+// ListarCategoriasHumanizado - frase curta para WhatsApp
+func (s *cardapioService) ListarCategoriasHumanizado(cardapio []dto.ProdutoItem) string {
+	seen := make(map[string]bool)
+	var cats []string
+	for _, p := range cardapio {
+		c := strings.TrimSpace(p.Categoria)
+		if c == "" || seen[c] {
+			continue
+		}
+		seen[c] = true
+		cats = append(cats, c)
+	}
+	if len(cats) == 0 {
+		return "No momento não encontrei categorias no cardápio. Me diga o que você procura! 😊"
+	}
+	return fmt.Sprintf(
+		"Temos %s. Você tá com fome, com sede ou os dois? 😊",
+		strings.Join(cats, ", "),
+	)
+}
+
+// ListarProdutosHumanizado - sem filtro: 3 de cada categoria; com filtro: max 10
+func (s *cardapioService) ListarProdutosHumanizado(cardapio []dto.ProdutoItem, filtro string) string {
+	filtro = strings.ToLower(strings.TrimSpace(filtro))
+
+	if filtro != "" {
+		var matched []dto.ProdutoItem
+		for _, p := range cardapio {
+			nome := strings.ToLower(p.Nome)
+			cat := strings.ToLower(p.Categoria)
+			if strings.Contains(nome, filtro) || strings.Contains(cat, filtro) {
+				matched = append(matched, p)
+			}
+		}
+		if len(matched) == 0 {
+			return fmt.Sprintf("Não achei produtos com \"%s\". Quer ver as categorias? 😊", filtro)
+		}
+		const max = 10
+		if len(matched) > max {
+			matched = matched[:max]
+		}
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("Olha o que encontrei pra \"%s\":\n", filtro))
+		for _, p := range matched {
+			sb.WriteString(fmt.Sprintf("• %s — R$ %.2f\n", p.Nome, p.Preco))
+		}
+		if len(matched) == max {
+			sb.WriteString("\nTem mais além desses. Quer filtrar melhor?")
+		}
+		return sb.String()
+	}
+
+	// sem filtro: 3 primeiros de cada categoria
+	byCat := make(map[string][]dto.ProdutoItem)
+	var order []string
+	for _, p := range cardapio {
+		c := p.Categoria
+		if c == "" {
+			c = "Outros"
+		}
+		if _, ok := byCat[c]; !ok {
+			order = append(order, c)
+		}
+		if len(byCat[c]) < 3 {
+			byCat[c] = append(byCat[c], p)
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Aqui vai um gostinho do cardápio:\n")
+	for _, c := range order {
+		sb.WriteString(fmt.Sprintf("\n*%s*\n", c))
+		for _, p := range byCat[c] {
+			sb.WriteString(fmt.Sprintf("• %s — R$ %.2f\n", p.Nome, p.Preco))
+		}
+	}
+	sb.WriteString("\nTem muito mais além desses. Me fala uma categoria ou o nome do produto! 😊")
 	return sb.String()
 }
 
@@ -211,10 +286,6 @@ func (s *cardapioService) ListWithFilters(ctx context.Context, tenantID uint, ca
 	return result, total, nil
 }
 
-// internal/service/cardapio_service.go
-
-// BuscarProdutoPorIdNoCardapio busca produto por ID MySQL no slice já carregado do cardápio
-// Usado pelas tools B2B (adicionar_ao_carrinho) para validar ID antes de chamar CarrinhoService
 func (s *cardapioService) BuscarProdutoPorIdNoCardapio(cardapio []dto.ProdutoItem, produtoID uint) (*dto.ProdutoItem, error) {
 	if len(cardapio) == 0 {
 		return nil, fmt.Errorf("cardápio vazio")
@@ -222,13 +293,68 @@ func (s *cardapioService) BuscarProdutoPorIdNoCardapio(cardapio []dto.ProdutoIte
 	if produtoID == 0 {
 		return nil, fmt.Errorf("produtoID inválido")
 	}
-
 	for i := range cardapio {
 		if cardapio[i].ID == produtoID {
-			// retorna ponteiro pro item do slice original, não cópia do range
 			return &cardapio[i], nil
 		}
 	}
-
 	return nil, fmt.Errorf("produto ID %d não encontrado no cardápio", produtoID)
+}
+
+// ReduzirPorKeywords - fluxo cardápio grande (max 30 itens)
+func (s *cardapioService) ReduzirPorKeywords(
+	ctx context.Context,
+	tenantID uint,
+	keywords []llm.LLMKeywordItemResult,
+) ([]dto.ProdutoItem, error) {
+	if len(keywords) == 0 {
+		return []dto.ProdutoItem{}, nil
+	}
+
+	cardapio, err := s.GetCardapio(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []dto.ProdutoItem
+	seen := make(map[uint]bool)
+
+	for _, kw := range keywords {
+		nomeLower := strings.ToLower(strings.TrimSpace(kw.Nome))
+		unidadeLower := strings.ToLower(strings.TrimSpace(kw.Unidade))
+
+		for _, p := range cardapio {
+			if seen[p.ID] {
+				continue
+			}
+			pNome := strings.ToLower(p.Nome)
+			matchNome := strings.Contains(pNome, nomeLower) || strings.Contains(nomeLower, pNome)
+			matchUnidade := unidadeLower == "" || strings.Contains(pNome, unidadeLower)
+			if matchNome && matchUnidade {
+				out = append(out, p)
+				seen[p.ID] = true
+			}
+		}
+	}
+
+	if len(out) == 0 {
+		for _, kw := range keywords {
+			nomeLower := strings.ToLower(strings.TrimSpace(kw.Nome))
+			for _, p := range cardapio {
+				if seen[p.ID] {
+					continue
+				}
+				if strings.Contains(strings.ToLower(p.Nome), nomeLower) {
+					out = append(out, p)
+					seen[p.ID] = true
+				}
+			}
+		}
+	}
+
+	const maxReduzido = 30
+	if len(out) > maxReduzido {
+		out = out[:maxReduzido]
+	}
+	return out, nil
 }
