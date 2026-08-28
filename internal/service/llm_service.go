@@ -6,6 +6,7 @@ import (
 
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
+	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"go.uber.org/zap"
 )
@@ -49,6 +50,31 @@ func (s *llmService) GetProviderInfo() (textProvider, audioProvider, visionProvi
 	}
 	p := s.provider.GetProvider()
 	return p, p, p
+}
+
+// ObterTextoBase - NOVO MÉTODO NECESSÁRIO PARA CATÁLOGO GRANDE
+// Reaproveita exatamente os métodos públicos já existentes no provider
+// Resolve audio/imagem -> texto, igual ao que ResolveItemsByMenu já faz internamente
+func (s *llmService) ObterTextoBase(ctx context.Context, tenantID uint, input dto.MessageInput) (string, error) {
+	// tenantID é mantido na assinatura para compatibilidade futura (log / multitenant)
+	// mas não é usado no provider atual - mesma assinatura de ResolveItemsByMenu
+	_ = tenantID
+	switch input.Source {
+	case models.SourceAudio:
+		if len(input.Audio) == 0 {
+			return "", fmt.Errorf("áudio vazio")
+		}
+		// usa método público existente do provider
+		return s.provider.TranscribeAudio(ctx, input.Audio, llm.PromptTranscribeSimple)
+	case models.SourceImage:
+		if len(input.Image) == 0 {
+			return "", fmt.Errorf("imagem vazia")
+		}
+		// usa método público existente, input.Text como caption opcional
+		return s.provider.DescribeImage(ctx, input.Image, input.Text)
+	default:
+		return input.Text, nil
+	}
 }
 
 func (s *llmService) ResolveItemsByMenu(

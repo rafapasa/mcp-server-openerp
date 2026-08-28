@@ -100,6 +100,7 @@ type LLMServiceInterface interface {
 	IsOnline(ctx context.Context) (bool, error)
 	HasValidConfig() bool
 	GetProviderInfo() (textProvider, audioProvider, visionProvider string)
+	ObterTextoBase(ctx context.Context, tenantID uint, input dto.MessageInput) (string, error)
 
 	ResolveItemsByMenu(ctx context.Context, tenantID uint, input dto.MessageInput, cardapio []dto.ProdutoItem) (*dto.IntencaoCliente, error)
 	ClassificarEExtrairKeywords(ctx context.Context, textoHigienizado string, contextoCarrinho string) (*llm.IntencaoEKeywordsResult, error)

@@ -1,9 +1,9 @@
-// internal/service/carrinho_service.go - CLEAN
 package service
 
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/cache"
@@ -15,7 +15,10 @@ import (
 	"go.uber.org/zap"
 )
 
-const TTLCarrinho = 3600
+const (
+	TTLCarrinho           = 3600
+	limiteCardapioPequeno = 80
+)
 
 type CarrinhoService struct {
 	cache           *cache.Cache
@@ -71,7 +74,7 @@ func (s *CarrinhoService) saveCarrinho(ctx context.Context, carrinho *dto.Carrin
 	return nil
 }
 
-// ProcessarMensagem - DONO DO WORKFLOW (cardápio pequeno via ResolveItemsByMenu)
+// ProcessarMensagem - DONO DO WORKFLOW - 2 caminhos com limite 80 (definição fechada)
 func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tenantID uint, input dto.MessageInput) (string, error) {
 	logger.Info(
 		ctx, "[CARRINHO] Processando mensagem",
@@ -86,19 +89,97 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 		return "", fmt.Errorf("erro cardápio: %w", err)
 	}
 
-	intencao, err := llm.RetryWithBackoff(ctx, llm.DefaultRetryConfig(), func() (*dto.IntencaoCliente, error) {
-		return s.llmService.ResolveItemsByMenu(ctx, tenantID, input, cardapio)
-	})
-	if err != nil {
-		logger.Error(ctx, "Erro ResolveItemsByMenu", zap.Error(err))
-		return "⚠️ Tive um problema técnico, tenta de novo por favor.", nil
+	// contexto do carrinho para o prompt de classificação
+	carrinhoAtual, _ := s.GetCarrinho(ctx, clienteID, tenantID)
+	contextoCarrinho := "carrinho vazio"
+	if carrinhoAtual != nil && len(carrinhoAtual.Itens) > 0 {
+		nomes := make([]string, 0, len(carrinhoAtual.Itens))
+		for _, it := range carrinhoAtual.Itens {
+			nomes = append(nomes, it.ProdutoItem.Nome)
+		}
+		contextoCarrinho = fmt.Sprintf("%d itens: %s", len(carrinhoAtual.Itens), strings.Join(nomes, ", "))
 	}
 
-	logger.Info(
-		ctx, "Intenção detectada",
-		zap.String("acao", intencao.Acao),
-		zap.Int("itens", len(intencao.Itens)),
-	)
+	var intencao *dto.IntencaoCliente
+
+	// BRANCH CRÍTICO - pequeno vs grande - respeita apenas len (v1)
+	// v2: quando TenantService for injetado, adicionar override por segmento
+	if len(cardapio) <= limiteCardapioPequeno {
+		// CAMINHO PEQUENO - restaurante/bar - 1 LLM
+		intencao, err = llm.RetryWithBackoff(ctx, llm.DefaultRetryConfig(), func() (*dto.IntencaoCliente, error) {
+			return s.llmService.ResolveItemsByMenu(ctx, tenantID, input, cardapio)
+		})
+		if err != nil {
+			logger.Error(ctx, "Erro ResolveItemsByMenu", zap.Error(err))
+			return "⚠ Tive um problema técnico, tenta de novo por favor.", nil
+		}
+	} else {
+		// CAMINHO GRANDE - mercado/farmacia - 1 ou 2 LLM
+		// 1) Obter texto base (audio/imagem -> texto) usando método real do llmService
+		textoBase, err := s.llmService.ObterTextoBase(ctx, tenantID, input)
+		if err != nil {
+			logger.Error(ctx, "Erro ObterTextoBase", zap.Error(err))
+			return "⚠ Não consegui entender seu áudio/imagem, pode digitar?", nil
+		}
+		if strings.TrimSpace(textoBase) == "" {
+			return "Não entendi, pode repetir?", nil
+		}
+
+		// 2) Classificar + keywords (1ª LLM do caminho grande, sem cardápio)
+		result, err := s.llmService.ClassificarEExtrairKeywords(ctx, textoBase, contextoCarrinho)
+		if err != nil {
+			logger.Error(ctx, "Erro ClassificarEExtrairKeywords", zap.Error(err))
+			return "⚠ Tive um problema técnico, tenta de novo por favor.", nil
+		}
+
+		switch result.Acao {
+		case "conversa":
+			if result.Resposta != "" {
+				return result.Resposta, nil
+			}
+			return "Olá! 😊 Como posso ajudar?", nil
+		case "listar_categorias":
+			return s.cardapioService.ListarCategoriasHumanizado(cardapio), nil
+		case "listar_produtos":
+			return s.cardapioService.ListarProdutosHumanizado(cardapio, result.Filtro), nil
+		case "visualizar", "ver", "mostrar", "carrinho":
+			return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
+		case "limpar", "clear", "esvaziar":
+			_ = s.LimparCarrinho(ctx, clienteID, tenantID)
+			return "🗑 Carrinho limpo!", nil
+		case "finalizar", "confirmar", "fechar", "checkout":
+			pedido, err := s.FinalizarCarrinho(ctx, clienteID, tenantID, "")
+			if err != nil {
+				if err.Error() == "carrinho vazio" {
+					return "🛒 Seu carrinho está vazio. Me diga o que quer adicionar!", nil
+				}
+				return "❌ Erro ao finalizar pedido.", nil
+			}
+			return s.FormatarPedidoConfirmado(pedido), nil
+		case "adicionar", "remover":
+			// 3) Resolver itens por keywords (2ª LLM só aqui) - ReduzirPorKeywords já está dentro de ResolverItensByKeyWords
+			itens, err := s.llmService.ResolverItensByKeyWords(ctx, tenantID, result.Keywords, nil)
+			if err != nil {
+				logger.Error(ctx, "Erro ResolverItensByKeyWords", zap.Error(err))
+				return "⚠ Erro ao resolver itens, tenta de novo.", nil
+			}
+			intencao = &dto.IntencaoCliente{
+				Acao:     result.Acao,
+				Itens:    itens,
+				Mensagem: textoBase,
+				Filtro:   result.Filtro,
+				Resposta: result.Resposta,
+			}
+		default:
+			if result.Resposta != "" {
+				return result.Resposta, nil
+			}
+			return "Não entendi, pode repetir?", nil
+		}
+	}
+
+	// SWITCH UNIFICADO - 1 save só
+	logger.Info(ctx, "Intenção detectada", zap.String("acao", intencao.Acao), zap.Int("itens", len(intencao.Itens)))
 
 	switch intencao.Acao {
 	case "conversa":
@@ -106,20 +187,15 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 			return intencao.Resposta, nil
 		}
 		return "Olá! 😊 Como posso ajudar?", nil
-
 	case "visualizar", "ver", "mostrar", "carrinho":
 		return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
-
 	case "limpar", "clear", "esvaziar":
 		_ = s.LimparCarrinho(ctx, clienteID, tenantID)
-		return "🗑️ Carrinho limpo!", nil
-
+		return "🗑 Carrinho limpo!", nil
 	case "listar_categorias":
 		return s.cardapioService.ListarCategoriasHumanizado(cardapio), nil
-
 	case "listar_produtos":
 		return s.cardapioService.ListarProdutosHumanizado(cardapio, intencao.Filtro), nil
-
 	case "remover", "remove", "tirar":
 		if len(intencao.Itens) == 0 {
 			return "O que você quer remover?", nil
@@ -128,7 +204,6 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 			_ = s.RemoverItem(ctx, clienteID, tenantID, it, it.Quantidade)
 		}
 		return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
-
 	case "finalizar", "confirmar", "fechar", "checkout":
 		pedido, err := s.FinalizarCarrinho(ctx, clienteID, tenantID, "")
 		if err != nil {
@@ -138,7 +213,6 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 			return "❌ Erro ao finalizar pedido.", nil
 		}
 		return s.FormatarPedidoConfirmado(pedido), nil
-
 	default: // adicionar
 		if len(intencao.Itens) == 0 {
 			return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
