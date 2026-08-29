@@ -10,8 +10,8 @@ import (
 // Cliente representa um cliente do sistema
 type Cliente struct {
 	ID         uint   `gorm:"primaryKey"`
-	TenantID   uint   `gorm:"not null;index:idx_cliente_tenant"`
-	Telefone   string `gorm:"type:varchar(20);not null;index:idx_cliente_telefone;comment:Número do WhatsApp"`
+	TenantID   uint   `gorm:"not null;uniqueIndex:idx_tenant_telefone"`
+	Telefone   string `gorm:"type:varchar(20);not null;uniqueIndex:idx_tenant_telefone"`
 	Nome       string `gorm:"type:varchar(100);comment:Nome completo do cliente"`
 	NomePerfil string `gorm:"type:varchar(100);comment:Nome do perfil do WhatsApp"`
 	Email      string `gorm:"type:varchar(100);comment:E-mail do cliente"`

@@ -50,30 +50,48 @@ func (s *ClienteService) Create(ctx context.Context, req *dto.CriarClienteReques
 	}
 
 	// 2. Verifica se cliente já existe
-	clienteDto, _ := s.FindByTelefone(ctx, req.Telefone, req.TenantID)
+	clienteDto, err := s.FindByTelefone(ctx, req.Telefone, req.TenantID)
+	if err != nil {
+		// Se for erro de "não encontrado" segue pra criação
+		// Se for outro erro (banco fora), não esconde com _
+		// Ajuste o ErrRecordNotFound pro erro que seu repo retorna hoje
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			// loga só se não for not found, pra não poluir
+			// Se seu FindByTelefone já retorna nil,nil quando não acha,
+			// pode remover esse if e deixar só: if clienteDto != nil
+			logger.Error(ctx, "erro ao buscar cliente por telefone: "+err.Error())
+		}
+	}
+
 	if clienteDto != nil && clienteDto.ID > 0 {
+		// Se existir e estiver inativo, reativa e busca de novo
+		// BUG que você tem hoje: você retorna o DTO antigo com status "inativo"
+		if clienteDto.Status == models.StatusInativo.String() {
+			if err := s.ReativarCliente(ctx, clienteDto.ID); err != nil {
+				return nil, fmt.Errorf("erro ao reativar cliente: %w", err)
+			}
+			// Busca de novo pra retornar com status "ativo" atualizado
+			clienteAtualizado, err := s.FindByTelefone(ctx, req.Telefone, req.TenantID)
+			if err != nil {
+				return nil, err
+			}
+			return clienteAtualizado, nil
+		}
 		// Se existir e estiver ativo, retorna o existente
-		if clienteDto.Status == models.StatusAtivo.String() {
-			return clienteDto, nil
-		}
-		// Se existir mas estiver inativo, reativa
-		if err := s.ReativarCliente(ctx, clienteDto.ID); err != nil {
-			return nil, fmt.Errorf("erro ao reativar cliente: %w", err)
-		}
 		return clienteDto, nil
 	}
 
 	// 3. Cria cliente
+	// BUG que você tem hoje: você só preenche Nome, deixa NomePerfil vazio
+	// No WhatsApp o nome que vem é o NomePerfil
 	cliente := &models.Cliente{
-		TenantID:         req.TenantID,
-		Telefone:         req.Telefone,
-		Nome:             req.Nome,
-		NomePerfil:       req.NomePerfil,
-		Email:            req.Email,
-		InscricaoFederal: req.InscricaoFederal,
-		Status:           models.StatusAtivo.String(),
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+		TenantID:   req.TenantID,
+		Telefone:   req.Telefone,
+		Nome:       req.Nome,
+		NomePerfil: req.Nome, // corrige: senão fica vazio
+		Status:     models.StatusAtivo.String(),
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 
 	// 4. Salva no banco

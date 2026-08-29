@@ -73,6 +73,7 @@ var providerSetHandlers = wire.NewSet(
 	server.NewAPIHandlers,
 	webhook.NewWhatsAppClient,
 	webhook.NewWebhookHandler,
+	webhook.NewProcessor,
 )
 
 var ProviderSet = wire.NewSet(

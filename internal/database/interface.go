@@ -26,6 +26,7 @@ type RedisInterface interface {
 	GetWithContext(ctx context.Context, key string) (string, error)
 	GetJSONWithContext(ctx context.Context, key string, dest interface{}) error
 	SetJSONWithContext(ctx context.Context, key string, value interface{}, ttl time.Duration) error
+	SetNXWithContext(ctx context.Context, key string, value interface{}, ttl time.Duration) (bool, error)
 
 	// Operações auxiliares
 	DeleteWithContext(ctx context.Context, key string) error
