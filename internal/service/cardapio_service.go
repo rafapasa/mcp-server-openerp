@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rafapasa/mcp-server-openerp/internal/cache"
+	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
@@ -18,13 +18,13 @@ import (
 type cardapioService struct {
 	produtoRepo repository.ProdutoRepository
 	tenantRepo  repository.TenantRepository
-	cache       *cache.Cache
+	cache       database.RedisInterface
 }
 
 func NewCardapioService(
 	produtoRepo repository.ProdutoRepository,
 	tenantRepo repository.TenantRepository,
-	cache *cache.Cache,
+	cache database.RedisInterface,
 ) CardapioServiceInterface {
 	return &cardapioService{
 		produtoRepo: produtoRepo,
@@ -36,7 +36,7 @@ func NewCardapioService(
 func (s *cardapioService) GetCardapio(ctx context.Context, tenantID uint) ([]dto.ProdutoItem, error) {
 	cacheKey := fmt.Sprintf("cardapio:%d", tenantID)
 
-	cardapio, err := cache.GetOrSet(s.cache, ctx, cacheKey, 1*time.Hour, func() ([]dto.ProdutoItem, error) {
+	cardapio, err := database.GetOrSet(s.cache, ctx, cacheKey, 1*time.Hour, func() ([]dto.ProdutoItem, error) {
 		produtos, err := s.produtoRepo.FindByTenantDisponiveis(ctx, tenantID)
 		if err != nil {
 			return nil, fmt.Errorf("erro ao buscar cardápio: %w", err)

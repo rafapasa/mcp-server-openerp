@@ -17,7 +17,7 @@ type Redis struct {
 }
 
 // NewRedis - provider pro Wire
-func NewRedis(cfg *config.Config) (*Redis, error) {
+func NewRedis(cfg *config.Config) (RedisInterface, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:         fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 		Password:     cfg.RedisPassword,
@@ -43,6 +43,7 @@ func (r *Redis) IsConnected() bool { return r.Ping() == nil }
 func (r *Redis) Set(key string, value interface{}, expiration time.Duration) error {
 	return r.Client.Set(r.ctx, key, value, expiration).Err()
 }
+
 func (r *Redis) Get(key string) (string, error) {
 	return r.Client.Get(r.ctx, key).Result()
 }
@@ -78,9 +79,11 @@ func (r *Redis) SetJSON(key string, value interface{}, ttl time.Duration) error 
 func (r *Redis) SetWithContext(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	return r.Client.Set(ctx, key, value, ttl).Err()
 }
+
 func (r *Redis) GetWithContext(ctx context.Context, key string) (string, error) {
 	return r.Client.Get(ctx, key).Result()
 }
+
 func (r *Redis) GetJSONWithContext(ctx context.Context, key string, dest interface{}) error {
 	data, err := r.Client.Get(ctx, key).Result()
 	if err != nil {
@@ -88,6 +91,7 @@ func (r *Redis) GetJSONWithContext(ctx context.Context, key string, dest interfa
 	}
 	return json.Unmarshal([]byte(data), dest)
 }
+
 func (r *Redis) SetJSONWithContext(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	b, err := json.Marshal(value)
 	if err != nil {
@@ -97,9 +101,9 @@ func (r *Redis) SetJSONWithContext(ctx context.Context, key string, value interf
 }
 
 // GetOrSet genérico
-func GetOrSet[T any](r *Redis, ctx context.Context, key string, ttl time.Duration, fn func() (T, error)) (T, error) {
+func GetOrSet[T any](r RedisInterface, ctx context.Context, key string, ttl time.Duration, fn func() (T, error)) (T, error) {
 	var zero T
-	if r == nil || r.Client == nil {
+	if r == nil || r.GetClient() == nil {
 		return fn()
 	}
 	var cached T
@@ -134,7 +138,7 @@ func (r *Redis) Expire(key string, expiration time.Duration) error {
 	return r.Client.Expire(r.ctx, key, expiration).Err()
 }
 func (r *Redis) GetClient() *redis.Client { return r.Client }
-func (r *Redis) WithContext(ctx context.Context) *Redis {
+func (r *Redis) WithContext(ctx context.Context) RedisInterface {
 	return &Redis{Client: r.Client, ctx: ctx}
 }
 

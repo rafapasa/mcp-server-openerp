@@ -4,13 +4,12 @@ package webhook
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/rafapasa/mcp-server-openerp/internal/cache"
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
+	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
@@ -23,7 +22,7 @@ type WebhookHandler struct {
 	tenantService   service.TenantServiceInterface
 	clienteService  service.ClienteServiceInterface
 	carrinhoService service.CarrinhoServiceInterface
-	cacheLayer      *cache.Cache
+	cacheLayer      database.RedisInterface
 	cfg             *config.Config
 }
 
@@ -32,7 +31,7 @@ func NewWebhookHandler(
 	tenantService service.TenantServiceInterface,
 	clienteService service.ClienteServiceInterface,
 	carrinhoService service.CarrinhoServiceInterface,
-	cacheLayer *cache.Cache,
+	cacheLayer database.RedisInterface,
 	cfg *config.Config,
 ) *WebhookHandler {
 	return &WebhookHandler{
@@ -287,21 +286,24 @@ func (h *WebhookHandler) getOrCreateCliente(ctx context.Context, telefone, nome 
 	return cliente, nil
 }
 
-func (h *WebhookHandler) getTenantID(_ context.Context, phoneNumber, phoneNumberID string) (uint, error) {
-	// TODO: mover pra tenantService.ResolveByPhone
-	mapping := map[string]uint{
-		"554989014080":  1,
-		"5511999999999": 2,
-	}
-	if id, ok := mapping[phoneNumber]; ok {
-		return id, nil
-	}
+func (h *WebhookHandler) getTenantID(ctx context.Context, phoneNumber, phoneNumberID string) (uint, error) {
+	// normaliza o telefone (remove + e espaços)
 	clean := strings.ReplaceAll(strings.ReplaceAll(phoneNumber, "+", ""), " ", "")
-	if id, ok := mapping[clean]; ok {
-		return id, nil
+
+	// busca no banco pelo telefone do tenant
+	if clean != "" {
+		tenant, err := h.tenantService.GetByTelefone(ctx, clean)
+		if err == nil && tenant != nil && tenant.ID > 0 {
+			return tenant.ID, nil
+		}
+		// fallback: tenta com o phoneNumberID (caso o telefone não esteja cadastrado)
+		if phoneNumberID != "" {
+			tenantByPhoneID, err := h.tenantService.GetByTelefone(ctx, phoneNumberID)
+			if err == nil && tenantByPhoneID != nil && tenantByPhoneID.ID > 0 {
+				return tenantByPhoneID.ID, nil
+			}
+		}
 	}
-	if id, err := strconv.ParseUint(phoneNumberID, 10, 64); err == nil {
-		return uint(id), nil
-	}
-	return 0, fmt.Errorf("tenant não encontrado")
+
+	return 0, fmt.Errorf("tenant não encontrado para o telefone %s", clean)
 }

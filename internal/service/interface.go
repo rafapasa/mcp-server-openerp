@@ -91,6 +91,7 @@ type AuthServiceInterface interface {
 type TenantServiceInterface interface {
 	GetByID(ctx context.Context, id uint) (*dto.TenantDTO, error)
 	GetByCNPJ(ctx context.Context, cnpj string) (*dto.TenantDTO, error)
+	GetByTelefone(ctx context.Context, telefone string) (*dto.TenantDTO, error)
 	List(ctx context.Context) ([]dto.TenantDTO, error)
 	Create(ctx context.Context, input dto.CreateTenantDTO) (*dto.TenantDTO, error)
 	GetPromptContext(ctx context.Context, tenantID uint) (nome, segmento string, err error)

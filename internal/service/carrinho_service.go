@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rafapasa/mcp-server-openerp/internal/cache"
+	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/helpers"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
@@ -21,7 +21,7 @@ const (
 )
 
 type CarrinhoService struct {
-	cache           *cache.Cache
+	cache           database.RedisInterface
 	cardapioService CardapioServiceInterface
 	pedidoService   PedidoServiceInterface
 	produtoRepo     repository.ProdutoRepository
@@ -29,7 +29,7 @@ type CarrinhoService struct {
 }
 
 func NewCarrinhoService(
-	cache *cache.Cache,
+	cache database.RedisInterface,
 	cardapioService CardapioServiceInterface,
 	pedidoService PedidoServiceInterface,
 	produtoRepo repository.ProdutoRepository,
@@ -50,7 +50,7 @@ func (s *CarrinhoService) getKey(clienteID, tenantID uint) string {
 
 func (s *CarrinhoService) GetCarrinho(ctx context.Context, clienteID, tenantID uint) (*dto.Carrinho, error) {
 	key := s.getKey(clienteID, tenantID)
-	carrinho, err := cache.GetOrSet(s.cache, ctx, key, 2*time.Minute, func() (*dto.Carrinho, error) {
+	carrinho, err := database.GetOrSet(s.cache, ctx, key, 2*time.Minute, func() (*dto.Carrinho, error) {
 		return &dto.Carrinho{
 			ClienteID: fmt.Sprint(clienteID),
 			TenantID:  fmt.Sprint(tenantID),

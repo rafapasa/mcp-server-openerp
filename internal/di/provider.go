@@ -23,12 +23,15 @@ func provideGormDB(cfg *config.Config) *gorm.DB {
 	return database.NewMySQL(cfg)
 }
 
-func provideRedis(cfg *config.Config) (*database.Redis, error) {
+func provideRedis(cfg *config.Config) (database.RedisInterface, error) {
 	return database.NewRedis(cfg)
 }
 
-func provideRedisClient(r *database.Redis) *redis.Client {
-	return r.Client
+func provideRedisClient(r database.RedisInterface) *redis.Client {
+	if r == nil {
+		return nil
+	}
+	return r.GetClient()
 }
 
 var providerSetObservability = wire.NewSet(

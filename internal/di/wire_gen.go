@@ -26,16 +26,16 @@ func InitializeApp() (*server.HttpServer, error) {
 	db := provideGormDB(configConfig)
 	produtoRepository := repository.NewProdutoRepository(db)
 	tenantRepository := repository.NewTenantRepository(db)
-	redis, err := provideRedis(configConfig)
+	redisInterface, err := provideRedis(configConfig)
 	if err != nil {
 		return nil, err
 	}
-	cardapioServiceInterface := service.NewCardapioService(produtoRepository, tenantRepository, redis)
+	cardapioServiceInterface := service.NewCardapioService(produtoRepository, tenantRepository, redisInterface)
 	pedidoRepository := repository.NewPedidoRepository(db)
 	pedidoServiceInterface := service.NewPedidoService(pedidoRepository, cardapioServiceInterface)
 	unifiedLLM := llm.NewUnifiedLLM(configConfig)
 	llmServiceInterface := service.NewLLMService(unifiedLLM, cardapioServiceInterface)
-	carrinhoServiceInterface := service.NewCarrinhoService(redis, cardapioServiceInterface, pedidoServiceInterface, produtoRepository, llmServiceInterface)
+	carrinhoServiceInterface := service.NewCarrinhoService(redisInterface, cardapioServiceInterface, pedidoServiceInterface, produtoRepository, llmServiceInterface)
 	mcpServer := server.NewMCPServer(configConfig, cardapioServiceInterface, pedidoServiceInterface, carrinhoServiceInterface, unifiedLLM)
 	userRepositoryInterface := repository.NewUserRepository(db)
 	authServiceInterface := service.NewAuthService(userRepositoryInterface, configConfig)
@@ -45,7 +45,7 @@ func InitializeApp() (*server.HttpServer, error) {
 	apiHandlers := server.NewAPIHandlers(authServiceInterface, clienteServiceInterface, pedidoServiceInterface, cardapioServiceInterface)
 	whatsAppClient := webhook.NewWhatsAppClient()
 	tenantServiceInterface := service.NewTenantService(tenantRepository)
-	webhookHandler := webhook.NewWebhookHandler(whatsAppClient, tenantServiceInterface, clienteServiceInterface, carrinhoServiceInterface, redis, configConfig)
+	webhookHandler := webhook.NewWebhookHandler(whatsAppClient, tenantServiceInterface, clienteServiceInterface, carrinhoServiceInterface, redisInterface, configConfig)
 	healthChecker := health.NewHealthChecker()
 	httpServer := server.NewHttpServer(configConfig, mcpServer, apiHandlers, webhookHandler, healthChecker)
 	return httpServer, nil
@@ -59,16 +59,16 @@ func InitializeMCPServer() (*server.MCPServer, error) {
 	db := provideGormDB(configConfig)
 	produtoRepository := repository.NewProdutoRepository(db)
 	tenantRepository := repository.NewTenantRepository(db)
-	redis, err := provideRedis(configConfig)
+	redisInterface, err := provideRedis(configConfig)
 	if err != nil {
 		return nil, err
 	}
-	cardapioServiceInterface := service.NewCardapioService(produtoRepository, tenantRepository, redis)
+	cardapioServiceInterface := service.NewCardapioService(produtoRepository, tenantRepository, redisInterface)
 	pedidoRepository := repository.NewPedidoRepository(db)
 	pedidoServiceInterface := service.NewPedidoService(pedidoRepository, cardapioServiceInterface)
 	unifiedLLM := llm.NewUnifiedLLM(configConfig)
 	llmServiceInterface := service.NewLLMService(unifiedLLM, cardapioServiceInterface)
-	carrinhoServiceInterface := service.NewCarrinhoService(redis, cardapioServiceInterface, pedidoServiceInterface, produtoRepository, llmServiceInterface)
+	carrinhoServiceInterface := service.NewCarrinhoService(redisInterface, cardapioServiceInterface, pedidoServiceInterface, produtoRepository, llmServiceInterface)
 	mcpServer := server.NewMCPServer(configConfig, cardapioServiceInterface, pedidoServiceInterface, carrinhoServiceInterface, unifiedLLM)
 	return mcpServer, nil
 }

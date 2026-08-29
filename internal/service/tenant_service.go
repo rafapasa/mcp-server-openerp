@@ -33,6 +33,14 @@ func (s *tenantService) GetByCNPJ(ctx context.Context, cnpj string) (*dto.Tenant
 	return toTenantDTO(m), nil
 }
 
+func (s *tenantService) GetByTelefone(ctx context.Context, telefone string) (*dto.TenantDTO, error) {
+	m, err := s.repo.FindByTelefone(ctx, telefone)
+	if err != nil {
+		return nil, err
+	}
+	return toTenantDTO(m), nil
+}
+
 func (s *tenantService) List(ctx context.Context) ([]dto.TenantDTO, error) {
 	list, err := s.repo.List(ctx)
 	if err != nil {
@@ -73,3 +81,4 @@ func toTenantDTO(m *models.Tenant) *dto.TenantDTO {
 		Segmento: m.Segmento, Ativo: m.Ativo,
 	}
 }
+
