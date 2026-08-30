@@ -1,4 +1,4 @@
-// internal/service/interfaces.go
+// internal/service/interface.go - ATUALIZADO
 package service
 
 import (
@@ -16,6 +16,7 @@ type CarrinhoServiceInterface interface {
 	GetCarrinho(ctx context.Context, clienteID, tenantID uint) (*dto.Carrinho, error)
 	LimparCarrinho(ctx context.Context, clienteID, tenantID uint) error
 	FinalizarCarrinho(ctx context.Context, clienteID, tenantID uint, clienteNome string) (*dto.PedidoConfirmado, error)
+	FinalizarCarrinhoComEndereco(ctx context.Context, clienteID, tenantID uint, clienteNome string, enderecoID uint) (*dto.PedidoConfirmado, error)
 	CalcularTotal(carrinho *dto.Carrinho) float64
 	CalcularTempoEstimado(carrinho *dto.Carrinho) int
 	FormatResumoCarrinho(ctx context.Context, carrinho *dto.Carrinho) (string, error)
@@ -24,22 +25,9 @@ type CarrinhoServiceInterface interface {
 	ProcessarMensagem(ctx context.Context, clienteID, tenantID uint, input dto.MessageInput) (string, error)
 }
 
-type CardapioServiceInterface interface {
-	GetCardapio(ctx context.Context, tenantID uint) ([]dto.ProdutoItem, error)
-	BuscarProdutoPorNome(ctx context.Context, tenantID string, nome string) (*dto.ProdutoItem, error)
-	BuscarProdutoPorIdNoCardapio(cardapio []dto.ProdutoItem, produtoID uint) (*dto.ProdutoItem, error)
-	ItemExisteNoCardapio(cardapio []dto.ProdutoItem, nome string) (*dto.ProdutoItem, error)
-	EncontrarItemSimilar(cardapio []dto.ProdutoItem, nome string) string
-	FormatarCardapio(cardapio []dto.ProdutoItem) string
-	ListarCategoriasHumanizado(cardapio []dto.ProdutoItem) string
-	ListarProdutosHumanizado(cardapio []dto.ProdutoItem, filtro string) string
-	ListWithFilters(ctx context.Context, tenantID uint, categoriaID *uint, disponivel *bool, nome string, page, limit int) ([]dto.ProdutoDTO, int64, error)
-	FindByID(ctx context.Context, id uint) (*dto.ProdutoDTO, error)
-	ReduzirPorKeywords(ctx context.Context, tenantID uint, keywords []llm.LLMKeywordItemResult) ([]dto.ProdutoItem, error)
-}
-
 type PedidoServiceInterface interface {
 	ProcessarPedido(ctx context.Context, tenantID, clienteID uint, clienteNome string, pedidoExtraido *dto.PedidoExtraido) (*dto.PedidoConfirmado, error)
+	ProcessarPedidoComEndereco(ctx context.Context, tenantID, clienteID uint, clienteNome string, pedidoExtraido *dto.PedidoExtraido, enderecoEntregaID *uint) (*dto.PedidoConfirmado, error)
 	FindByTenant(ctx context.Context, tenantID uint) ([]dto.PedidoDTO, error)
 	CountPedidosHoje(ctx context.Context, tenantID uint) (int64, error)
 	CountPedidosSemana(ctx context.Context, tenantID uint) (int64, error)
@@ -54,6 +42,7 @@ type PedidoServiceInterface interface {
 	Create(ctx context.Context, req *dto.CriarPedidoRequest) (*dto.PedidoDTO, error)
 }
 
+// ClienteServiceInterface mantém os métodos existentes, sem Update/Delete de endereço
 type ClienteServiceInterface interface {
 	Create(ctx context.Context, req *dto.CriarClienteRequest) (*dto.ClienteDTO, error)
 	FindByID(ctx context.Context, id uint) (*dto.ClienteDTO, error)
@@ -73,7 +62,7 @@ type ClienteServiceInterface interface {
 	AdicionarEndereco(ctx context.Context, clienteID uint, req *dto.CriarEnderecoRequest) (*dto.EnderecoDTO, error)
 	ListarEnderecos(ctx context.Context, clienteID uint) ([]dto.EnderecoDTO, error)
 	DefinirEnderecoPrincipal(ctx context.Context, clienteID, enderecoID uint) error
-	RemoverEndereco(ctx context.Context, clienteID, enderecoID uint) error
+	RemoverEndereco(ctx context.Context, clienteID, enderecoID uint) error // mantém interface mas implementação fará soft-delete apenas se necessário, fluxo novo não usa
 	AtualizarDocumento(ctx context.Context, clienteID uint, inscricaoFederal string) error
 	ValidarDocumento(inscricaoFederal string) (string, error)
 	IsAtivo(ctx context.Context, clienteID uint) (bool, error)
@@ -97,12 +86,25 @@ type TenantServiceInterface interface {
 	GetPromptContext(ctx context.Context, tenantID uint) (nome, segmento string, err error)
 }
 
+type CardapioServiceInterface interface {
+	GetCardapio(ctx context.Context, tenantID uint) ([]dto.ProdutoItem, error)
+	BuscarProdutoPorNome(ctx context.Context, tenantID string, nome string) (*dto.ProdutoItem, error)
+	BuscarProdutoPorIdNoCardapio(cardapio []dto.ProdutoItem, produtoID uint) (*dto.ProdutoItem, error)
+	ItemExisteNoCardapio(cardapio []dto.ProdutoItem, nome string) (*dto.ProdutoItem, error)
+	EncontrarItemSimilar(cardapio []dto.ProdutoItem, nome string) string
+	FormatarCardapio(cardapio []dto.ProdutoItem) string
+	ListarCategoriasHumanizado(cardapio []dto.ProdutoItem) string
+	ListarProdutosHumanizado(cardapio []dto.ProdutoItem, filtro string) string
+	ListWithFilters(ctx context.Context, tenantID uint, categoriaID *uint, disponivel *bool, nome string, page, limit int) ([]dto.ProdutoDTO, int64, error)
+	FindByID(ctx context.Context, id uint) (*dto.ProdutoDTO, error)
+	ReduzirPorKeywords(ctx context.Context, tenantID uint, keywords []llm.LLMKeywordItemResult) ([]dto.ProdutoItem, error)
+}
+
 type LLMServiceInterface interface {
 	IsOnline(ctx context.Context) (bool, error)
 	HasValidConfig() bool
 	GetProviderInfo() (textProvider, audioProvider, visionProvider string)
 	ObterTextoBase(ctx context.Context, tenantID uint, input dto.MessageInput) (string, error)
-
 	ResolveItemsByMenu(ctx context.Context, tenantID uint, input dto.MessageInput, cardapio []dto.ProdutoItem) (*dto.IntencaoCliente, error)
 	ClassificarEExtrairKeywords(ctx context.Context, textoHigienizado string, contextoCarrinho string) (*llm.IntencaoEKeywordsResult, error)
 	ResolverItensByKeyWords(ctx context.Context, tenantID uint, keywords []llm.LLMKeywordItemResult, cardapioReduzido []dto.ProdutoItem) ([]dto.ItemCarrinho, error)

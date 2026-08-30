@@ -1,4 +1,6 @@
-// internal/service/pedido_service.go - CORRIGIDO MANTENDO ASSINATURAS DA INTERFACE
+// internal/service/pedido_service.go - CORRIGIDO
+// Regra: só chama seu próprio repo (pedidoRepo) + cardapioService
+// Não chama clienteRepo nem enderecoRepo
 package service
 
 import (
@@ -29,11 +31,23 @@ func NewPedidoService(
 	}
 }
 
+// ProcessarPedido - assinatura original mantida para compatibilidade
 func (s *PedidoService) ProcessarPedido(
 	ctx context.Context,
 	tenantID, clienteID uint,
 	clienteNome string,
 	pedidoExtraido *dto.PedidoExtraido,
+) (*dto.PedidoConfirmado, error) {
+	return s.ProcessarPedidoComEndereco(ctx, tenantID, clienteID, clienteNome, pedidoExtraido, nil)
+}
+
+// ProcessarPedidoComEndereco - NOVO, sem chamar outros repos
+func (s *PedidoService) ProcessarPedidoComEndereco(
+	ctx context.Context,
+	tenantID, clienteID uint,
+	clienteNome string,
+	pedidoExtraido *dto.PedidoExtraido,
+	enderecoEntregaID *uint,
 ) (*dto.PedidoConfirmado, error) {
 	logger.Info(
 		ctx, "Processando pedido",
@@ -41,6 +55,7 @@ func (s *PedidoService) ProcessarPedido(
 		zap.Uint("cliente_id", clienteID),
 		zap.String("cliente_nome", clienteNome),
 		zap.Int("itens_count", len(pedidoExtraido.Itens)),
+		zap.Any("endereco_id", enderecoEntregaID),
 	)
 
 	cardapio, err := s.cardapioService.GetCardapio(ctx, tenantID)
@@ -49,15 +64,16 @@ func (s *PedidoService) ProcessarPedido(
 		return nil, err
 	}
 
-	todosItens := append(pedidoExtraido.Itens, pedidoExtraido.Bebidas...)
+	// Junta itens normais + bebidas se existirem no DTO
+	todosItens := append([]dto.ItemPedidoInput{}, pedidoExtraido.Itens...)
+	todosItens = append(todosItens, pedidoExtraido.Bebidas...)
 
 	var itensComPreco []dto.ItemPedidoInput
 	total := 0.0
 
 	for _, item := range todosItens {
-		// Nome pode estar em item.Nome ou item.ProdutoItem.Nome dependendo do DTO
 		nomeBusca := item.ProdutoItem.Nome
-		if nomeBusca == "" && item.ProdutoItem.Nome != "" {
+		if nomeBusca == "" {
 			nomeBusca = item.ProdutoItem.Nome
 		}
 
@@ -77,31 +93,39 @@ func (s *PedidoService) ProcessarPedido(
 			return nil, fmt.Errorf("item '%s' não encontrado no cardápio", nomeBusca)
 		}
 
-		// Preço vem do cardápio validado do MySQL
 		preco := prodCardapio.Preco
+		// se já veio com preço do carrinho, respeita (promoção já calculada)
 		if item.PrecoUnitario != 0 {
 			preco = item.PrecoUnitario
 		}
 
 		item.PrecoUnitario = preco
 		item.ProdutoItem.Nome = prodCardapio.Nome
+		item.ProdutoItem.ID = prodCardapio.ID
 		total += preco * float64(item.Quantidade)
 		itensComPreco = append(itensComPreco, item)
 	}
 
-	itensJSON, _ := json.Marshal(itensComPreco)
+	if len(itensComPreco) == 0 {
+		return nil, fmt.Errorf("nenhum item válido para pedido")
+	}
+
+	itensJSON, err := json.Marshal(itensComPreco)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao serializar itens: %w", err)
+	}
 
 	pedido := &models.Pedido{
-		TenantID:        tenantID,
-		ClienteID:       &clienteID,
-		ClienteNome:     clienteNome,
-		ClienteTelefone: fmt.Sprint(clienteID),
-		Itens:           itensJSON,
-		Total:           total,
-		Status:          models.StatusConfirmado,
-		Observacoes:     pedidoExtraido.Observacoes,
-		TempoEstimado:   s.CalcularTempoEstimado(itensComPreco),
-		Origem:          models.OrigemWhatsApp,
+		TenantID:          tenantID,
+		ClienteID:         &clienteID,
+		EnderecoEntregaID: enderecoEntregaID, // NOVO - pode ser nil (retirada) ou ID válido
+		ClienteNome:       clienteNome,
+		Itens:             itensJSON,
+		Total:             total,
+		Status:            models.StatusConfirmado,
+		Observacoes:       pedidoExtraido.Observacoes,
+		TempoEstimado:     s.CalcularTempoEstimado(itensComPreco),
+		Origem:            models.OrigemWhatsApp,
 	}
 
 	if err := s.pedidoRepo.Create(ctx, pedido); err != nil {
@@ -109,6 +133,8 @@ func (s *PedidoService) ProcessarPedido(
 		return nil, fmt.Errorf("erro ao salvar pedido: %w", err)
 	}
 
+	// Não busca cliente nem endereço aqui - respeita separação de repos
+	// Quem precisar do endereço completo, busca via ClienteService no carrinho_service
 	pedidoConfirmado := &dto.PedidoConfirmado{
 		ID:            int(pedido.ID),
 		TenantID:      fmt.Sprint(tenantID),
@@ -119,9 +145,10 @@ func (s *PedidoService) ProcessarPedido(
 		TempoEstimado: pedido.TempoEstimado,
 		Status:        pedido.Status,
 		CriadoEm:      pedido.CreatedAt.Format("02/01/2006 15:04:05"),
+		// EnderecoEntrega será preenchido pelo CarrinhoService via ClienteService se necessário
 	}
 
-	logger.Info(ctx, "Pedido criado com sucesso", zap.Uint("pedido_id", pedido.ID), zap.Float64("total", total))
+	logger.Info(ctx, "Pedido criado com sucesso", zap.Uint("pedido_id", pedido.ID), zap.Float64("total", total), zap.Any("endereco_id", enderecoEntregaID))
 	return pedidoConfirmado, nil
 }
 
@@ -228,12 +255,13 @@ func (s *PedidoService) Create(ctx context.Context, req *dto.CriarPedidoRequest)
 	logger.Info(ctx, "Criando novo pedido via API", zap.Uint("tenant_id", req.TenantID), zap.Int("itens_count", len(req.Itens)))
 	itensJSON, _ := json.Marshal(req.Itens)
 	pedido := &models.Pedido{
-		TenantID:  req.TenantID,
-		ClienteID: req.ClienteID,
-		Itens:     itensJSON,
-		Total:     req.TotalFloat64(),
-		Status:    models.StatusPendente,
-		Origem:    models.OrigemAPI,
+		TenantID:          req.TenantID,
+		ClienteID:         req.ClienteID,
+		EnderecoEntregaID: req.EnderecoEntregaID,
+		Itens:             itensJSON,
+		Total:             req.TotalFloat64(),
+		Status:            models.StatusPendente,
+		Origem:            models.OrigemAPI,
 	}
 	if err := s.pedidoRepo.Create(ctx, pedido); err != nil {
 		return nil, err
@@ -250,24 +278,42 @@ func (s *PedidoService) converterParaDTO(pedido *models.Pedido) dto.PedidoDTO {
 	var endereco *dto.EnderecoDTO
 	if pedido.EnderecoEntrega != nil {
 		endereco = &dto.EnderecoDTO{
-			ID: pedido.EnderecoEntrega.ID, ClienteID: pedido.EnderecoEntrega.ClienteID,
-			CEP: pedido.EnderecoEntrega.CEP, Logradouro: pedido.EnderecoEntrega.Logradouro,
-			Numero: pedido.EnderecoEntrega.Numero, Complemento: pedido.EnderecoEntrega.Complemento,
-			Bairro: pedido.EnderecoEntrega.Bairro, Cidade: pedido.EnderecoEntrega.Cidade,
-			Estado: pedido.EnderecoEntrega.Estado, Pais: pedido.EnderecoEntrega.Pais,
-			Referencia: pedido.EnderecoEntrega.Referencia, Latitude: pedido.EnderecoEntrega.Latitude,
-			Longitude: pedido.EnderecoEntrega.Longitude, Tipo: pedido.EnderecoEntrega.Tipo,
-			Principal: pedido.EnderecoEntrega.Principal, Observacoes: pedido.EnderecoEntrega.Observacoes,
-			CreatedAt: pedido.EnderecoEntrega.CreatedAt, UpdatedAt: pedido.EnderecoEntrega.UpdatedAt,
+			ID:          pedido.EnderecoEntrega.ID,
+			ClienteID:   pedido.EnderecoEntrega.ClienteID,
+			CEP:         pedido.EnderecoEntrega.CEP,
+			Logradouro:  pedido.EnderecoEntrega.Logradouro,
+			Numero:      pedido.EnderecoEntrega.Numero,
+			Complemento: pedido.EnderecoEntrega.Complemento,
+			Bairro:      pedido.EnderecoEntrega.Bairro,
+			Cidade:      pedido.EnderecoEntrega.Cidade,
+			Estado:      pedido.EnderecoEntrega.Estado,
+			Pais:        pedido.EnderecoEntrega.Pais,
+			Referencia:  pedido.EnderecoEntrega.Referencia,
+			Latitude:    pedido.EnderecoEntrega.Latitude,
+			Longitude:   pedido.EnderecoEntrega.Longitude,
+			Tipo:        pedido.EnderecoEntrega.Tipo,
+			Principal:   pedido.EnderecoEntrega.Principal,
+			Observacoes: pedido.EnderecoEntrega.Observacoes,
+			CreatedAt:   pedido.EnderecoEntrega.CreatedAt,
+			UpdatedAt:   pedido.EnderecoEntrega.UpdatedAt,
 		}
 	}
 	return dto.PedidoDTO{
-		ID: pedido.ID, TenantID: pedido.TenantID, ClienteID: pedido.ClienteID,
-		ClienteNome: pedido.ClienteNome, ClienteTelefone: pedido.ClienteTelefone,
-		EnderecoEntregaID: pedido.EnderecoEntregaID, EnderecoEntrega: endereco,
-		Itens: itens, Total: pedido.Total, Status: pedido.Status,
-		Observacoes: pedido.Observacoes, TempoEstimado: pedido.TempoEstimado,
-		Origem: pedido.Origem, CreatedAt: pedido.CreatedAt, UpdatedAt: pedido.UpdatedAt,
+		ID:                pedido.ID,
+		TenantID:          pedido.TenantID,
+		ClienteID:         pedido.ClienteID,
+		ClienteNome:       pedido.ClienteNome,
+		ClienteTelefone:   pedido.ClienteTelefone,
+		EnderecoEntregaID: pedido.EnderecoEntregaID,
+		EnderecoEntrega:   endereco,
+		Itens:             itens,
+		Total:             pedido.Total,
+		Status:            pedido.Status,
+		Observacoes:       pedido.Observacoes,
+		TempoEstimado:     pedido.TempoEstimado,
+		Origem:            pedido.Origem,
+		CreatedAt:         pedido.CreatedAt,
+		UpdatedAt:         pedido.UpdatedAt,
 	}
 }
 
