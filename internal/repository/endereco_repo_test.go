@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/stretchr/testify/assert"
@@ -13,19 +14,61 @@ import (
 )
 
 func setupTestDB(t *testing.T) *gorm.DB {
-	// MySQL rodando localmente (via Docker)
+	dsnRoot := "root:root@tcp(127.0.0.1:3306)/?charset=utf8mb4&parseTime=True&loc=Local"
+	dbRoot, err := gorm.Open(mysql.Open(dsnRoot), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Erro ao conectar no MySQL: %v", err)
+	}
+
+	if err := dbRoot.Exec("CREATE DATABASE IF NOT EXISTS test_db").Error; err != nil {
+		t.Fatalf("Erro ao criar banco de teste: %v", err)
+	}
+	sqlDBRoot, _ := dbRoot.DB()
+	sqlDBRoot.Close()
+
 	dsn := "root:root@tcp(127.0.0.1:3306)/test_db?charset=utf8mb4&parseTime=True&loc=Local"
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("Erro ao criar banco de teste: %v", err)
+		t.Fatalf("Erro ao conectar no banco de teste: %v", err)
 	}
 
-	// Cria banco se não existir
-	db.Exec("CREATE DATABASE IF NOT EXISTS test_db")
-	db.Exec("USE test_db")
+	if err := db.AutoMigrate(
+		&models.Cliente{},
+		&models.Endereco{},
+		&models.Tenant{},
+	); err != nil {
+		t.Fatalf("Erro ao migrar tabelas: %v", err)
+	}
 
-	// Migra TUDO (suporta ENUM)
-	db.AutoMigrate(&models.Cliente{}, &models.Endereco{})
+	tenant := models.Tenant{
+		ID:        1,
+		Nome:      "Teste",
+		CNPJ:      "12.345.678/0001-90",
+		Telefone:  "(47) 99999-9999",
+		Endereco:  "Rua Teste, 123 - Centro, Pinhalzinho-SC",
+		Segmento:  "restaurante",
+		Ativo:     true,
+		CreatedAt: time.Now(),
+	}
+	if err := db.Where("id = ?", tenant.ID).FirstOrCreate(&tenant).Error; err != nil {
+		t.Fatalf("Erro ao criar tenant de teste: %v", err)
+	}
+
+	// Teardown: roda automaticamente ao fim do teste, mesmo se ele falhar
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err != nil {
+			return
+		}
+		// Opção A: só fecha a conexão
+		// sqlDB.Close()
+
+		// Opção B (mais comum em testes de integração): limpa as tabelas
+		db.Exec("DELETE FROM enderecos")
+		db.Exec("DELETE FROM clientes")
+		db.Exec("DELETE FROM tenants")
+		sqlDB.Close()
+	})
 
 	return db
 }
