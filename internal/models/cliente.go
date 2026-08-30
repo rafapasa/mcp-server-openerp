@@ -53,17 +53,17 @@ func (Cliente) TableName() string {
 
 // IsAtivo verifica se o cliente está ativo
 func (c *Cliente) IsAtivo() bool {
-	return c.Status == "ativo"
+	return c.Status == StatusClienteAtivo
 }
 
 // IsInativo verifica se o cliente está inativo
 func (c *Cliente) IsInativo() bool {
-	return c.Status == "inativo"
+	return c.Status == StatusClienteInativo
 }
 
 // IsPendenteValidacao verifica se o cliente está pendente de validação
 func (c *Cliente) IsPendenteValidacao() bool {
-	return c.Status == "pendente_validacao"
+	return c.Status == StatusClientePendenteValidacao
 }
 
 // IsNomeValidado verifica se o nome do perfil já foi validado
@@ -124,10 +124,11 @@ func (c *Cliente) NomeCompleto() string {
 // ============================================
 
 // GetEnderecoPrincipal retorna o endereço principal do cliente
+// Retorna ponteiro para o elemento real da slice (modificações persistem).
 func (c *Cliente) GetEnderecoPrincipal() *Endereco {
-	for _, e := range c.Enderecos {
-		if e.Principal && e.IsAtivo() {
-			return &e
+	for i := range c.Enderecos {
+		if c.Enderecos[i].Principal && c.Enderecos[i].IsAtivo() {
+			return &c.Enderecos[i]
 		}
 	}
 	return nil

@@ -51,45 +51,34 @@ func (s *ClienteService) Create(ctx context.Context, req *dto.CriarClienteReques
 
 	// 2. Verifica se cliente já existe
 	clienteDto, err := s.FindByTelefone(ctx, req.Telefone, req.TenantID)
-	if err != nil {
-		// Se for erro de "não encontrado" segue pra criação
-		// Se for outro erro (banco fora), não esconde com _
-		// Ajuste o ErrRecordNotFound pro erro que seu repo retorna hoje
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			// loga só se não for not found, pra não poluir
-			// Se seu FindByTelefone já retorna nil,nil quando não acha,
-			// pode remover esse if e deixar só: if clienteDto != nil
-			logger.Error(ctx, "erro ao buscar cliente por telefone: "+err.Error())
-		}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("erro ao buscar cliente por telefone: %w", err)
 	}
 
 	if clienteDto != nil && clienteDto.ID > 0 {
-		// Se existir e estiver inativo, reativa e busca de novo
-		// BUG que você tem hoje: você retorna o DTO antigo com status "inativo"
-		if clienteDto.Status == models.StatusInativo.String() {
+		// Cliente inativo: reativa e retorna a versão atualizada
+		if clienteDto.Status == models.StatusClienteInativo {
 			if err := s.ReativarCliente(ctx, clienteDto.ID); err != nil {
 				return nil, fmt.Errorf("erro ao reativar cliente: %w", err)
 			}
-			// Busca de novo pra retornar com status "ativo" atualizado
+			// Busca de novo para retornar com o status atualizado
 			clienteAtualizado, err := s.FindByTelefone(ctx, req.Telefone, req.TenantID)
 			if err != nil {
 				return nil, err
 			}
 			return clienteAtualizado, nil
 		}
-		// Se existir e estiver ativo, retorna o existente
+		// Cliente ativo: retorna o existente
 		return clienteDto, nil
 	}
 
 	// 3. Cria cliente
-	// BUG que você tem hoje: você só preenche Nome, deixa NomePerfil vazio
-	// No WhatsApp o nome que vem é o NomePerfil
 	cliente := &models.Cliente{
 		TenantID:   req.TenantID,
 		Telefone:   req.Telefone,
 		Nome:       req.Nome,
-		NomePerfil: req.Nome, // corrige: senão fica vazio
-		Status:     models.StatusAtivo.String(),
+		NomePerfil: req.Nome,
+		Status:     models.StatusClienteAtivo,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
@@ -350,12 +339,12 @@ func (s *ClienteService) AtualizarStatus(ctx context.Context, clienteID uint, st
 
 // InativarCliente inativa um cliente
 func (s *ClienteService) InativarCliente(ctx context.Context, clienteID uint, motivo string) error {
-	return s.AtualizarStatus(ctx, clienteID, models.StatusInativo.String(), motivo)
+	return s.AtualizarStatus(ctx, clienteID, models.StatusClienteInativo, motivo)
 }
 
 // ReativarCliente reativa um cliente
 func (s *ClienteService) ReativarCliente(ctx context.Context, clienteID uint) error {
-	return s.AtualizarStatus(ctx, clienteID, models.StatusAtivo.String(), "Reativado após validação")
+	return s.AtualizarStatus(ctx, clienteID, models.StatusClienteAtivo, "Reativado após validação")
 }
 
 // ============================================
@@ -375,11 +364,10 @@ func (s *ClienteService) AdicionarEndereco(ctx context.Context, clienteID uint, 
 		return nil, fmt.Errorf("logradouro e número são obrigatórios")
 	}
 
-	// 3. Se for principal, remove principal de outros endereços
+	// 3. Se for principal, desmarca o principal atual do cliente
 	if req.Principal {
-		if err := s.enderecoRepo.Update(ctx, &models.Endereco{}); err != nil {
-			// Não falha, apenas log
-			logger.Warn(ctx, "Erro ao atualizar endereços principais", zap.Error(err))
+		if err := s.enderecoRepo.UnsetPrincipalByCliente(ctx, clienteID); err != nil {
+			return nil, fmt.Errorf("erro ao desmarcar endereços principais: %w", err)
 		}
 	}
 
@@ -440,9 +428,9 @@ func (s *ClienteService) DefinirEnderecoPrincipal(ctx context.Context, clienteID
 		return fmt.Errorf("endereço não pertence ao cliente")
 	}
 
-	// 2. Remove principal de outros endereços
-	if err := s.enderecoRepo.Update(ctx, &models.Endereco{}); err != nil {
-		return fmt.Errorf("erro ao atualizar endereços: %w", err)
+	// 2. Remove principal de outros endereços do mesmo cliente
+	if err := s.enderecoRepo.UnsetPrincipalByCliente(ctx, clienteID); err != nil {
+		return fmt.Errorf("erro ao desmarcar endereços principais: %w", err)
 	}
 
 	// 3. Define como principal

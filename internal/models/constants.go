@@ -21,6 +21,13 @@ const (
 	StatusBloqueado Status = 3
 )
 
+// Status do cliente (coluna clientes.status — valores minúsculos alinhados ao ENUM MySQL)
+const (
+	StatusClienteAtivo             = "ativo"
+	StatusClienteInativo           = "inativo"
+	StatusClientePendenteValidacao = "pendente_validacao"
+)
+
 // String retorna a representação textual do status
 func (s Status) String() string {
 	switch s {

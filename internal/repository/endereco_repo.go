@@ -30,6 +30,9 @@ type EnderecoRepositoryInterface interface {
 
 	// Transações
 	WithTx(tx *gorm.DB) EnderecoRepositoryInterface
+
+	// Gestão de principal
+	UnsetPrincipalByCliente(ctx context.Context, clienteID uint) error
 }
 
 // EnderecoRepository implementa o repositório de endereços
@@ -162,4 +165,16 @@ func (r *EnderecoRepository) CountAtivosByCliente(ctx context.Context, clienteID
 		Where("cliente_id = ? AND deleted_at IS NULL", clienteID).
 		Count(&count).Error
 	return count, err
+}
+
+// ============================================
+// GESTÃO DE PRINCIPAL
+// ============================================
+
+// UnsetPrincipalByCliente desmarca o flag principal de todos os endereços ativos de um cliente
+func (r *EnderecoRepository) UnsetPrincipalByCliente(ctx context.Context, clienteID uint) error {
+	return r.db.WithContext(ctx).
+		Model(&models.Endereco{}).
+		Where("cliente_id = ? AND deleted_at IS NULL", clienteID).
+		Update("principal", false).Error
 }
