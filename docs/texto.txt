@@ -1,4 +1,0 @@
-git checkout dev
-git add internal/service/carrinho_service.go internal/webhook/handlers.go
-git commit -m "feat(cache): IntentView com GetOrSet 2m - Refs #8"
-git push origin dev
