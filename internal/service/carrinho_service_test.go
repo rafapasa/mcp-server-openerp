@@ -810,7 +810,18 @@ func TestCarrinhoService_ProcessarMensagem_Acoes(t *testing.T) {
 		assert.Equal(t, "Temos Lanches, Bebidas.", msg)
 	})
 
-	t.Run("ação limpar_carrinho", func(t *testing.T) {
+	t.Run("limpar carrinho no fast-path", func(t *testing.T) {
+		svc, redisMock, _, _, _, _, llmMock := novoCarrinhoServiceMock(t)
+		mockRedisCacheMiss(redisMock)
+		mockObterTextoBaseReturnInput(llmMock)
+		redisMock.EXPECT().DeleteWithContext(testCtx(), "carrinho:1:5").Return(nil)
+
+		msg, err := svc.ProcessarMensagem(testCtx(), 5, 1, dto.MessageInput{Text: "limpar carrinho", Source: models.SourceText})
+		require.NoError(t, err)
+		assert.Contains(t, msg, "Carrinho limpo!")
+	})
+
+	t.Run("ação limpar_carrinho via LLM", func(t *testing.T) {
 		svc, redisMock, _, _, _, _, llmMock := novoCarrinhoServiceMock(t)
 		mockRedisCacheMiss(redisMock)
 		mockObterTextoBaseReturnInput(llmMock)
@@ -818,7 +829,7 @@ func TestCarrinhoService_ProcessarMensagem_Acoes(t *testing.T) {
 			Return(&llm.IntencaoEKeywordsResult{Acao: "limpar_carrinho"}, nil)
 		redisMock.EXPECT().DeleteWithContext(testCtx(), "carrinho:1:5").Return(nil)
 
-		msg, err := svc.ProcessarMensagem(testCtx(), 5, 1, dto.MessageInput{Text: "limpar tudo", Source: models.SourceText})
+		msg, err := svc.ProcessarMensagem(testCtx(), 5, 1, dto.MessageInput{Text: "quero zerar", Source: models.SourceText})
 		require.NoError(t, err)
 		assert.Contains(t, msg, "Carrinho limpo!")
 	})

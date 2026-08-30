@@ -154,6 +154,9 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 		return intent.ThanksResponse(), nil
 	case intent.IntentViewCart:
 		return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
+	case intent.IntentClearCart:
+		_ = s.LimparCarrinho(ctx, clienteID, tenantID)
+		return "🗑️ Carrinho limpo!", nil
 	case intent.IntentNone:
 		// anti-spam saudação 3min -> ignora
 		return "", nil

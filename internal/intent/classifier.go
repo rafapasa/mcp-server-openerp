@@ -21,6 +21,7 @@ const (
 	IntentSmallTalk
 	IntentThanks
 	IntentViewCart
+	IntentClearCart
 	IntentAdd
 	IntentRemove
 	IntentCheckout
@@ -39,6 +40,7 @@ var (
 	thanksBase    = []string{"obrigado", "obrigada", "valeu", "vlw", "tmj", "tamo junto", "grato", "obg"}
 	smallTalkBase = []string{"tudo bem", "td bem", "como vai", "beleza", "suave", "tranquilo", "tudo bom", "td bom"}
 	viewBase      = []string{"ver carrinho", "meu carrinho", "ver pedido", "o que tenho", "q tenho", "carrinho"}
+	limparBase    = []string{"limpar carrinho", "limpar tudo", "limpar pedido", "limpe tudo", "esvaziar carrinho", "apagar carrinho", "zera o carrinho"}
 )
 
 func normalize(s string) string {
@@ -203,6 +205,10 @@ func ClassifyV2(raw string, lastGreeting time.Time) Result {
 	}
 	if _, s := findBestMatch(norm, smallTalkBase); s > 0.7 {
 		return Result{Type: IntentSmallTalk, Score: s}
+	}
+	// limpar carrinho precisa vir antes do viewBase (que pega "carrinho" por contains)
+	if _, s := findBestMatch(norm, limparBase); s > 0.75 {
+		return Result{Type: IntentClearCart, Score: s}
 	}
 	if _, s := findBestMatch(norm, viewBase); s > 0.75 {
 		return Result{Type: IntentViewCart, Score: s}
