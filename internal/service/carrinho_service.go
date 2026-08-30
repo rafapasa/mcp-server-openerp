@@ -1,3 +1,4 @@
+// internal/service/carrinho_service.go - FIX FINAL compatível com classifier.go V2 + endereço só no finalizar
 package service
 
 import (
@@ -11,6 +12,7 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/helpers"
+	"github.com/rafapasa/mcp-server-openerp/internal/intent"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
@@ -68,7 +70,6 @@ func (s *CarrinhoService) GetCarrinho(ctx context.Context, clienteID, tenantID u
 	if err != nil {
 		return nil, fmt.Errorf("erro ao buscar carrinho: %w", err)
 	}
-	// migra carrinhos antigos sem estado
 	if carrinho.Estado == "" {
 		carrinho.Estado = dto.EstadoAberto
 	}
@@ -84,7 +85,6 @@ func (s *CarrinhoService) saveCarrinho(ctx context.Context, carrinho *dto.Carrin
 	return nil
 }
 
-// ProcessarMensagem - DONO DO WORKFLOW com máquina de estados de endereço
 func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tenantID uint, input dto.MessageInput) (string, error) {
 	logger.Info(
 		ctx, "[CARRINHO] Processando mensagem",
@@ -95,24 +95,71 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 
 	carrinhoAtual, _ := s.GetCarrinho(ctx, clienteID, tenantID)
 
-	// ============================================
-	// MÁQUINA DE ESTADOS DE ENDEREÇO - prioridade máxima
-	// ============================================
+	// 1. Texto base (audio/imagem -> texto)
+	textoBase, err := s.llmService.ObterTextoBase(ctx, tenantID, input)
+	if err != nil {
+		logger.Error(ctx, "Erro ObterTextoBase", zap.Error(err))
+		return "⚠ Não consegui entender seu áudio/imagem, pode digitar?", nil
+	}
+	textoBase = strings.TrimSpace(textoBase)
+	if textoBase == "" {
+		return "Não entendi, pode repetir?", nil
+	}
+
+	// 2. Se está em fluxo de endereço (só entra aqui DEPOIS de iniciar finalizar)
 	if carrinhoAtual != nil && carrinhoAtual.Estado != "" && carrinhoAtual.Estado != dto.EstadoAberto {
+		textoLower := strings.ToLower(strings.TrimSpace(textoBase))
+
+		// comandos que cancelam endereço e voltam ao normal
+		if textoLower == "limpar carrinho" || textoLower == "limpar" || strings.Contains(textoLower, "cancelar") || textoLower == "cancelar pedido" {
+			carrinhoAtual.Estado = dto.EstadoAberto
+			carrinhoAtual.EnderecoID = nil
+			_ = s.saveCarrinho(ctx, carrinhoAtual)
+			if strings.Contains(textoLower, "limpar") {
+				_ = s.LimparCarrinho(ctx, clienteID, tenantID)
+				return "🗑️ Carrinho limpo!", nil
+			}
+			return "Checkout cancelado. Seu carrinho continua aqui 👇\n" + mustFormat(s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)), nil
+		}
+
 		switch carrinhoAtual.Estado {
 		case dto.EstadoAguardandoEnderecoLista:
-			return s.handleSelecaoEndereco(ctx, clienteID, tenantID, carrinhoAtual, input.Text)
+			if _, ok := parseIndiceEndereco(textoLower); ok || pareceEndereco(textoBase) || textoLower == "novo" || strings.Contains(textoLower, "novo endereço") || strings.Contains(textoLower, "outro") {
+				return s.handleSelecaoEndereco(ctx, clienteID, tenantID, carrinhoAtual, textoBase)
+			}
+			// se não parece endereço, reseta e continua fluxo normal (ex: "quero mais um x")
+			carrinhoAtual.Estado = dto.EstadoAberto
+			_ = s.saveCarrinho(ctx, carrinhoAtual)
 		case dto.EstadoAguardandoEnderecoNovo:
-			return s.handleNovoEndereco(ctx, clienteID, tenantID, carrinhoAtual, input.Text)
+			if len(textoBase) >= 10 {
+				return s.handleNovoEndereco(ctx, clienteID, tenantID, carrinhoAtual, textoBase)
+			}
 		}
 	}
 
-	cardapio, err := s.cardapioService.GetCardapio(ctx, tenantID)
-	if err != nil {
-		logger.Error(ctx, err.Error())
-		return "", fmt.Errorf("erro cardápio: %w", err)
+	// 3. Fast-path 0 token usando seu classifier V2
+	intentRes := intent.ClassifyV2(textoBase, time.Time{})
+	switch intentRes.Type {
+	case intent.IntentGreeting:
+		return intent.GreetingResponse("", time.Now().Hour()), nil
+	case intent.IntentGreetingWithAdd:
+		// "bom dia quero um x-bacon" -> usa CleanRest como texto pra adicionar
+		textoBase = intentRes.CleanRest
+		// não retorna, continua pro LLM resolver o resto
+	case intent.IntentSmallTalk:
+		if resp := intent.SmallTalkResponse(textoBase); resp != "" {
+			return resp, nil
+		}
+	case intent.IntentThanks:
+		return intent.ThanksResponse(), nil
+	case intent.IntentViewCart:
+		return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
+	case intent.IntentNone:
+		// anti-spam saudação 3min -> ignora
+		return "", nil
 	}
 
+	// 4. Contexto carrinho para LLM
 	contextoCarrinho := "carrinho vazio"
 	if carrinhoAtual != nil && len(carrinhoAtual.Itens) > 0 {
 		nomes := make([]string, 0, len(carrinhoAtual.Itens))
@@ -122,115 +169,98 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 		contextoCarrinho = fmt.Sprintf("%d itens: %s", len(carrinhoAtual.Itens), strings.Join(nomes, ", "))
 	}
 
-	var intencao *dto.IntencaoCliente
-
-	if len(cardapio) <= limiteCardapioPequeno {
-		intencao, err = llm.RetryWithBackoff(ctx, llm.DefaultRetryConfig(), func() (*dto.IntencaoCliente, error) {
-			return s.llmService.ResolveItemsByMenu(ctx, tenantID, input, cardapio)
-		})
-		if err != nil {
-			logger.Error(ctx, "Erro ResolveItemsByMenu", zap.Error(err))
-			return "⚠ Tive um problema técnico, tenta de novo por favor.", nil
-		}
-	} else {
-		textoBase, err := s.llmService.ObterTextoBase(ctx, tenantID, input)
-		if err != nil {
-			logger.Error(ctx, "Erro ObterTextoBase", zap.Error(err))
-			return "⚠ Não consegui entender seu áudio/imagem, pode digitar?", nil
-		}
-		if strings.TrimSpace(textoBase) == "" {
-			return "Não entendi, pode repetir?", nil
-		}
-
-		result, err := s.llmService.ClassificarEExtrairKeywords(ctx, textoBase, contextoCarrinho)
-		if err != nil {
-			logger.Error(ctx, "Erro ClassificarEExtrairKeywords", zap.Error(err))
-			return "⚠ Tive um problema técnico, tenta de novo por favor.", nil
-		}
-
-		switch result.Acao {
-		case "conversa":
-			if result.Resposta != "" {
-				return result.Resposta, nil
-			}
-			return "Olá! 😊 Como posso ajudar?", nil
-		case "listar_categorias":
-			return s.cardapioService.ListarCategoriasHumanizado(cardapio), nil
-		case "listar_produtos":
-			return s.cardapioService.ListarProdutosHumanizado(cardapio, result.Filtro), nil
-		case "ver_carrinho":
-			return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
-		case "limpar_carrinho":
-			_ = s.LimparCarrinho(ctx, clienteID, tenantID)
-			return "🗑️ Carrinho limpo!", nil
-		case "remover":
-			if len(result.Keywords) == 0 {
-				return "O que você quer remover?", nil
-			}
-			cardapioReduzido, _ := s.cardapioService.ReduzirPorKeywords(ctx, tenantID, result.Keywords)
-			itensRemover, _ := s.llmService.ResolverItensByKeyWords(ctx, tenantID, result.Keywords, cardapioReduzido)
-			for _, it := range itensRemover {
-				_ = s.RemoverItem(ctx, clienteID, tenantID, it, it.Quantidade)
-			}
-			return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
-		case "finalizar", "confirmar", "fechar", "checkout":
-			// NOVO FLUXO - vai para máquina de estados de endereço
-			return s.iniciarFluxoFinalizacao(ctx, clienteID, tenantID)
-		default:
-			cardapioReduzido, _ := s.cardapioService.ReduzirPorKeywords(ctx, tenantID, result.Keywords)
-			intencaoItens, _ := s.llmService.ResolverItensByKeyWords(ctx, tenantID, result.Keywords, cardapioReduzido)
-			intencao = &dto.IntencaoCliente{
-				Acao:  result.Acao,
-				Itens: intencaoItens,
-			}
-		}
+	// 5. Classifica via LLM ANTES do branch tamanho cardápio - FIX BUG conversa
+	result, err := s.llmService.ClassificarEExtrairKeywords(ctx, textoBase, contextoCarrinho)
+	if err != nil {
+		logger.Error(ctx, "Erro ClassificarEExtrairKeywords", zap.Error(err))
+		return "⚠ Tive um problema técnico, tenta de novo por favor.", nil
 	}
 
-	// fluxo pequeno e fallback do grande
-	if intencao == nil {
-		return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
-	}
-
-	switch intencao.Acao {
+	switch result.Acao {
+	case "conversa":
+		if result.Resposta != "" {
+			return result.Resposta, nil
+		}
+		return "Olá! 😊 Como posso ajudar? Me diga o que você gostaria de pedir.", nil
+	case "listar_categorias", "ver_cardapio", "cardapio":
+		cardapio, _ := s.cardapioService.GetCardapio(ctx, tenantID)
+		return s.cardapioService.ListarCategoriasHumanizado(cardapio), nil
+	case "listar_produtos":
+		cardapio, _ := s.cardapioService.GetCardapio(ctx, tenantID)
+		return s.cardapioService.ListarProdutosHumanizado(cardapio, result.Filtro), nil
 	case "ver_carrinho":
 		return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
 	case "limpar_carrinho":
 		_ = s.LimparCarrinho(ctx, clienteID, tenantID)
 		return "🗑️ Carrinho limpo!", nil
 	case "remover":
-		if len(intencao.Itens) == 0 {
+		if len(result.Keywords) == 0 {
 			return "O que você quer remover?", nil
 		}
-		for _, it := range intencao.Itens {
+		cardapioReduzido, _ := s.cardapioService.ReduzirPorKeywords(ctx, tenantID, result.Keywords)
+		itensRemover, _ := s.llmService.ResolverItensByKeyWords(ctx, tenantID, result.Keywords, cardapioReduzido)
+		for _, it := range itensRemover {
 			_ = s.RemoverItem(ctx, clienteID, tenantID, it, it.Quantidade)
 		}
 		return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
 	case "finalizar", "confirmar", "fechar", "checkout":
 		return s.iniciarFluxoFinalizacao(ctx, clienteID, tenantID)
-	default:
-		if len(intencao.Itens) == 0 {
+	}
+
+	// 6. Adicionar item - branch por tamanho
+	cardapio, err := s.cardapioService.GetCardapio(ctx, tenantID)
+	if err != nil {
+		logger.Error(ctx, err.Error())
+		return "", fmt.Errorf("erro cardápio: %w", err)
+	}
+
+	var intencao *dto.IntencaoCliente
+
+	if len(cardapio) <= limiteCardapioPequeno {
+		intencao, err = llm.RetryWithBackoff(ctx, llm.DefaultRetryConfig(), func() (*dto.IntencaoCliente, error) {
+			inputTexto := dto.MessageInput{Text: textoBase, Source: input.Source}
+			return s.llmService.ResolveItemsByMenu(ctx, tenantID, inputTexto, cardapio)
+		})
+		if err != nil {
+			logger.Error(ctx, "Erro ResolveItemsByMenu", zap.Error(err))
+			return "⚠ Tive um problema técnico, tenta de novo por favor.", nil
+		}
+		if intencao.Acao == "conversa" {
+			if intencao.Mensagem != "" {
+				return intencao.Mensagem, nil
+			}
+			return "Olá! 😊 Como posso ajudar?", nil
+		}
+	} else {
+		cardapioReduzido, _ := s.cardapioService.ReduzirPorKeywords(ctx, tenantID, result.Keywords)
+		itens, _ := s.llmService.ResolverItensByKeyWords(ctx, tenantID, result.Keywords, cardapioReduzido)
+		intencao = &dto.IntencaoCliente{
+			Acao:  result.Acao,
+			Itens: itens,
+		}
+	}
+
+	if intencao == nil || len(intencao.Itens) == 0 {
+		if carrinhoAtual != nil && len(carrinhoAtual.Itens) > 0 {
 			return s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)
 		}
-		carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
-		if err != nil {
-			return "", err
-		}
-		for _, item := range intencao.Itens {
-			carrinho = s.mergeItem(carrinho, item)
-		}
-		// garante que estado volta para aberto ao adicionar item novo
-		carrinho.Estado = dto.EstadoAberto
-		carrinho.EnderecoID = nil
-		if err := s.saveCarrinho(ctx, carrinho); err != nil {
-			return "", err
-		}
-		return s.FormatResumoCarrinho(ctx, carrinho)
+		return "Não entendi qual item você quer. Pode me dizer como no cardápio? Ex: *quero 1 X-Bacon*", nil
 	}
-}
 
-// ============================================
-// FLUXO DE ENDEREÇO - NOVO
-// ============================================
+	carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
+	if err != nil {
+		return "", err
+	}
+	for _, item := range intencao.Itens {
+		carrinho = s.mergeItem(carrinho, item)
+	}
+	carrinho.Estado = dto.EstadoAberto
+	carrinho.EnderecoID = nil
+	if err := s.saveCarrinho(ctx, carrinho); err != nil {
+		return "", err
+	}
+	return s.FormatResumoCarrinho(ctx, carrinho)
+}
 
 func (s *CarrinhoService) iniciarFluxoFinalizacao(ctx context.Context, clienteID, tenantID uint) (string, error) {
 	carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
@@ -244,19 +274,16 @@ func (s *CarrinhoService) iniciarFluxoFinalizacao(ctx context.Context, clienteID
 	enderecos, err := s.clienteService.ListarEnderecos(ctx, clienteID)
 	if err != nil {
 		logger.Error(ctx, "erro ao listar endereços", zap.Error(err))
-		// falha no banco não bloqueia - pede endereço novo
 		enderecos = []dto.EnderecoDTO{}
 	}
 
 	if len(enderecos) == 0 {
-		// SEM ENDEREÇO - solicita novo
 		carrinho.Estado = dto.EstadoAguardandoEnderecoNovo
 		carrinho.TentativasEndereco = 0
 		_ = s.saveCarrinho(ctx, carrinho)
 		return helpers.FormatSolicitarNovoEndereco(false), nil
 	}
 
-	// TEM ENDEREÇOS - lista para escolha
 	carrinho.Estado = dto.EstadoAguardandoEnderecoLista
 	carrinho.TentativasEndereco = 0
 	_ = s.saveCarrinho(ctx, carrinho)
@@ -266,21 +293,18 @@ func (s *CarrinhoService) iniciarFluxoFinalizacao(ctx context.Context, clienteID
 func (s *CarrinhoService) handleSelecaoEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
 	textoLimpo := strings.TrimSpace(strings.ToLower(texto))
 
-	// comando "novo" -> vai para cadastro
-	if textoLimpo == "novo" || textoLimpo == "novo endereço" || textoLimpo == "novo endereco" || textoLimpo == "outro" || textoLimpo == "cadastrar" {
+	if textoLimpo == "novo" || strings.Contains(textoLimpo, "novo endereço") || textoLimpo == "outro" || textoLimpo == "cadastrar" {
 		carrinho.Estado = dto.EstadoAguardandoEnderecoNovo
 		_ = s.saveCarrinho(ctx, carrinho)
 		return helpers.FormatSolicitarNovoEndereco(true), nil
 	}
 
-	// tenta parsear número 1,2,3
 	if idx, ok := parseIndiceEndereco(textoLimpo); ok {
 		enderecos, err := s.clienteService.ListarEnderecos(ctx, clienteID)
 		if err != nil || idx < 1 || idx > len(enderecos) {
 			carrinho.TentativasEndereco++
 			_ = s.saveCarrinho(ctx, carrinho)
 			if carrinho.TentativasEndereco >= 2 {
-				// após 2 erros, re-lista
 				return helpers.FormatListaEnderecos(enderecos), nil
 			}
 			return fmt.Sprintf("⚠️ Opção inválida. Digite um número de 1 a %d ou *novo*", len(enderecos)), nil
@@ -289,12 +313,10 @@ func (s *CarrinhoService) handleSelecaoEndereco(ctx context.Context, clienteID, 
 		return s.finalizarComEndereco(ctx, clienteID, tenantID, carrinho, escolhido.ID)
 	}
 
-	// se parece endereço (tem número e texto longo), trata como novo endereço direto
 	if pareceEndereco(texto) {
 		return s.handleNovoEndereco(ctx, clienteID, tenantID, carrinho, texto)
 	}
 
-	// não entendeu - re-lista
 	enderecos, _ := s.clienteService.ListarEnderecos(ctx, clienteID)
 	return helpers.FormatListaEnderecos(enderecos), nil
 }
@@ -305,20 +327,17 @@ func (s *CarrinhoService) handleNovoEndereco(ctx context.Context, clienteID, ten
 		return helpers.FormatErroEndereco("Endereço muito curto. Preciso de rua e número."), nil
 	}
 
-	// parse simples do endereço - não inventa, só quebra por vírgula
 	req := parseEnderecoTexto(texto)
 	if req.Logradouro == "" || req.Numero == "" {
 		return helpers.FormatErroEndereco("Não consegui identificar rua e número. Envie no formato: *Rua, Número, Bairro*"), nil
 	}
 
-	// CRIA - regra de negócio: nunca edita/deleta, só adiciona
 	novoEndereco, err := s.clienteService.AdicionarEndereco(ctx, clienteID, req)
 	if err != nil {
 		logger.Error(ctx, "erro ao criar endereço", zap.Error(err))
 		return "❌ Erro ao salvar endereço. Tente novamente no formato: *Rua das Flores, 123, Centro*", nil
 	}
 
-	// confirma e já finaliza pedido com ele
 	msgConfirm := helpers.FormatEnderecoCadastrado(novoEndereco) + "\n\n"
 	pedidoMsg, err := s.finalizarComEndereco(ctx, clienteID, tenantID, carrinho, novoEndereco.ID)
 	if err != nil {
@@ -328,25 +347,6 @@ func (s *CarrinhoService) handleNovoEndereco(ctx context.Context, clienteID, ten
 }
 
 func (s *CarrinhoService) finalizarComEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, enderecoID uint) (string, error) {
-	// valida se endereço pertence ao cliente e está ativo
-	enderecos, err := s.clienteService.ListarEnderecos(ctx, clienteID)
-	if err != nil {
-		return "", err
-	}
-	var encontrado *dto.EnderecoDTO
-	for _, e := range enderecos {
-		if e.ID == enderecoID {
-			encontrado = &e
-			break
-		}
-	}
-	if encontrado == nil {
-		// pode ser o recém criado que ainda não está na lista cacheada - busca direto
-		// tenta finalizar mesmo assim, o repo vai validar FK
-		logger.Warn(ctx, "endereço não encontrado na listagem, tentando finalizar mesmo assim", zap.Uint("endereco_id", enderecoID))
-	}
-
-	// pega nome do cliente para pedido
 	clienteDTO, _ := s.clienteService.FindByID(ctx, clienteID)
 	nomeCliente := ""
 	if clienteDTO != nil {
@@ -356,7 +356,6 @@ func (s *CarrinhoService) finalizarComEndereco(ctx context.Context, clienteID, t
 		}
 	}
 
-	// limpa estado de endereço antes de finalizar para não ficar em loop se falhar
 	carrinho.Estado = dto.EstadoAberto
 	carrinho.EnderecoID = &enderecoID
 	_ = s.saveCarrinho(ctx, carrinho)
@@ -369,13 +368,10 @@ func (s *CarrinhoService) finalizarComEndereco(ctx context.Context, clienteID, t
 		return "❌ Erro ao finalizar pedido.", nil
 	}
 
-	// limpa carrinho já é feito dentro de FinalizarCarrinhoComEndereco
+	_ = s.clienteService.AtualizarUltimoPedido(ctx, clienteID)
+
 	return s.FormatarPedidoConfirmado(pedidoConfirmado), nil
 }
-
-// ============================================
-// MÉTODOS EXISTENTES - mantidos + novo FinalizarComEndereco
-// ============================================
 
 func (s *CarrinhoService) mergeItem(carrinho *dto.Carrinho, item dto.ItemCarrinho) *dto.Carrinho {
 	for i, existing := range carrinho.Itens {
@@ -442,12 +438,10 @@ func (s *CarrinhoService) CalcularTempoEstimado(carrinho *dto.Carrinho) int {
 	return 15 + (total * 5)
 }
 
-// FinalizarCarrinho - mantido para compatibilidade, finaliza SEM endereço (retirada)
 func (s *CarrinhoService) FinalizarCarrinho(ctx context.Context, clienteID, tenantID uint, clienteNome string) (*dto.PedidoConfirmado, error) {
 	return s.FinalizarCarrinhoComEndereco(ctx, clienteID, tenantID, clienteNome, 0)
 }
 
-// FinalizarCarrinhoComEndereco - NOVO - com endereço de entrega
 func (s *CarrinhoService) FinalizarCarrinhoComEndereco(ctx context.Context, clienteID, tenantID uint, clienteNome string, enderecoID uint) (*dto.PedidoConfirmado, error) {
 	carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
@@ -503,23 +497,19 @@ func (s *CarrinhoService) FormatarPedidoConfirmado(pedido *dto.PedidoConfirmado)
 	return helpers.FormatRespostaPedido(pedido)
 }
 
-// ============================================
-// HELPERS PRIVADOS - parsing de endereço
-// ============================================
-
 func parseUint(s string) uint {
 	var v uint
 	fmt.Sscan(s, &v)
 	return v
 }
 
+func mustFormat(s string, _ error) string { return s }
+
 func parseIndiceEndereco(texto string) (int, bool) {
 	texto = strings.TrimSpace(texto)
-	// aceita 1, 1., 1) , opção 1
 	re := regexp.MustCompile(`^(\d+)[\.\)]?$`)
 	matches := re.FindStringSubmatch(texto)
 	if len(matches) < 2 {
-		// tenta extrair primeiro número
 		re2 := regexp.MustCompile(`\d+`)
 		numStr := re2.FindString(texto)
 		if numStr == "" {
@@ -543,15 +533,12 @@ func pareceEndereco(texto string) bool {
 	if len(texto) < 12 {
 		return false
 	}
-	// tem número e tem indicador de rua/av/bairro
 	temNumero := regexp.MustCompile(`\d+`).MatchString(texto)
 	temIndicador := strings.Contains(textoLower, "rua") || strings.Contains(textoLower, "av") || strings.Contains(textoLower, "bairro") || strings.Contains(textoLower, ",") || strings.Contains(textoLower, "nº") || strings.Contains(textoLower, "numero")
 	return temNumero && temIndicador
 }
 
 func parseEnderecoTexto(texto string) *dto.CriarEnderecoRequest {
-	// Formato esperado: Rua das Flores, 123, Centro, Pinhalzinho - SC, 89870-000
-	// Quebra por vírgula - simples e robusto
 	partes := strings.Split(texto, ",")
 	for i := range partes {
 		partes[i] = strings.TrimSpace(partes[i])
@@ -567,8 +554,6 @@ func parseEnderecoTexto(texto string) *dto.CriarEnderecoRequest {
 		req.Logradouro = partes[0]
 	}
 	if len(partes) >= 2 {
-		// segunda parte geralmente é número + bairro ou só número
-		// tenta extrair número
 		reNum := regexp.MustCompile(`^(\d+\w*)\s*(.*)`)
 		m := reNum.FindStringSubmatch(partes[1])
 		if len(m) >= 2 {
@@ -581,16 +566,13 @@ func parseEnderecoTexto(texto string) *dto.CriarEnderecoRequest {
 		}
 	}
 	if len(partes) >= 3 {
-		// se bairro ainda vazio, terceira parte é bairro
 		if req.Bairro == "" {
 			req.Bairro = partes[2]
 		} else {
-			// terceira parte pode ser cidade ou complemento
 			req.Cidade = partes[2]
 		}
 	}
 	if len(partes) >= 4 {
-		// tenta extrair cidade e estado: Pinhalzinho - SC
 		cidadeEstado := partes[3]
 		if strings.Contains(cidadeEstado, "-") {
 			ce := strings.Split(cidadeEstado, "-")
@@ -603,7 +585,6 @@ func parseEnderecoTexto(texto string) *dto.CriarEnderecoRequest {
 		}
 	}
 	if len(partes) >= 5 {
-		// CEP
 		cepRe := regexp.MustCompile(`\d{5}-?\d{3}`)
 		cep := cepRe.FindString(partes[4])
 		if cep != "" {
@@ -611,25 +592,21 @@ func parseEnderecoTexto(texto string) *dto.CriarEnderecoRequest {
 		}
 	}
 
-	// fallback: extrai CEP de qualquer lugar do texto
 	if req.CEP == "" {
 		cepRe := regexp.MustCompile(`\d{5}-?\d{3}`)
 		req.CEP = cepRe.FindString(texto)
 	}
 
-	// fallback: se não conseguiu separar número, tenta regex geral
 	if req.Numero == "" {
 		re := regexp.MustCompile(`(?i)(?:n[º°]?|numero)\s*(\d+)`)
 		if m := re.FindStringSubmatch(texto); len(m) > 1 {
 			req.Numero = m[1]
 		} else {
-			// pega primeiro número isolado após logradouro
 			re2 := regexp.MustCompile(`\b(\d{1,5})\b`)
 			nums := re2.FindAllString(texto, -1)
 			if len(nums) > 0 {
-				// ignora CEP
 				for _, n := range nums {
-					if len(n) <= 5 && n != strings.ReplaceAll(req.CEP, "-", "")[:5] {
+					if len(n) <= 5 {
 						req.Numero = n
 						break
 					}
@@ -642,8 +619,6 @@ func parseEnderecoTexto(texto string) *dto.CriarEnderecoRequest {
 		req.Numero = "S/N"
 	}
 
-	// se logradouro ainda contém número, limpa
 	req.Logradouro = strings.TrimSpace(req.Logradouro)
-
 	return req
 }
