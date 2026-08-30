@@ -76,9 +76,12 @@ func (s *tenantService) GetPromptContext(ctx context.Context, tenantID uint) (st
 
 func toTenantDTO(m *models.Tenant) *dto.TenantDTO {
 	return &dto.TenantDTO{
-		ID: m.ID, Nome: m.Nome, CNPJ: m.CNPJ,
-		Telefone: m.Telefone, Endereco: m.Endereco,
-		Segmento: m.Segmento, Ativo: m.Ativo,
+		ID:       m.ID,
+		Nome:     m.Nome,
+		CNPJ:     m.CNPJ,
+		Telefone: m.Telefone,
+		Endereco: m.Endereco,
+		Segmento: m.Segmento,
+		Ativo:    m.Ativo,
 	}
 }
-
