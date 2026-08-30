@@ -84,12 +84,14 @@ func TestCardapioService_BuscarProdutoPorNome(t *testing.T) {
 		assert.Nil(t, resultado)
 	})
 
-	t.Run("erro: repositório falha e propaga", func(t *testing.T) {
+	t.Run("erro: repositório falha e propaga com wrap", func(t *testing.T) {
 		svc, produtoRepo := novoCardapioServiceMock(t)
 		produtoRepo.EXPECT().FindByNome(testCtx(), uint(1), "X-Bacon").Return(nil, assert.AnError)
 
 		resultado, err := svc.BuscarProdutoPorNome(testCtx(), "1", "X-Bacon")
 		require.Error(t, err)
+		assert.ErrorIs(t, err, assert.AnError)
+		assert.Contains(t, err.Error(), "erro ao buscar produto por nome")
 		assert.Nil(t, resultado)
 	})
 
@@ -129,12 +131,14 @@ func TestCardapioService_FindByID(t *testing.T) {
 		assert.Equal(t, "", resultado.CategoriaNome)
 	})
 
-	t.Run("erro: repositório falha e propaga", func(t *testing.T) {
+	t.Run("erro: repositório falha e propaga com wrap", func(t *testing.T) {
 		svc, produtoRepo := novoCardapioServiceMock(t)
 		produtoRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(nil, assert.AnError)
 
 		resultado, err := svc.FindByID(testCtx(), 1)
 		require.Error(t, err)
+		assert.ErrorIs(t, err, assert.AnError)
+		assert.Contains(t, err.Error(), "erro ao buscar produto")
 		assert.Nil(t, resultado)
 	})
 }
@@ -157,12 +161,14 @@ func TestCardapioService_ListWithFilters(t *testing.T) {
 		assert.Equal(t, uint(1), resultado[0].ID)
 	})
 
-	t.Run("erro: repositório falha e propaga", func(t *testing.T) {
+	t.Run("erro: repositório falha e propaga com wrap", func(t *testing.T) {
 		svc, produtoRepo := novoCardapioServiceMock(t)
 		produtoRepo.EXPECT().FindWithFilters(testCtx(), uint(1), nil, nil, "", 10, 0).Return(nil, int64(0), assert.AnError)
 
 		_, _, err := svc.ListWithFilters(testCtx(), 1, nil, nil, "", 1, 10)
 		require.Error(t, err)
+		assert.ErrorIs(t, err, assert.AnError)
+		assert.Contains(t, err.Error(), "erro ao listar produtos")
 	})
 }
 
@@ -246,10 +252,11 @@ func TestCardapioService_ItemExisteNoCardapio(t *testing.T) {
 		assert.Nil(t, item)
 	})
 
-	t.Run("nome vazio: contains vazio casa o primeiro item (comportamento atual)", func(t *testing.T) {
+	t.Run("nome vazio: retorna erro de validação", func(t *testing.T) {
 		item, err := svc.ItemExisteNoCardapio(cardapio, "")
-		require.NoError(t, err)
-		assert.Equal(t, "X-Bacon", item.Nome)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "não pode ser vazio")
+		assert.Nil(t, item)
 	})
 }
 

@@ -73,7 +73,7 @@ func (s *cardapioService) BuscarProdutoPorNome(ctx context.Context, tenantID str
 	}
 	produto, err := s.produtoRepo.FindByNome(ctx, tenantIDUint, nome)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("erro ao buscar produto por nome: %w", err)
 	}
 	cat := ""
 	if produto.Categoria != nil {
@@ -92,6 +92,9 @@ func (s *cardapioService) BuscarProdutoPorNome(ctx context.Context, tenantID str
 
 func (s *cardapioService) ItemExisteNoCardapio(cardapio []dto.ProdutoItem, nome string) (*dto.ProdutoItem, error) {
 	nomeLower := strings.ToLower(strings.TrimSpace(nome))
+	if nomeLower == "" {
+		return nil, fmt.Errorf("nome do produto não pode ser vazio")
+	}
 	for _, item := range cardapio {
 		if strings.ToLower(item.Nome) == nomeLower {
 			return &item, nil
@@ -238,7 +241,7 @@ func (s *cardapioService) ListarProdutosHumanizado(cardapio []dto.ProdutoItem, f
 func (s *cardapioService) FindByID(ctx context.Context, id uint) (*dto.ProdutoDTO, error) {
 	produto, err := s.produtoRepo.FindByID(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("erro ao buscar produto: %w", err)
 	}
 	catNome := ""
 	if produto.Categoria != nil {
@@ -262,7 +265,7 @@ func (s *cardapioService) ListWithFilters(ctx context.Context, tenantID uint, ca
 	offset := (page - 1) * limit
 	produtos, total, err := s.produtoRepo.FindWithFilters(ctx, tenantID, categoriaID, disponivel, nome, limit, offset)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("erro ao listar produtos: %w", err)
 	}
 	result := make([]dto.ProdutoDTO, len(produtos))
 	for i, p := range produtos {
