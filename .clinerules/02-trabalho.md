@@ -3,6 +3,11 @@
 ## Git
 - **Commits: feitos SEMPRE pelo usuário.** O agente nunca roda `git commit` nem `git push`;
   entrega as mudanças no working tree (ou staged) para o usuário revisar e commitar.
+- **Branch de trabalho padrão: `dev`** (integração). Branches específicas
+  (`feature/DEV-<n>-*`) somente quando o usuário indicar. `main` é só produção/deploy.
+- **Uso de git:** o agente só executa comandos git quando o usuário pedir explicitamente.
+- **Verificação de branch:** ao iniciar cada tarefa, o agente verifica o branch atual
+  e informa se não estiver em `dev` antes de começar qualquer trabalho.
 - Branches: `main` (produção) · `dev` (integração) · `feature/DEV-<n>-<desc>`.
 - Commit: `tipo: descrição — Refs #<n>` em pt-BR, uma mudança lógica por commit
   (`feat:`, `fix:`, `docs:`, ...).
