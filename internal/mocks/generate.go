@@ -9,6 +9,8 @@ package mocks
 // go:generate go run go.uber.org/mock/mockgen -destination=produto_repo_mock.go -package=mocks github.com/rafapasa/mcp-server-openerp/internal/repository ProdutoRepository
 // go:generate go run go.uber.org/mock/mockgen -destination=llm_service_mock.go -package=mocks github.com/rafapasa/mcp-server-openerp/internal/service LLMServiceInterface
 // go:generate go run go.uber.org/mock/mockgen -destination=tenant_service_mock.go -package=mocks github.com/rafapasa/mcp-server-openerp/internal/service TenantServiceInterface
+// go:generate go run go.uber.org/mock/mockgen -destination=cliente_repo_mock.go -package=mocks github.com/rafapasa/mcp-server-openerp/internal/repository ClienteRepositoryInterface
+// go:generate go run go.uber.org/mock/mockgen -destination=endereco_repo_mock.go -package=mocks github.com/rafapasa/mcp-server-openerp/internal/repository EnderecoRepositoryInterface
 
 // go run go.uber.org/mock/mockgen -destination=internal/mocks/cardapio_service_mock.go -package=mocks github.com/rafapasa/mcp-server-openerp/internal/service CardapioServiceInterface
 // go run go.uber.org/mock/mockgen -destination=internal/mocks/pedido_service_mock.go -package=mocks github.com/rafapasa/mcp-server-openerp/internal/service PedidoServiceInterface
