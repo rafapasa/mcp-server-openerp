@@ -32,8 +32,8 @@ type LLMProvider interface {
 	GenerateResponse(ctx context.Context, prompt string) (string, error)
 	TranscribeAudio(ctx context.Context, audio []byte, prompt string) (string, error)
 	DescribeImage(ctx context.Context, image []byte, caption string) (string, error)
-	ResolveItemsByMenu(ctx context.Context, input dto.MessageInput, cardapio []dto.ProdutoItem) (*dto.IntencaoCliente, error)
-	ClassificarEExtrairKeywords(ctx context.Context, texto, contextoCarrinho string) (*IntencaoEKeywordsResult, error)
+	ResolveItemsByMenu(ctx context.Context, input dto.MessageInput, cardapio []dto.ProdutoItem, contextoLoja string) (*dto.IntencaoCliente, error)
+	ClassificarEExtrairKeywords(ctx context.Context, texto, contextoCarrinho, contextoLoja string) (*IntencaoEKeywordsResult, error)
 	ResolverItensByKeyWords(ctx context.Context, keywords []LLMKeywordItemResult, cardapioReduzido []dto.ProdutoItem) ([]dto.ItemCarrinho, error)
 	Higienizar(texto string) string
 	GetProvider() string

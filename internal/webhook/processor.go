@@ -1,4 +1,4 @@
-// internal/webhook/processor.go
+// internal/webhook/processor.go - FIX multi-tenant
 package webhook
 
 import (
@@ -55,7 +55,8 @@ func (p *Processor) Process(ctx context.Context, req whatsappdto.WebhookRequest)
 
 	for _, entry := range req.Entry {
 		for _, change := range entry.Changes {
-			tenantID, err := p.resolveTenant(ctx, change.Value.Metadata.DisplayPhoneNumber)
+			// FIX: usa phone_number_id primeiro, fallback display_number
+			tenantID, err := p.resolveTenant(ctx, change.Value.Metadata.PhoneNumberID, change.Value.Metadata.DisplayPhoneNumber)
 			if err != nil || tenantID == 0 {
 				logger.Error(ctx, "tenant não resolvido",
 					zap.String("display", change.Value.Metadata.DisplayPhoneNumber),
@@ -128,17 +129,33 @@ func (p *Processor) getOrCreateCliente(ctx context.Context, telefone, nome strin
 	})
 }
 
-func (p *Processor) resolveTenant(ctx context.Context, displayPhone string) (uint, error) {
+// NOVO: resolveTenant com phone_number_id (definitivo) + fallback display
+func (p *Processor) resolveTenant(ctx context.Context, phoneNumberID, displayPhone string) (uint, error) {
+	// 1. Tentativa principal: phone_number_id (vem da Meta, nunca muda)
+	if phoneNumberID != "" {
+		tenant, err := p.tenantService.GetByWhatsAppPhoneID(ctx, phoneNumberID)
+		if err == nil && tenant != nil && tenant.ID != 0 {
+			logger.Info(ctx, "tenant resolvido por phone_number_id",
+				zap.String("phone_id", phoneNumberID),
+				zap.Uint("tenant_id", tenant.ID))
+			return tenant.ID, nil
+		}
+		// se não achou por phoneID, cai pro fallback
+		logger.Warn(ctx, "tenant não achado por phone_number_id, tentando fallback display",
+			zap.String("phone_id", phoneNumberID), zap.Error(err))
+	}
+
+	// 2. Fallback: display phone (seu código antigo)
 	clean := phone.Normalize(displayPhone)
 	if clean == "" {
-		return 0, fmt.Errorf("displayPhone vazio")
+		return 0, fmt.Errorf("displayPhone vazio e phoneID %s não resolveu", phoneNumberID)
 	}
 	tenant, err := p.tenantService.GetByTelefone(ctx, clean)
 	if err != nil {
 		return 0, err
 	}
 	if tenant == nil || tenant.ID == 0 {
-		return 0, fmt.Errorf("tenant não encontrado para %s", clean)
+		return 0, fmt.Errorf("tenant não encontrado para display %s (phoneID %s)", clean, phoneNumberID)
 	}
 	return tenant.ID, nil
 }

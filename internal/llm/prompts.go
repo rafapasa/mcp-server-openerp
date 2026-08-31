@@ -3,12 +3,19 @@ package llm
 const (
 	PromptSystemBase = `Você é atendente do %s via WhatsApp.`
 
+	// PromptContextoLoja injeta o contexto multi-tenant (nome + segmento) no prompt do LLM.
+	PromptContextoLoja = `LOJA: %s
+SEGMENTO: %s`
+
 	PromptTranscribeSimple = `Transcreva o áudio em PT-BR fielmente. Retorne apenas a transcrição limpa.`
 	PromptVisionDescribe   = `Descreva o pedido do cliente na imagem de forma objetiva. Foco em produtos e quantidades.`
 	PromptErroGenerico     = `Desculpe, problema temporário. Pode repetir?`
 
 	PromptClassificarEExtrairKeywords = `
 Você é classificador de intenção de cliente de delivery/comércio.
+
+CONTEXTO DA LOJA:
+%s
 
 TEXTO DO CLIENTE: "%s"
 CONTEXTO DO CARRINHO ATUAL: %s
@@ -70,6 +77,9 @@ Sem markdown.
 
 	PromptResolveByMenu = `
 Você é atendente de delivery. Analise a mensagem do cliente e o cardápio.
+
+CONTEXTO DA LOJA:
+%s
 
 MENSAGEM DO CLIENTE: "%s"
 

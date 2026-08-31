@@ -774,7 +774,7 @@ func TestCarrinhoService_ProcessarMensagem(t *testing.T) {
 		svc, redisMock, _, _, _, _, llmMock := novoCarrinhoServiceMock(t)
 		mockRedisCacheMiss(redisMock)
 		mockObterTextoBaseReturnInput(llmMock)
-		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), gomock.Any(), gomock.Any()).Return(nil, assert.AnError)
+		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), uint(1), gomock.Any(), gomock.Any()).Return(nil, assert.AnError)
 
 		msg, err := svc.ProcessarMensagem(testCtx(), 5, 1, dto.MessageInput{Text: "quero um x-bacon", Source: models.SourceText})
 		require.NoError(t, err)
@@ -787,7 +787,7 @@ func TestCarrinhoService_ProcessarMensagem_Acoes(t *testing.T) {
 		svc, redisMock, _, _, _, _, llmMock := novoCarrinhoServiceMock(t)
 		mockRedisCacheMiss(redisMock)
 		mockObterTextoBaseReturnInput(llmMock)
-		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), gomock.Any(), gomock.Any()).
+		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), uint(1), gomock.Any(), gomock.Any()).
 			Return(&llm.IntencaoEKeywordsResult{Acao: "conversa", Resposta: "Funcionamos das 18h às 23h"}, nil)
 
 		msg, err := svc.ProcessarMensagem(testCtx(), 5, 1, dto.MessageInput{Text: "qual o horário?", Source: models.SourceText})
@@ -799,7 +799,7 @@ func TestCarrinhoService_ProcessarMensagem_Acoes(t *testing.T) {
 		svc, redisMock, cardapioMock, _, _, _, llmMock := novoCarrinhoServiceMock(t)
 		mockRedisCacheMiss(redisMock)
 		mockObterTextoBaseReturnInput(llmMock)
-		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), gomock.Any(), gomock.Any()).
+		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), uint(1), gomock.Any(), gomock.Any()).
 			Return(&llm.IntencaoEKeywordsResult{Acao: "listar_categorias"}, nil)
 		cardapioMock.EXPECT().GetCardapio(testCtx(), uint(1)).
 			Return([]dto.ProdutoItem{{ID: 1, Nome: "X-Bacon", Categoria: "Lanches"}}, nil)
@@ -825,7 +825,7 @@ func TestCarrinhoService_ProcessarMensagem_Acoes(t *testing.T) {
 		svc, redisMock, _, _, _, _, llmMock := novoCarrinhoServiceMock(t)
 		mockRedisCacheMiss(redisMock)
 		mockObterTextoBaseReturnInput(llmMock)
-		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), gomock.Any(), gomock.Any()).
+		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), uint(1), gomock.Any(), gomock.Any()).
 			Return(&llm.IntencaoEKeywordsResult{Acao: "limpar_carrinho"}, nil)
 		redisMock.EXPECT().DeleteWithContext(testCtx(), "carrinho:1:5").Return(nil)
 
@@ -838,7 +838,7 @@ func TestCarrinhoService_ProcessarMensagem_Acoes(t *testing.T) {
 		svc, redisMock, _, _, _, _, llmMock := novoCarrinhoServiceMock(t)
 		mockRedisCacheMiss(redisMock)
 		mockObterTextoBaseReturnInput(llmMock)
-		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), gomock.Any(), gomock.Any()).
+		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), uint(1), gomock.Any(), gomock.Any()).
 			Return(&llm.IntencaoEKeywordsResult{Acao: "finalizar"}, nil)
 
 		msg, err := svc.ProcessarMensagem(testCtx(), 5, 1, dto.MessageInput{Text: "finalizar pedido", Source: models.SourceText})
@@ -850,7 +850,7 @@ func TestCarrinhoService_ProcessarMensagem_Acoes(t *testing.T) {
 		svc, redisMock, cardapioMock, _, _, _, llmMock := novoCarrinhoServiceMock(t)
 		mockRedisCacheMiss(redisMock)
 		mockObterTextoBaseReturnInput(llmMock)
-		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), gomock.Any(), gomock.Any()).
+		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), uint(1), gomock.Any(), gomock.Any()).
 			Return(&llm.IntencaoEKeywordsResult{Acao: "adicionar", Keywords: []llm.LLMKeywordItemResult{{Nome: "x-bacon"}}}, nil)
 		cardapioMock.EXPECT().GetCardapio(testCtx(), uint(1)).
 			Return([]dto.ProdutoItem{{ID: 1, Nome: "X-Bacon", Preco: 25.0}}, nil)
@@ -870,7 +870,7 @@ func TestCarrinhoService_ProcessarMensagem_Acoes(t *testing.T) {
 		svc, redisMock, cardapioMock, _, _, _, llmMock := novoCarrinhoServiceMock(t)
 		mockRedisCacheMiss(redisMock)
 		mockObterTextoBaseReturnInput(llmMock)
-		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), gomock.Any(), gomock.Any()).
+		llmMock.EXPECT().ClassificarEExtrairKeywords(testCtx(), uint(1), gomock.Any(), gomock.Any()).
 			Return(&llm.IntencaoEKeywordsResult{Acao: "adicionar", Keywords: []llm.LLMKeywordItemResult{{Nome: "x-bacon"}}}, nil)
 
 		var cardapioGrande []dto.ProdutoItem

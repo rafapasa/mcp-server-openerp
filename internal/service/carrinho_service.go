@@ -173,7 +173,7 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 	}
 
 	// 5. Classifica via LLM ANTES do branch tamanho cardápio - FIX BUG conversa
-	result, err := s.llmService.ClassificarEExtrairKeywords(ctx, textoBase, contextoCarrinho)
+	result, err := s.llmService.ClassificarEExtrairKeywords(ctx, tenantID, textoBase, contextoCarrinho)
 	if err != nil {
 		logger.Error(ctx, "Erro ClassificarEExtrairKeywords", zap.Error(err))
 		return "⚠ Tive um problema técnico, tenta de novo por favor.", nil

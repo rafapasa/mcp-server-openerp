@@ -163,6 +163,7 @@ func (u *UnifiedLLM) ClassificarEExtrairKeywords(
 	ctx context.Context,
 	textoHigienizado string,
 	contextoCarrinho string,
+	contextoLoja string,
 ) (*IntencaoEKeywordsResult, error) {
 	logger.Info(ctx, "[PROVIDER] ClassificarEExtrairKeywords", zap.String("texto", textoHigienizado))
 
@@ -173,7 +174,7 @@ func (u *UnifiedLLM) ClassificarEExtrairKeywords(
 		}, nil
 	}
 
-	prompt := fmt.Sprintf(PromptClassificarEExtrairKeywords, textoHigienizado, contextoCarrinho)
+	prompt := fmt.Sprintf(PromptClassificarEExtrairKeywords, contextoLoja, textoHigienizado, contextoCarrinho)
 	raw, err := u.GenerateResponse(ctx, prompt)
 	if err != nil {
 		logger.Error(ctx, "[PROVIDER] Erro ClassificarEExtrairKeywords", zap.Error(err))
@@ -241,6 +242,7 @@ func (u *UnifiedLLM) ResolveItemsByMenu(
 	ctx context.Context,
 	input dto.MessageInput,
 	cardapio []dto.ProdutoItem,
+	contextoLoja string,
 ) (*dto.IntencaoCliente, error) {
 	logger.Info(ctx, "[PROVIDER] ResolveItemsByMenu",
 		zap.String("source", string(input.Source)),
@@ -258,7 +260,7 @@ func (u *UnifiedLLM) ResolveItemsByMenu(
 	}
 
 	lista := formatarCardapioParaPrompt(cardapio)
-	prompt := fmt.Sprintf(PromptResolveByMenu, textoLimpo, lista)
+	prompt := fmt.Sprintf(PromptResolveByMenu, contextoLoja, textoLimpo, lista)
 
 	raw, err := u.GenerateResponse(ctx, prompt)
 	if err != nil {

@@ -60,7 +60,7 @@ WhatsApp POST /webhook
     ├─ GetCarrinho Redis TTL 3600
     ├─ GetCardapio cache 1h
     ├─ intent.Classify fast-path 0 token
-    ├─ LLM ObterTextoBase + Classificar + ResolverItens
+    ├─ LLM ObterTextoBase + Classificar + ResolverItens (prompt com contexto da loja: nome + segmento via GetPromptContext)
     ├─ mergeItem + 1 SaveCarrinho
     └─ finalizar -> iniciarFluxoFinalizacao:
          0 endereços -> FormatSolicitarNovoEndereco

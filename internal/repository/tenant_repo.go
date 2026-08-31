@@ -12,6 +12,7 @@ type TenantRepository interface {
 	FindByID(ctx context.Context, id uint) (*models.Tenant, error)
 	FindByCNPJ(ctx context.Context, cnpj string) (*models.Tenant, error)
 	FindByTelefone(ctx context.Context, telefone string) (*models.Tenant, error)
+	FindByWhatsAppPhoneID(ctx context.Context, phoneID string) (*models.Tenant, error)
 	Create(ctx context.Context, tenant *models.Tenant) error
 	Update(ctx context.Context, tenant *models.Tenant) error
 	List(ctx context.Context) ([]models.Tenant, error)
@@ -45,6 +46,14 @@ func (r *tenantRepository) FindByCNPJ(ctx context.Context, cnpj string) (*models
 func (r *tenantRepository) FindByTelefone(ctx context.Context, telefone string) (*models.Tenant, error) {
 	var tenant models.Tenant
 	if err := r.db.WithContext(ctx).Where("telefone = ?", telefone).First(&tenant).Error; err != nil {
+		return nil, err
+	}
+	return &tenant, nil
+}
+
+func (r *tenantRepository) FindByWhatsAppPhoneID(ctx context.Context, phoneID string) (*models.Tenant, error) {
+	var tenant models.Tenant
+	if err := r.db.WithContext(ctx).Where("whatsapp_phone_id = ?", phoneID).First(&tenant).Error; err != nil {
 		return nil, err
 	}
 	return &tenant, nil

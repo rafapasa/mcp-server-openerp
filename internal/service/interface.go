@@ -84,6 +84,7 @@ type TenantServiceInterface interface {
 	List(ctx context.Context) ([]dto.TenantDTO, error)
 	Create(ctx context.Context, input dto.CreateTenantDTO) (*dto.TenantDTO, error)
 	GetPromptContext(ctx context.Context, tenantID uint) (nome, segmento string, err error)
+	GetByWhatsAppPhoneID(ctx context.Context, phoneID string) (*dto.TenantDTO, error)
 }
 
 type CardapioServiceInterface interface {
@@ -106,6 +107,6 @@ type LLMServiceInterface interface {
 	GetProviderInfo() (textProvider, audioProvider, visionProvider string)
 	ObterTextoBase(ctx context.Context, tenantID uint, input dto.MessageInput) (string, error)
 	ResolveItemsByMenu(ctx context.Context, tenantID uint, input dto.MessageInput, cardapio []dto.ProdutoItem) (*dto.IntencaoCliente, error)
-	ClassificarEExtrairKeywords(ctx context.Context, textoHigienizado string, contextoCarrinho string) (*llm.IntencaoEKeywordsResult, error)
+	ClassificarEExtrairKeywords(ctx context.Context, tenantID uint, textoHigienizado string, contextoCarrinho string) (*llm.IntencaoEKeywordsResult, error)
 	ResolverItensByKeyWords(ctx context.Context, tenantID uint, keywords []llm.LLMKeywordItemResult, cardapioReduzido []dto.ProdutoItem) ([]dto.ItemCarrinho, error)
 }

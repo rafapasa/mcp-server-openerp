@@ -14,15 +14,18 @@ import (
 type llmService struct {
 	provider        *llm.UnifiedLLM
 	cardapioService CardapioServiceInterface
+	tenantService   TenantServiceInterface
 }
 
 func NewLLMService(
 	provider *llm.UnifiedLLM,
 	cardapioService CardapioServiceInterface,
+	tenantService TenantServiceInterface,
 ) LLMServiceInterface {
 	return &llmService{
 		provider:        provider,
 		cardapioService: cardapioService,
+		tenantService:   tenantService,
 	}
 }
 
@@ -98,22 +101,48 @@ func (s *llmService) ResolveItemsByMenu(
 		}
 	}
 
-	return s.provider.ResolveItemsByMenu(ctx, input, cardapio)
+	return s.provider.ResolveItemsByMenu(ctx, input, cardapio, s.contextoLoja(ctx, tenantID))
 }
 
 func (s *llmService) ClassificarEExtrairKeywords(
 	ctx context.Context,
+	tenantID uint,
 	textoHigienizado string,
 	contextoCarrinho string,
 ) (*llm.IntencaoEKeywordsResult, error) {
-	logger.Info(ctx, "[LLM_SERVICE] ClassificarEExtrairKeywords", zap.String("texto", textoHigienizado))
+	logger.Info(ctx, "[LLM_SERVICE] ClassificarEExtrairKeywords",
+		zap.Uint("tenant_id", tenantID),
+		zap.String("texto", textoHigienizado),
+	)
 
 	limpo := s.provider.Higienizar(textoHigienizado)
 	if limpo == "" {
 		limpo = textoHigienizado
 	}
 
-	return s.provider.ClassificarEExtrairKeywords(ctx, limpo, contextoCarrinho)
+	return s.provider.ClassificarEExtrairKeywords(ctx, limpo, contextoCarrinho, s.contextoLoja(ctx, tenantID))
+}
+
+// contextoLoja monta o contexto multi-tenant (nome + segmento) para os prompts do LLM.
+// Em falha, degrada para valores neutros em vez de quebrar a conversa.
+func (s *llmService) contextoLoja(ctx context.Context, tenantID uint) string {
+	nome := ""
+	segmento := "geral"
+	if s.tenantService != nil {
+		n, seg, err := s.tenantService.GetPromptContext(ctx, tenantID)
+		if err != nil {
+			logger.Warn(ctx, "[LLM_SERVICE] sem contexto de loja, usando neutro",
+				zap.Uint("tenant_id", tenantID),
+				zap.Error(err),
+			)
+		} else {
+			nome = n
+			if seg != "" {
+				segmento = seg
+			}
+		}
+	}
+	return fmt.Sprintf(llm.PromptContextoLoja, nome, segmento)
 }
 
 func (s *llmService) ResolverItensByKeyWords(

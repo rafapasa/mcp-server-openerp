@@ -43,18 +43,18 @@ func (m *MockLLMServiceInterface) EXPECT() *MockLLMServiceInterfaceMockRecorder 
 }
 
 // ClassificarEExtrairKeywords mocks base method.
-func (m *MockLLMServiceInterface) ClassificarEExtrairKeywords(ctx context.Context, textoHigienizado, contextoCarrinho string) (*llm.IntencaoEKeywordsResult, error) {
+func (m *MockLLMServiceInterface) ClassificarEExtrairKeywords(ctx context.Context, tenantID uint, textoHigienizado, contextoCarrinho string) (*llm.IntencaoEKeywordsResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ClassificarEExtrairKeywords", ctx, textoHigienizado, contextoCarrinho)
+	ret := m.ctrl.Call(m, "ClassificarEExtrairKeywords", ctx, tenantID, textoHigienizado, contextoCarrinho)
 	ret0, _ := ret[0].(*llm.IntencaoEKeywordsResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ClassificarEExtrairKeywords indicates an expected call of ClassificarEExtrairKeywords.
-func (mr *MockLLMServiceInterfaceMockRecorder) ClassificarEExtrairKeywords(ctx, textoHigienizado, contextoCarrinho any) *gomock.Call {
+func (mr *MockLLMServiceInterfaceMockRecorder) ClassificarEExtrairKeywords(ctx, tenantID, textoHigienizado, contextoCarrinho any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClassificarEExtrairKeywords", reflect.TypeOf((*MockLLMServiceInterface)(nil).ClassificarEExtrairKeywords), ctx, textoHigienizado, contextoCarrinho)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClassificarEExtrairKeywords", reflect.TypeOf((*MockLLMServiceInterface)(nil).ClassificarEExtrairKeywords), ctx, tenantID, textoHigienizado, contextoCarrinho)
 }
 
 // GetProviderInfo mocks base method.
