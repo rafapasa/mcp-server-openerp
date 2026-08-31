@@ -30,3 +30,15 @@ FROM oraclelinux:9-slim AS stdio
 WORKDIR /app
 COPY --from=stdio-builder /bin/stdio /app/stdio
 CMD ["/app/stdio"]
+
+# ================================================================
+# Target: migrate (goose up/down - roda no deploy antes do server)
+# ================================================================
+FROM base AS migrate-builder
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /bin/migrate ./cmd/migrate
+
+FROM oraclelinux:9-slim AS migrate
+WORKDIR /app
+COPY --from=migrate-builder /bin/migrate /app/migrate
+ENTRYPOINT ["/app/migrate"]
+CMD ["up"]

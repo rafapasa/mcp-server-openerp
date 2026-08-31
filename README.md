@@ -124,10 +124,14 @@ make lint # go vet + gofmt -l
 ```bash
 git checkout main
 git merge dev
-make build-push
-make deploy
+make build-push IMAGE_TAG=1.0.0   # builda e envia mcp-server, mcp-stdio e mcp-migrate
+make deploy                        # aplica migrações goose e depois sobe o server
 ./oci-mcp-server.sh
 ```
+
+> O `make deploy` puxa a imagem `mcp-migrate`, roda `goose up` (one-shot) e **só então** sobe o `mcp-server` — se a migração falhar, o server não sobe. A tabela `goose_db_version` registra as migrações aplicadas.
+>
+> ⚠️ **Antes do primeiro deploy em produção:** a migração `000004` contém um backfill de DEV (`UPDATE tenants SET whatsapp_phone_id=... WHERE id=2/3`). Se produção tiver tenants reais com esses IDs, edite a migração removendo os `UPDATE` antes do `build-push`.
 
 ## 🧹 Breaking 19/08
 

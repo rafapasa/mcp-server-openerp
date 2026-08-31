@@ -1,8 +1,21 @@
 services:
+  # One-shot: aplica as migrações goose antes do server subir
+  mcp-migrate:
+    image: ${DOCKER_USERNAME:-rafapasa}/mcp-migrate:${IMAGE_TAG:-latest}
+    container_name: mcp-migrate
+    restart: "no"
+    env_file:
+      - .env
+    networks:
+      - mcp-network
+
   mcp-server:
     image: ${DOCKER_USERNAME:-rafapasa}/mcp-server:${IMAGE_TAG:-latest}
     container_name: mcp-server
     restart: unless-stopped
+    depends_on:
+      mcp-migrate:
+        condition: service_completed_successfully
     ports:
       - "${APP_PORT:-8080}:8080"
     env_file:

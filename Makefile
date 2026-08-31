@@ -78,7 +78,7 @@ init-db:
 	docker compose -f docker-compose.db.yml up -d
 	@echo "✅ MySQL mcp-mysql:3306 | Redis mcp-redis:6379"
 
-# Build server + stdio - sempre cria versão + latest
+# Build server + stdio + migrate - sempre cria versão + latest
 .PHONY: build-push
 build-push:
 ifeq ($(IMAGE_TAG),latest)
@@ -87,16 +87,22 @@ endif
 	git pull
 	DOCKER_BUILDKIT=1 docker build $(NO_CACHE) -f $(DOCKERFILE) --target server -t $(DOCKER_USERNAME)/mcp-server:$(IMAGE_TAG) -t $(DOCKER_USERNAME)/mcp-server:latest .
 	DOCKER_BUILDKIT=1 docker build $(NO_CACHE) -f $(DOCKERFILE) --target stdio -t $(DOCKER_USERNAME)/mcp-stdio:$(IMAGE_TAG) -t $(DOCKER_USERNAME)/mcp-stdio:latest .
+	DOCKER_BUILDKIT=1 docker build $(NO_CACHE) -f $(DOCKERFILE) --target migrate -t $(DOCKER_USERNAME)/mcp-migrate:$(IMAGE_TAG) -t $(DOCKER_USERNAME)/mcp-migrate:latest .
 	docker push $(DOCKER_USERNAME)/mcp-server:$(IMAGE_TAG)
 	docker push $(DOCKER_USERNAME)/mcp-server:latest
 	docker push $(DOCKER_USERNAME)/mcp-stdio:$(IMAGE_TAG)
 	docker push $(DOCKER_USERNAME)/mcp-stdio:latest
-	@echo "✅ Build $(IMAGE_TAG) + latest enviado para $(DOCKER_USERNAME)/mcp-server"
+	docker push $(DOCKER_USERNAME)/mcp-migrate:$(IMAGE_TAG)
+	docker push $(DOCKER_USERNAME)/mcp-migrate:latest
+	@echo "✅ Build $(IMAGE_TAG) + latest enviado para $(DOCKER_USERNAME)/mcp-server, mcp-stdio, mcp-migrate"
 
 .PHONY: deploy
 deploy:
-	@echo "🚀 Deploy latest..."
-	IMAGE_TAG=latest docker compose -f docker-compose.app.yml up -d --pull always --no-deps
+	@echo "🚀 Aplicando migrações goose..."
+	IMAGE_TAG=latest docker compose -f docker-compose.app.yml pull mcp-migrate
+	IMAGE_TAG=latest docker compose -f docker-compose.app.yml run --rm --no-deps mcp-migrate up
+	@echo "🚀 Deploy server latest..."
+	IMAGE_TAG=latest docker compose -f docker-compose.app.yml up -d --pull always --no-deps mcp-server
 	@docker ps | grep mcp-server
 
 
