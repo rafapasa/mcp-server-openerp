@@ -1,3 +1,4 @@
+-- 000001_create_tenants.up.sql
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE IF NOT EXISTS `tenants` (
@@ -6,7 +7,7 @@ CREATE TABLE IF NOT EXISTS `tenants` (
   `cnpj` varchar(18) DEFAULT NULL,
   `telefone` varchar(20) DEFAULT NULL,
   `endereco` varchar(255) DEFAULT NULL,
-  `ativo` tinyint(1) DEFAULT '1',
+  `ativo` tinyint DEFAULT '1',
   `created_at` datetime(3) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_tenants_cnpj` (`cnpj`)

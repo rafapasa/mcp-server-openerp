@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS `categorias` (
   `tenant_id` bigint unsigned NOT NULL,
   `nome` varchar(100) NOT NULL,
   `descricao` varchar(255) DEFAULT NULL,
-  `ativo` tinyint(1) DEFAULT '1',
+  `ativo` tinyint DEFAULT '1',
   `created_at` datetime(3) DEFAULT NULL,
   `updated_at` datetime(3) DEFAULT NULL,
   PRIMARY KEY (`id`),

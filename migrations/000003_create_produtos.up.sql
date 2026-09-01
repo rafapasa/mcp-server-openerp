@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS `produtos` (
   `preco` decimal(10,2) NOT NULL DEFAULT '0.00',
   `unidade_medida` varchar(20) DEFAULT 'un',
   `ingredientes` text,
-  `disponivel` tinyint(1) DEFAULT '1',
+  `disponivel` tinyint DEFAULT '1',
   `tempo_preparo` int DEFAULT 5,
   `created_at` datetime(3) DEFAULT NULL,
   `updated_at` datetime(3) DEFAULT NULL,
