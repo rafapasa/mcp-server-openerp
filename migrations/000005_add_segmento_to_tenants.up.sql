@@ -4,4 +4,4 @@
 -- +goose StatementBegin
 ALTER TABLE `tenants`
 ADD COLUMN `segmento` VARCHAR(50) NULL DEFAULT 'geral' AFTER `endereco`;
--- +goose StatementBegin
+-- +goose StatementEnd
