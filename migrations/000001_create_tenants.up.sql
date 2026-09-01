@@ -1,4 +1,5 @@
--- 000001_create_tenants.up.sql
+-- +goose Up
+-- +goose StatementBegin
 CREATE TABLE IF NOT EXISTS `tenants` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `nome` varchar(100) NOT NULL,
@@ -10,4 +11,5 @@ CREATE TABLE IF NOT EXISTS `tenants` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_tenants_cnpj` (`cnpj`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- +goose StatementEnd
 

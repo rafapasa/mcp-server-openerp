@@ -1,4 +1,6 @@
 -- 000002_create_categorias.up.sql
+-- +goose Up
+-- +goose StatementBegin
 CREATE TABLE IF NOT EXISTS `categorias` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `tenant_id` bigint unsigned NOT NULL,
@@ -11,4 +13,5 @@ CREATE TABLE IF NOT EXISTS `categorias` (
   KEY `idx_categorias_tenant_id` (`tenant_id`),
   CONSTRAINT `fk_categorias_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- +goose StatementEnd
 
