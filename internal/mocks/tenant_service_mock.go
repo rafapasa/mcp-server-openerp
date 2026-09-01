@@ -101,6 +101,36 @@ func (mr *MockTenantServiceInterfaceMockRecorder) GetByTelefone(ctx, telefone an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByTelefone", reflect.TypeOf((*MockTenantServiceInterface)(nil).GetByTelefone), ctx, telefone)
 }
 
+// GetByVerifyToken mocks base method.
+func (m *MockTenantServiceInterface) GetByVerifyToken(ctx context.Context, token string) (*dto.TenantDTO, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByVerifyToken", ctx, token)
+	ret0, _ := ret[0].(*dto.TenantDTO)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByVerifyToken indicates an expected call of GetByVerifyToken.
+func (mr *MockTenantServiceInterfaceMockRecorder) GetByVerifyToken(ctx, token any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByVerifyToken", reflect.TypeOf((*MockTenantServiceInterface)(nil).GetByVerifyToken), ctx, token)
+}
+
+// GetByWhatsAppPhoneID mocks base method.
+func (m *MockTenantServiceInterface) GetByWhatsAppPhoneID(ctx context.Context, phoneID string) (*dto.TenantDTO, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByWhatsAppPhoneID", ctx, phoneID)
+	ret0, _ := ret[0].(*dto.TenantDTO)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByWhatsAppPhoneID indicates an expected call of GetByWhatsAppPhoneID.
+func (mr *MockTenantServiceInterfaceMockRecorder) GetByWhatsAppPhoneID(ctx, phoneID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByWhatsAppPhoneID", reflect.TypeOf((*MockTenantServiceInterface)(nil).GetByWhatsAppPhoneID), ctx, phoneID)
+}
+
 // GetPromptContext mocks base method.
 func (m *MockTenantServiceInterface) GetPromptContext(ctx context.Context, tenantID uint) (string, string, error) {
 	m.ctrl.T.Helper()

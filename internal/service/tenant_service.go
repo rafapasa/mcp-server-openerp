@@ -76,6 +76,27 @@ func (s *tenantService) GetByWhatsAppPhoneID(ctx context.Context, phoneID string
 	return tenantDTO, nil
 }
 
+// GetByVerifyToken localiza o tenant pelo whatsapp_verify_token (validação de segurança do webhook).
+// Usa cache Redis para evitar consulta ao banco a cada GET /webhook da Meta.
+func (s *tenantService) GetByVerifyToken(ctx context.Context, token string) (*dto.TenantDTO, error) {
+	if token == "" {
+		return nil, fmt.Errorf("verify token vazio")
+	}
+	cacheKey := fmt.Sprintf("tenant:verify:%s", token)
+
+	tenantDTO, err := database.GetOrSet(s.cache, ctx, cacheKey, 1*time.Hour, func() (*dto.TenantDTO, error) {
+		m, err := s.repo.FindByVerifyToken(ctx, token)
+		if err != nil {
+			return nil, err
+		}
+		return toTenantDTO(m), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return tenantDTO, nil
+}
+
 func (s *tenantService) List(ctx context.Context) ([]dto.TenantDTO, error) {
 	list, err := s.repo.List(ctx)
 	if err != nil {

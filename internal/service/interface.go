@@ -85,6 +85,7 @@ type TenantServiceInterface interface {
 	Create(ctx context.Context, input dto.CreateTenantDTO) (*dto.TenantDTO, error)
 	GetPromptContext(ctx context.Context, tenantID uint) (nome, segmento string, err error)
 	GetByWhatsAppPhoneID(ctx context.Context, phoneID string) (*dto.TenantDTO, error)
+	GetByVerifyToken(ctx context.Context, token string) (*dto.TenantDTO, error)
 }
 
 type CardapioServiceInterface interface {

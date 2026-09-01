@@ -14,8 +14,10 @@ import (
 // fakeTenantRepo é um repo em memória que registra o tenant criado e permite
 // simular FindByID (usado por GetPromptContext).
 type fakeTenantRepo struct {
-	created *models.Tenant
-	byID    *models.Tenant
+	created       *models.Tenant
+	byID          *models.Tenant
+	byPhoneID     *models.Tenant
+	byVerifyToken *models.Tenant
 }
 
 func (f *fakeTenantRepo) FindByID(ctx context.Context, id uint) (*models.Tenant, error) {
@@ -34,7 +36,17 @@ func (f *fakeTenantRepo) FindByTelefone(ctx context.Context, telefone string) (*
 }
 
 func (f *fakeTenantRepo) FindByWhatsAppPhoneID(ctx context.Context, phoneID string) (*models.Tenant, error) {
-	return nil, gorm.ErrRecordNotFound
+	if f.byPhoneID == nil || f.byPhoneID.WhatsappPhoneID != phoneID {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return f.byPhoneID, nil
+}
+
+func (f *fakeTenantRepo) FindByVerifyToken(ctx context.Context, token string) (*models.Tenant, error) {
+	if f.byVerifyToken == nil || f.byVerifyToken.WhatsappVerifyToken != token {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return f.byVerifyToken, nil
 }
 
 func (f *fakeTenantRepo) Create(ctx context.Context, tenant *models.Tenant) error {
@@ -78,6 +90,37 @@ func TestTenantServiceCreatePersisteSegmento(t *testing.T) {
 			assert.Equal(t, tt.want, out.Segmento)
 		})
 	}
+}
+
+func TestTenantServiceGetByVerifyToken(t *testing.T) {
+	t.Run("token válido retorna tenant", func(t *testing.T) {
+		fake := &fakeTenantRepo{byVerifyToken: &models.Tenant{
+			ID:                  3,
+			Nome:                "Farmácia Teste",
+			WhatsappVerifyToken: "verify-seguro-123",
+		}}
+		svc := NewTenantService(fake, nil)
+
+		out, err := svc.GetByVerifyToken(context.Background(), "verify-seguro-123")
+		require.NoError(t, err)
+		require.NotNil(t, out)
+		assert.Equal(t, uint(3), out.ID)
+	})
+
+	t.Run("token inexistente retorna erro", func(t *testing.T) {
+		fake := &fakeTenantRepo{}
+		svc := NewTenantService(fake, nil)
+
+		_, err := svc.GetByVerifyToken(context.Background(), "token-desconhecido")
+		require.Error(t, err)
+	})
+
+	t.Run("token vazio retorna erro", func(t *testing.T) {
+		svc := NewTenantService(&fakeTenantRepo{}, nil)
+
+		_, err := svc.GetByVerifyToken(context.Background(), "")
+		require.Error(t, err)
+	})
 }
 
 func TestTenantServiceGetPromptContext(t *testing.T) {

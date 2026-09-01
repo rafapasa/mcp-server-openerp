@@ -111,7 +111,8 @@ make lint # go vet + gofmt -l
 | Var | Desc |
 |-----|------|
 | WEBHOOK_PORT | 8080 |
-| WHATSAPP_VERIFY_TOKEN | Meta verify |
+| WHATSAPP_VERIFY_TOKEN | ~~Meta verify~~ (agora por tenant, coluna `tenants.whatsapp_verify_token` — usado no GET /webhook) |
+| WHATSAPP_APP_SECRET | Meta app secret (HMAC X-Hub-Signature-256, global) |
 | WHATSAPP_TOKEN | Graph API |
 | LLM_GROQ_KEY | Whisper |
 | LLM_GEMINI_KEY | Vision |
@@ -134,6 +135,7 @@ make deploy                        # aplica migrações goose e depois sobe o se
 > ⚠️ **Antes do primeiro deploy em produção:** a migração `000004` contém um backfill de DEV (`UPDATE tenants SET whatsapp_phone_id=... WHERE id=2/3`). Se produção tiver tenants reais com esses IDs, edite a migração removendo os `UPDATE` antes do `build-push`.
 
 ## 🧹 Breaking 19/08
+
 
 - Removido `sanitize.go` global (quebrava preprocessor) -> sanitização só em `preprocessor.go`
 - `net/http.ServeMux` -> Fiber `c.Body()`, `c.Query()`, `c.Locals("tenant_id")`

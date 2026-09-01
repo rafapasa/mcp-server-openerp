@@ -9,16 +9,18 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	whatsappdto "github.com/rafapasa/mcp-server-openerp/internal/dto/whatsapp"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+	"github.com/rafapasa/mcp-server-openerp/internal/service"
 	"go.uber.org/zap"
 )
 
 type WebhookHandler struct {
-	cfg       *config.Config
-	processor *Processor
+	cfg           *config.Config
+	processor     *Processor
+	tenantService service.TenantServiceInterface
 }
 
-func NewWebhookHandler(cfg *config.Config, processor *Processor) *WebhookHandler {
-	return &WebhookHandler{cfg: cfg, processor: processor}
+func NewWebhookHandler(cfg *config.Config, processor *Processor, tenantService service.TenantServiceInterface) *WebhookHandler {
+	return &WebhookHandler{cfg: cfg, processor: processor, tenantService: tenantService}
 }
 
 func (h *WebhookHandler) HandleWebhookFiber(c *fiber.Ctx) error {
@@ -31,17 +33,20 @@ func (h *WebhookHandler) HandleWebhookFiber(c *fiber.Ctx) error {
 		mode := c.Query("hub.mode")
 		token := c.Query("hub.verify_token")
 		challenge := c.Query("hub.challenge")
-		if mode == "subscribe" && token == h.cfg.WhatsAppVerifyToken {
-			logger.Info(ctx, "Verificação de segurança do webhook realizada com sucesso")
-			return c.Status(200).SendString(challenge)
+		// O verify_token agora vem da tabela tenants (whatsapp_verify_token), com cache Redis.
+		if mode == "subscribe" && token != "" {
+			if _, err := h.tenantService.GetByVerifyToken(ctx, token); err == nil {
+				logger.Info(ctx, "Verificação de segurança do webhook realizada com sucesso")
+				return c.Status(200).SendString(challenge)
+			}
 		}
-		logger.Warn(ctx, "Falha na verificação de segurança do webhook")
+		logger.Warn(ctx, "Falha na verificação de segurança do webhook", zap.String("ip", c.IP()))
 		return c.Status(403).SendString("forbidden")
 	}
 
-	ok, err := VerifyWebhookHandlerFiber(c, *h.cfg)
+	ok, err := VerifyWebhookHandlerFiber(c, *h.cfg, h.tenantService)
 	if !ok {
-		logger.Warn(ctx, "HMAC falhou", zap.Error(err), zap.String("ip", c.IP()))
+		logger.Warn(ctx, "Falha na validação de segurança do webhook", zap.Error(err), zap.String("ip", c.IP()))
 		return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
 	}
 

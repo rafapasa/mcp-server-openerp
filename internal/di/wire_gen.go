@@ -46,7 +46,7 @@ func InitializeApp() (*server.HttpServer, error) {
 	apiHandlers := server.NewAPIHandlers(authServiceInterface, clienteServiceInterface, pedidoServiceInterface, cardapioServiceInterface)
 	whatsAppClient := webhook.NewWhatsAppClient()
 	processor := webhook.NewProcessor(whatsAppClient, tenantServiceInterface, clienteServiceInterface, carrinhoServiceInterface, redisInterface)
-	webhookHandler := webhook.NewWebhookHandler(configConfig, processor)
+	webhookHandler := webhook.NewWebhookHandler(configConfig, processor, tenantServiceInterface)
 	healthChecker := health.NewHealthChecker()
 	httpServer := server.NewHttpServer(configConfig, mcpServer, apiHandlers, webhookHandler, healthChecker)
 	return httpServer, nil
