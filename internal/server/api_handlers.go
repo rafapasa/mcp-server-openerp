@@ -35,11 +35,12 @@ func (h *APIHandlers) LoginFiber(c *fiber.Ctx) error {
 	if err := c.BodyParser(&loginRequest); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 	}
-	token, err := h.authService.Authenticate(c.Context(), loginRequest)
+	loginResponse, err := h.authService.Authenticate(c.Context(), loginRequest)
 	if err != nil {
 		return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
 	}
-	return c.JSON(fiber.Map{"token": token})
+	logger.Info(c.Context(), "Login efetuado com sucesso", zap.Any("loginResponse", loginResponse))
+	return c.JSON(loginResponse)
 }
 
 // GET /api/v1/dashboard

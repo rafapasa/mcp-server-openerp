@@ -35,10 +35,10 @@ func NewMySQL(cfg *config.Config, dsn ...string) *gorm.DB {
 	switch {
 	case isDev:
 		if isTest {
-			logLevel = gormlogger.Silent
+			logLevel = gormlogger.Info
 		} else {
 			// DEV: SILENCIOSO - não loga SQL, só seu zap logger
-			logLevel = gormlogger.Silent
+			logLevel = gormlogger.Info
 		}
 	case env == "production" || env == "prod" || env == "prd":
 		logLevel = gormlogger.Error
@@ -86,7 +86,8 @@ func NewMySQL(cfg *config.Config, dsn ...string) *gorm.DB {
 	func() {
 		defer func() { _ = recover() }()
 		if l := logger.GetLogger(); l != nil {
-			l.Info("MySQL conectado",
+			l.Info(
+				"MySQL conectado",
 				zap.String("database", cfg.DBName),
 				zap.String("host", cfg.DBHost),
 				zap.String("port", cfg.DBPort),

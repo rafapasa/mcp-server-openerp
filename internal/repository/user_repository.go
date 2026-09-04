@@ -21,7 +21,7 @@ func NewUserRepository(db *gorm.DB) UserRepositoryInterface {
 
 func (r *userRepository) FindByEmail(ctx context.Context, tenantID uint, email string) (*models.User, error) {
 	var u models.User
-	err := r.db.WithContext(ctx).Where("tenant_id = ? AND email = ? AND is_active = true", tenantID, email).First(&u).Error
+	err := r.db.WithContext(ctx).Where("tenant_id > ? AND email = ? AND is_active = 1", tenantID, email).First(&u).Error
 	return &u, err
 }
 
