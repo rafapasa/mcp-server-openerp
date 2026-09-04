@@ -7,7 +7,7 @@ ALTER TABLE `tenants`
 ADD COLUMN `waba_id` VARCHAR(100) NULL AFTER `endereco`,
 ADD COLUMN `whatsapp_phone_id` VARCHAR(100) NULL AFTER `waba_id`,
 ADD COLUMN `whatsapp_display_number` VARCHAR(20) NULL AFTER `whatsapp_phone_id`,
-ADD COLUMN `whatsapp_verify_token` VARCHAR(100) NULL AFTER `whatsapp_display_number`,
+ADD COLUMN `whatsapp_verify_token` VARCHAR(500) NULL AFTER `whatsapp_display_number`,
 ADD COLUMN `segmento` VARCHAR(50) NULL DEFAULT 'geral' AFTER `whatsapp_verify_token`;
 -- +goose StatementEnd
 

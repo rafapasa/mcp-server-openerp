@@ -86,7 +86,7 @@ func (r *ClienteRepository) FindByTelefone(ctx context.Context, telefone string,
 	if err != nil {
 		logger.Error(
 			ctx, "erro executando consulta SQL",
-			zap.String("SQL", r.db.Commit().Statement.TableExpr.SQL),
+			// zap.String("SQL", r.db.Commit().Statement.TableExpr.SQL),
 			zap.String("Erro", err.Error()),
 		)
 		return nil, err
