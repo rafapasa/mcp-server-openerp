@@ -111,6 +111,10 @@ func (p *Processor) Process(ctx context.Context, req whatsappdto.WebhookRequest)
 				}
 
 				if resposta != "" {
+					if p.shouldSendAddressButtons(resposta) {
+						p.sendAddressResponse(ctx, msg.From, resposta)
+						continue
+					}
 					if p.shouldSendPaymentButtons(resposta) {
 						p.sendPaymentResponse(ctx, msg.From, resposta)
 						continue
@@ -137,6 +141,24 @@ func (p *Processor) shouldSendCartButtons(input dto.MessageInput, response strin
 
 func (p *Processor) shouldSendPaymentButtons(response string) bool {
 	return strings.Contains(response, "COMO VAI PAGAR?")
+}
+
+func (p *Processor) shouldSendAddressButtons(response string) bool {
+	return strings.Contains(response, "Confirma entrega em:")
+}
+
+func (p *Processor) sendAddressResponse(ctx context.Context, to, response string) {
+	sender, ok := p.whatsApp.(*WhatsAppClient)
+	if !ok {
+		_ = p.whatsApp.SendMessage(to, response)
+		return
+	}
+	if err := sender.sendButtonsWithIDs(ctx, to, response,
+		[]string{"endereco_sim", "endereco_novo"},
+		[]string{"Sim", "Novo endereço"}); err != nil {
+		logger.Error(ctx, "Erro ao enviar botões de endereço", zap.Error(err))
+		_ = p.whatsApp.SendMessage(to, response)
+	}
 }
 
 func (p *Processor) sendPaymentResponse(ctx context.Context, to, response string) {

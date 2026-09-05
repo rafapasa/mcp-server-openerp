@@ -36,6 +36,7 @@ type Carrinho struct {
 	EnderecoTemporario     string                 `json:"endereco_temporario,omitempty"` // texto cru quando usuário digita novo endereço antes de cadastrar
 	EnderecoPendente       *CriarEnderecoRequest  `json:"endereco_pendente,omitempty"`
 	EnderecoConfirmacaoID  *uint                  `json:"endereco_confirmacao_id,omitempty"`
+	EnderecoConfirmacaoIdx int                    `json:"endereco_confirmacao_idx,omitempty"`
 	TentativasEndereco     int                    `json:"tentativas_endereco,omitempty"` // evita loop infinito
 	Pagamentos             []PedidoPagamentoInput `json:"pagamentos,omitempty"`
 	FormaPagamentoPendente uint                   `json:"forma_pagamento_pendente,omitempty"`

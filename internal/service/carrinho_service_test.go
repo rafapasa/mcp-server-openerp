@@ -531,7 +531,7 @@ func TestCarrinhoService_iniciarFluxoFinalizacao(t *testing.T) {
 		assert.Equal(t, dto.EstadoAguardandoEnderecoNovo, salvo.Estado)
 	})
 
-	t.Run("com endereços: lista para seleção", func(t *testing.T) {
+	t.Run("com endereços: confirma o mais recente", func(t *testing.T) {
 		svc, redisMock, _, _, clienteMock, _, _ := novoCarrinhoServiceMock(t)
 		mockRedisCacheHit(t, redisMock, dto.Carrinho{ClienteID: "5", TenantID: "1", Itens: carrinhoComItem()})
 		var salvo *dto.Carrinho
@@ -545,9 +545,10 @@ func TestCarrinhoService_iniciarFluxoFinalizacao(t *testing.T) {
 
 		msg, err := svc.iniciarFluxoFinalizacao(testCtx(), 5, 1)
 		require.NoError(t, err)
-		assert.Contains(t, msg, "SEUS ENDEREÇOS CADASTRADOS")
+		assert.Contains(t, msg, "Confirma entrega em")
 		require.NotNil(t, salvo)
-		assert.Equal(t, dto.EstadoAguardandoEnderecoLista, salvo.Estado)
+		assert.Equal(t, dto.EstadoAguardandoConfirmacaoEndereco, salvo.Estado)
+		assert.Equal(t, 0, salvo.EnderecoConfirmacaoIdx)
 	})
 }
 
