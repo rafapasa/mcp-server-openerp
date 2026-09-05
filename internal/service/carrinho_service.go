@@ -175,6 +175,11 @@ func (s *carrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 				return s.handleNovoEndereco(ctx, clienteID, tenantID, carrinhoAtual, textoBase)
 			}
 		case dto.EstadoAguardandoConfirmacaoEndereco:
+			if textoLower := strings.ToLower(strings.TrimSpace(textoBase)); textoLower == "endereco_sim" {
+				textoBase = "sim"
+			} else if textoLower == "endereco_novo" {
+				textoBase = "novo"
+			}
 			return s.handleConfirmacaoEndereco(ctx, clienteID, tenantID, carrinhoAtual, textoBase)
 		case dto.EstadoAguardandoPagamento:
 			return s.handleSelecaoPagamento(ctx, clienteID, tenantID, carrinhoAtual, textoBase)
@@ -339,10 +344,10 @@ func (s *carrinhoService) iniciarFluxoFinalizacao(ctx context.Context, clienteID
 		return helpers.FormatSolicitarNovoEndereco(false), nil
 	}
 
-	carrinho.Estado = dto.EstadoAguardandoEnderecoLista
+	carrinho.Estado = dto.EstadoAguardandoConfirmacaoEndereco
+	carrinho.EnderecoConfirmacaoIdx = 0
 	carrinho.TentativasEndereco = 0
-	_ = s.saveCarrinho(ctx, carrinho)
-	return helpers.FormatListaEnderecos(enderecos), nil
+	return s.prepararConfirmacaoEnderecoExistente(ctx, carrinho, enderecos[0])
 }
 
 func (s *carrinhoService) handleSelecaoEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
@@ -440,13 +445,24 @@ func (s *carrinhoService) prepararConfirmacaoEnderecoExistente(ctx context.Conte
 
 func (s *carrinhoService) handleConfirmacaoEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
 	resposta := strings.ToLower(strings.TrimSpace(texto))
-	if resposta != "sim" && resposta != "s" && resposta != "não" && resposta != "nao" && resposta != "n" {
+	if resposta != "sim" && resposta != "s" && resposta != "não" && resposta != "nao" && resposta != "n" &&
+		resposta != "novo endereço" && resposta != "novo" && resposta != "corrigir" {
 		return "Confirma esse endereço? Responda *sim* ou *corrigir*.", nil
 	}
-	if resposta == "não" || resposta == "nao" || resposta == "n" || resposta == "corrigir" {
+	if resposta == "não" || resposta == "nao" || resposta == "n" || resposta == "corrigir" || resposta == "novo endereço" || resposta == "novo" {
+		enderecos, err := s.clienteService.ListarEnderecos(ctx, clienteID)
+		if err != nil {
+			return "", err
+		}
+		next := carrinho.EnderecoConfirmacaoIdx + 1
+		if next < len(enderecos) {
+			carrinho.EnderecoConfirmacaoIdx = next
+			return s.prepararConfirmacaoEnderecoExistente(ctx, carrinho, enderecos[next])
+		}
 		carrinho.Estado = dto.EstadoAguardandoEnderecoNovo
 		carrinho.EnderecoPendente = nil
 		carrinho.EnderecoConfirmacaoID = nil
+		carrinho.EnderecoConfirmacaoIdx = 0
 		if err := s.saveCarrinho(ctx, carrinho); err != nil {
 			return "", err
 		}
@@ -464,6 +480,7 @@ func (s *carrinhoService) handleConfirmacaoEndereco(ctx context.Context, cliente
 	}
 	carrinho.EnderecoPendente = nil
 	carrinho.EnderecoConfirmacaoID = nil
+	carrinho.EnderecoConfirmacaoIdx = 0
 	return s.iniciarPagamento(ctx, clienteID, tenantID, carrinho, *carrinho.EnderecoID)
 }
 
