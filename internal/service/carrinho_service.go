@@ -447,7 +447,7 @@ func (s *carrinhoService) handleConfirmacaoEndereco(ctx context.Context, cliente
 	resposta := strings.ToLower(strings.TrimSpace(texto))
 	if resposta != "sim" && resposta != "s" && resposta != "não" && resposta != "nao" && resposta != "n" &&
 		resposta != "novo endereço" && resposta != "novo" && resposta != "corrigir" {
-		return "Confirma esse endereço? Responda *sim* ou *corrigir*.", nil
+		return "Confirma esse endereço? Responda *sim* ou *novo endereço*.", nil
 	}
 	if resposta == "não" || resposta == "nao" || resposta == "n" || resposta == "corrigir" || resposta == "novo endereço" || resposta == "novo" {
 		enderecos, err := s.clienteService.ListarEnderecos(ctx, clienteID)

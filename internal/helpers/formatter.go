@@ -16,7 +16,7 @@ func FormatConfirmacaoEndereco(endereco *dto.CriarEnderecoRequest) string {
 	if localidade != "" {
 		localidade = " - " + localidade
 	}
-	return fmt.Sprintf("📍 **Confirma entrega em:** %s, %s%s%s - %s?\n\nResponda *sim* ou *corrigir*.",
+	return fmt.Sprintf("📍 **Confirma entrega em:** %s, %s%s%s - %s?\n\nResponda *sim* ou *novo endereço*.",
 		endereco.Logradouro, endereco.Numero, complemento, localidade, endereco.Estado)
 }
 

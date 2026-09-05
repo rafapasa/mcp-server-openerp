@@ -136,7 +136,7 @@ func (p *Processor) Process(ctx context.Context, req whatsappdto.WebhookRequest)
 func (p *Processor) shouldSendCartButtons(input dto.MessageInput, response string) bool {
 	return input.Source == models.SourceText &&
 		strings.Contains(response, "🛒") &&
-		strings.Contains(response, "Carrinho")
+		strings.Contains(strings.ToLower(response), "carrinho")
 }
 
 func (p *Processor) shouldSendPaymentButtons(response string) bool {
