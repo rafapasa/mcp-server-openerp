@@ -11,6 +11,7 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/server"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 	"github.com/rafapasa/mcp-server-openerp/internal/webhook"
+	"github.com/rafapasa/mcp-server-openerp/pkg/viacep"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -68,6 +69,7 @@ var providerSetService = wire.NewSet(
 	service.NewClienteService,
 	service.NewCarrinhoService, // agora recebe LLMServiceInterface
 	service.NewFormaPagamentoService,
+	viacep.NewClient,
 )
 
 var providerSetHandlers = wire.NewSet(

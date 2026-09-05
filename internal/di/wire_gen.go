@@ -14,6 +14,7 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/server"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 	"github.com/rafapasa/mcp-server-openerp/internal/webhook"
+	"github.com/rafapasa/mcp-server-openerp/pkg/viacep"
 )
 
 // Injectors from wire.go:
@@ -42,7 +43,8 @@ func InitializeApp() (*server.HttpServer, error) {
 	enderecoRepositoryInterface := repository.NewEnderecoRepository(db)
 	clienteServiceInterface := service.NewClienteService(clienteRepositoryInterface, enderecoRepositoryInterface)
 	formaPagamentoServiceInterface := service.NewFormaPagamentoService(formaPagamentoRepository)
-	carrinhoServiceInterface := service.NewCarrinhoService(redisInterface, cardapioServiceInterface, pedidoServiceInterface, produtoRepository, llmServiceInterface, clienteServiceInterface, formaPagamentoServiceInterface)
+	client := viacep.NewClient()
+	carrinhoServiceInterface := service.NewCarrinhoService(redisInterface, cardapioServiceInterface, pedidoServiceInterface, produtoRepository, llmServiceInterface, clienteServiceInterface, formaPagamentoServiceInterface, client)
 	mcpServer := server.NewMCPServer(configConfig, cardapioServiceInterface, pedidoServiceInterface, carrinhoServiceInterface, unifiedLLM)
 	userRepositoryInterface := repository.NewUserRepository(db)
 	authServiceInterface := service.NewAuthService(userRepositoryInterface, configConfig)
@@ -79,7 +81,8 @@ func InitializeMCPServer() (*server.MCPServer, error) {
 	enderecoRepositoryInterface := repository.NewEnderecoRepository(db)
 	clienteServiceInterface := service.NewClienteService(clienteRepositoryInterface, enderecoRepositoryInterface)
 	formaPagamentoServiceInterface := service.NewFormaPagamentoService(formaPagamentoRepository)
-	carrinhoServiceInterface := service.NewCarrinhoService(redisInterface, cardapioServiceInterface, pedidoServiceInterface, produtoRepository, llmServiceInterface, clienteServiceInterface, formaPagamentoServiceInterface)
+	client := viacep.NewClient()
+	carrinhoServiceInterface := service.NewCarrinhoService(redisInterface, cardapioServiceInterface, pedidoServiceInterface, produtoRepository, llmServiceInterface, clienteServiceInterface, formaPagamentoServiceInterface, client)
 	mcpServer := server.NewMCPServer(configConfig, cardapioServiceInterface, pedidoServiceInterface, carrinhoServiceInterface, unifiedLLM)
 	return mcpServer, nil
 }

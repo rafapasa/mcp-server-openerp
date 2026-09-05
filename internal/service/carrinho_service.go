@@ -17,6 +17,7 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
+	"github.com/rafapasa/mcp-server-openerp/pkg/viacep"
 	"go.uber.org/zap"
 )
 
@@ -33,6 +34,7 @@ type CarrinhoService struct {
 	formaPagamentoService FormaPagamentoServiceInterface
 	produtoRepo           repository.ProdutoRepository
 	llmService            LLMServiceInterface
+	viacepClient          viacep.Client
 }
 
 func NewCarrinhoService(
@@ -43,6 +45,7 @@ func NewCarrinhoService(
 	llmService LLMServiceInterface,
 	clienteService ClienteServiceInterface,
 	formaPagamentoService FormaPagamentoServiceInterface,
+	viacepClient viacep.Client,
 ) CarrinhoServiceInterface {
 	return &CarrinhoService{
 		cache:                 cache,
@@ -52,6 +55,7 @@ func NewCarrinhoService(
 		formaPagamentoService: formaPagamentoService,
 		produtoRepo:           produtoRepo,
 		llmService:            llmService,
+		viacepClient:          viacepClient,
 	}
 }
 
@@ -118,6 +122,8 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 		if textoLower == "limpar carrinho" || textoLower == "limpar" || strings.Contains(textoLower, "cancelar") || textoLower == "cancelar pedido" {
 			carrinhoAtual.Estado = dto.EstadoAberto
 			carrinhoAtual.EnderecoID = nil
+			carrinhoAtual.EnderecoPendente = nil
+			carrinhoAtual.EnderecoConfirmacaoID = nil
 			carrinhoAtual.Pagamentos = nil
 			_ = s.saveCarrinho(ctx, carrinhoAtual)
 			if strings.Contains(textoLower, "limpar") {
@@ -139,6 +145,8 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 			if len(textoBase) >= 10 {
 				return s.handleNovoEndereco(ctx, clienteID, tenantID, carrinhoAtual, textoBase)
 			}
+		case dto.EstadoAguardandoConfirmacaoEndereco:
+			return s.handleConfirmacaoEndereco(ctx, clienteID, tenantID, carrinhoAtual, textoBase)
 		case dto.EstadoAguardandoPagamento:
 			return s.handleSelecaoPagamento(ctx, clienteID, tenantID, carrinhoAtual, textoBase)
 		case dto.EstadoAguardandoValorPagamento:
@@ -324,7 +332,10 @@ func (s *CarrinhoService) handleSelecaoEndereco(ctx context.Context, clienteID, 
 			return fmt.Sprintf("⚠️ Opção inválida. Digite um número de 1 a %d ou *novo*", len(enderecos)), nil
 		}
 		escolhido := enderecos[idx-1]
-		return s.iniciarPagamento(ctx, clienteID, tenantID, carrinho, escolhido.ID)
+		if s.viacepClient == nil {
+			return s.iniciarPagamento(ctx, clienteID, tenantID, carrinho, escolhido.ID)
+		}
+		return s.prepararConfirmacaoEnderecoExistente(ctx, carrinho, escolhido)
 	}
 
 	if pareceEndereco(texto) {
@@ -345,19 +356,89 @@ func (s *CarrinhoService) handleNovoEndereco(ctx context.Context, clienteID, ten
 	if req.Logradouro == "" || req.Numero == "" {
 		return helpers.FormatErroEndereco("Não consegui identificar rua e número. Envie no formato: *Rua, Número, Bairro*"), nil
 	}
-
-	novoEndereco, err := s.clienteService.AdicionarEndereco(ctx, clienteID, req)
-	if err != nil {
-		logger.Error(ctx, "erro ao criar endereço", zap.Error(err))
-		return "❌ Erro ao salvar endereço. Tente novamente no formato: *Rua das Flores, 123, Centro*", nil
+	if s.viacepClient == nil {
+		novoEndereco, err := s.clienteService.AdicionarEndereco(ctx, clienteID, req)
+		if err != nil {
+			return "❌ Erro ao salvar endereço. Tente novamente no formato: *Rua das Flores, 123, Centro*", nil
+		}
+		msgConfirm := helpers.FormatEnderecoCadastrado(novoEndereco) + "\n\n"
+		pedidoMsg, err := s.iniciarPagamento(ctx, clienteID, tenantID, carrinho, novoEndereco.ID)
+		if err != nil {
+			return "", err
+		}
+		return msgConfirm + pedidoMsg, nil
 	}
-
-	msgConfirm := helpers.FormatEnderecoCadastrado(novoEndereco) + "\n\n"
-	pedidoMsg, err := s.iniciarPagamento(ctx, clienteID, tenantID, carrinho, novoEndereco.ID)
+	if req.CEP == "" {
+		return helpers.FormatErroEndereco("Informe também o CEP para validar o endereço."), nil
+	}
+	enderecoViaCEP, err := s.buscarCEP(ctx, req.CEP)
 	if err != nil {
+		return "⚠️ Não encontrei esse CEP. Confira e envie o endereço novamente com um CEP válido.", nil
+	}
+	req.CEP = enderecoViaCEP.CEP
+	req.Logradouro = enderecoViaCEP.Logradouro
+	req.Bairro = enderecoViaCEP.Bairro
+	req.Cidade = enderecoViaCEP.Cidade
+	req.Estado = enderecoViaCEP.Estado
+	carrinho.EnderecoPendente = req
+	carrinho.EnderecoConfirmacaoID = nil
+	carrinho.Estado = dto.EstadoAguardandoConfirmacaoEndereco
+	if err := s.saveCarrinho(ctx, carrinho); err != nil {
 		return "", err
 	}
-	return msgConfirm + pedidoMsg, nil
+	return helpers.FormatConfirmacaoEndereco(req), nil
+}
+
+func (s *CarrinhoService) prepararConfirmacaoEnderecoExistente(ctx context.Context, carrinho *dto.Carrinho, endereco dto.EnderecoDTO) (string, error) {
+	id := endereco.ID
+	carrinho.EnderecoID = &id
+	carrinho.EnderecoConfirmacaoID = &id
+	carrinho.EnderecoPendente = nil
+	carrinho.Estado = dto.EstadoAguardandoConfirmacaoEndereco
+	if err := s.saveCarrinho(ctx, carrinho); err != nil {
+		return "", err
+	}
+	return helpers.FormatConfirmacaoEndereco(&dto.CriarEnderecoRequest{
+		CEP: endereco.CEP, Logradouro: endereco.Logradouro, Numero: endereco.Numero,
+		Complemento: endereco.Complemento, Bairro: endereco.Bairro, Cidade: endereco.Cidade,
+		Estado: endereco.Estado, Referencia: endereco.Referencia,
+	}), nil
+}
+
+func (s *CarrinhoService) handleConfirmacaoEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
+	resposta := strings.ToLower(strings.TrimSpace(texto))
+	if resposta != "sim" && resposta != "s" && resposta != "não" && resposta != "nao" && resposta != "n" {
+		return "Confirma esse endereço? Responda *sim* ou *corrigir*.", nil
+	}
+	if resposta == "não" || resposta == "nao" || resposta == "n" || resposta == "corrigir" {
+		carrinho.Estado = dto.EstadoAguardandoEnderecoNovo
+		carrinho.EnderecoPendente = nil
+		carrinho.EnderecoConfirmacaoID = nil
+		if err := s.saveCarrinho(ctx, carrinho); err != nil {
+			return "", err
+		}
+		return helpers.FormatSolicitarNovoEndereco(true), nil
+	}
+	if carrinho.EnderecoPendente != nil {
+		endereco, err := s.clienteService.AdicionarEndereco(ctx, clienteID, carrinho.EnderecoPendente)
+		if err != nil {
+			return "", fmt.Errorf("erro ao salvar endereço confirmado: %w", err)
+		}
+		carrinho.EnderecoID = &endereco.ID
+	}
+	if carrinho.EnderecoID == nil {
+		return "", fmt.Errorf("endereço confirmado não encontrado")
+	}
+	carrinho.EnderecoPendente = nil
+	carrinho.EnderecoConfirmacaoID = nil
+	return s.iniciarPagamento(ctx, clienteID, tenantID, carrinho, *carrinho.EnderecoID)
+}
+
+func (s *CarrinhoService) buscarCEP(ctx context.Context, cep string) (*viacep.Endereco, error) {
+	key := "viacep:" + strings.ReplaceAll(strings.TrimSpace(cep), "-", "")
+	return database.GetOrSet(s.cache, ctx, key, 30*24*time.Hour, func() (*viacep.Endereco, error) {
+		return s.viacepClient.Buscar(ctx, cep)
+	})
 }
 
 func (s *CarrinhoService) finalizarComEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, enderecoID uint) (string, error) {
