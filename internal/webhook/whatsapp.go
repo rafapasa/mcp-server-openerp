@@ -90,6 +90,21 @@ func (w *WhatsAppClient) SendButtons(ctx context.Context, to, body string, label
 	for i, label := range labels {
 		buttons[i] = map[string]string{"id": buttonID(label), "title": label}
 	}
+	return w.sendButtonsPayload(ctx, to, body, buttons)
+}
+
+func (w *WhatsAppClient) sendButtonsWithIDs(ctx context.Context, to, body string, ids, labels []string) error {
+	if len(ids) == 0 || len(ids) != len(labels) || len(ids) > 3 {
+		return fmt.Errorf("quantidade de botões inválida")
+	}
+	buttons := make([]map[string]string, len(labels))
+	for i := range labels {
+		buttons[i] = map[string]string{"id": ids[i], "title": labels[i]}
+	}
+	return w.sendButtonsPayload(ctx, to, body, buttons)
+}
+
+func (w *WhatsAppClient) sendButtonsPayload(ctx context.Context, to, body string, buttons []map[string]string) error {
 	return w.sendJSON(ctx, map[string]interface{}{
 		"messaging_product": "whatsapp",
 		"to":                to,

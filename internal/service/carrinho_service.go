@@ -530,7 +530,9 @@ func (s *carrinhoService) handleSelecaoPagamento(ctx context.Context, clienteID,
 	if err != nil {
 		return "", err
 	}
-	idx, err := strconv.Atoi(strings.TrimSpace(texto))
+	texto = strings.TrimSpace(strings.ToLower(texto))
+	texto = strings.TrimPrefix(texto, "pagamento_")
+	idx, err := strconv.Atoi(texto)
 	if err != nil || idx < 1 || idx > len(formas) {
 		return helpers.FormatListaFormasPagamento(formas), nil
 	}

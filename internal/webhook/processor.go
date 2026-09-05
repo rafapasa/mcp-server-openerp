@@ -4,6 +4,7 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -110,6 +111,10 @@ func (p *Processor) Process(ctx context.Context, req whatsappdto.WebhookRequest)
 				}
 
 				if resposta != "" {
+					if p.shouldSendPaymentButtons(resposta) {
+						p.sendPaymentResponse(ctx, msg.From, resposta)
+						continue
+					}
 					if p.shouldSendCartButtons(input, resposta) {
 						p.sendCartResponse(ctx, cliente.ID, tenantID, msg.From, resposta)
 						continue
@@ -128,6 +133,50 @@ func (p *Processor) shouldSendCartButtons(input dto.MessageInput, response strin
 	return input.Source == models.SourceText &&
 		strings.Contains(response, "🛒") &&
 		strings.Contains(response, "Carrinho")
+}
+
+func (p *Processor) shouldSendPaymentButtons(response string) bool {
+	return strings.Contains(response, "COMO VAI PAGAR?")
+}
+
+func (p *Processor) sendPaymentResponse(ctx context.Context, to, response string) {
+	sender, ok := p.whatsApp.(*WhatsAppClient)
+	if !ok {
+		_ = p.whatsApp.SendMessage(to, response)
+		return
+	}
+
+	var ids, labels []string
+	for _, line := range strings.Split(response, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "*") {
+			continue
+		}
+		end := strings.Index(line[1:], "*")
+		if end < 0 {
+			continue
+		}
+		end++
+		index, err := strconv.Atoi(line[1:end])
+		if err != nil {
+			continue
+		}
+		label := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line[end+1:]), "-"))
+		label = strings.TrimSpace(label)
+		if label == "" {
+			continue
+		}
+		ids = append(ids, fmt.Sprintf("pagamento_%d", index))
+		labels = append(labels, label)
+	}
+	if len(ids) == 0 || len(ids) > 3 {
+		_ = p.whatsApp.SendMessage(to, response)
+		return
+	}
+	if err := sender.sendButtonsWithIDs(ctx, to, response, ids, labels); err != nil {
+		logger.Error(ctx, "Erro ao enviar botões de pagamento", zap.Error(err))
+		_ = p.whatsApp.SendMessage(to, response)
+	}
 }
 
 func (p *Processor) sendCartResponse(ctx context.Context, clienteID, tenantID uint, to, response string) {

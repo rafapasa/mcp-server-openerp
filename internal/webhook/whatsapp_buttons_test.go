@@ -56,3 +56,28 @@ func TestProcessorBuildMessageInputButton(t *testing.T) {
 	require.Equal(t, models.SourceText, input.Source)
 	require.Equal(t, "carrinho_finalizar", input.Text)
 }
+
+func TestProcessorSendPaymentResponse(t *testing.T) {
+	var gotBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]interface{}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		gotBody = payload["type"].(string)
+		interactive := payload["interactive"].(map[string]interface{})
+		buttons := interactive["action"].(map[string]interface{})["buttons"].([]interface{})
+		require.Equal(t, "pagamento_1", buttons[0].(map[string]interface{})["id"])
+		require.Equal(t, "Dinheiro", buttons[0].(map[string]interface{})["title"])
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	processor := &Processor{
+		whatsApp: &WhatsAppClient{
+			apiURL:      server.URL,
+			phoneNumber: "phone-id",
+			client:      server.Client(),
+		},
+	}
+	processor.sendPaymentResponse(context.Background(), "5511999999999", "💳 **COMO VAI PAGAR?**\n\n*1* - Dinheiro\n*2* - Pix")
+	require.Equal(t, "interactive", gotBody)
+}
