@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -576,7 +577,7 @@ func (s *carrinhoService) handleSelecaoPagamento(ctx context.Context, clienteID,
 		if err := s.saveCarrinho(ctx, carrinho); err != nil {
 			return "", err
 		}
-		return "💵 Vai precisar de troco? Se sim, informe para quanto. Se não, responda *não*.", nil
+		return "💵 Precisa de troco?", nil
 	}
 	carrinho.Pagamentos = append(carrinho.Pagamentos, dto.PedidoPagamentoInput{
 		FormaPagamentoID: forma.ID,
@@ -604,7 +605,7 @@ func (s *carrinhoService) handleValorPagamento(ctx context.Context, clienteID, t
 		if err := s.saveCarrinho(ctx, carrinho); err != nil {
 			return "", err
 		}
-		return "💵 Vai precisar de troco? Se sim, informe para quanto. Se não, responda *não*.", nil
+		return "💵 Precisa de troco?", nil
 	}
 	carrinho.Pagamentos = append(carrinho.Pagamentos, dto.PedidoPagamentoInput{
 		FormaPagamentoID: forma.ID, Valor: valor,
@@ -613,20 +614,35 @@ func (s *carrinhoService) handleValorPagamento(ctx context.Context, clienteID, t
 }
 
 func (s *carrinhoService) handleTrocoPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
-	var troco *float64
-	if strings.ToLower(strings.TrimSpace(texto)) != "não" && strings.ToLower(strings.TrimSpace(texto)) != "nao" {
-		valor, err := parseValorFromText(texto)
-		if err != nil || valor < carrinho.ValorPagamentoPendente {
-			return "⚠️ Informe um valor de troco maior ou igual ao valor pago, ou responda *não*.", nil
-		}
-		troco = &valor
+	textoLimpo := strings.ToLower(strings.TrimSpace(texto))
+	if textoLimpo == "não" || textoLimpo == "nao" || textoLimpo == "n" {
+		return s.registrarTroco(ctx, clienteID, tenantID, carrinho, nil)
 	}
+
+	valor, err := parseValorFromText(texto)
+	if err != nil {
+		if textoLimpo == "sim" || textoLimpo == "s" || strings.Contains(textoLimpo, "troco") {
+			return "💵 Troco para quanto?", nil
+		}
+		valor = proximaCentena(carrinho.ValorPagamentoPendente)
+	}
+	if valor < carrinho.ValorPagamentoPendente {
+		return fmt.Sprintf("💵 O troco precisa ser de pelo menos R$ %.2f. Troco para quanto?", carrinho.ValorPagamentoPendente), nil
+	}
+	return s.registrarTroco(ctx, clienteID, tenantID, carrinho, &valor)
+}
+
+func (s *carrinhoService) registrarTroco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, troco *float64) (string, error) {
 	carrinho.Pagamentos = append(carrinho.Pagamentos, dto.PedidoPagamentoInput{
 		FormaPagamentoID: carrinho.FormaPagamentoPendente,
 		Valor:            carrinho.ValorPagamentoPendente,
 		TrocoPara:        troco,
 	})
 	return s.continuarPagamento(ctx, clienteID, tenantID, carrinho)
+}
+
+func proximaCentena(valor float64) float64 {
+	return (math.Floor(valor/100) + 1) * 100
 }
 
 func (s *carrinhoService) continuarPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho) (string, error) {

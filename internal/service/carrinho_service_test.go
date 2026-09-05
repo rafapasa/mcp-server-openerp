@@ -103,6 +103,12 @@ func TestParseValorFromText(t *testing.T) {
 	}
 }
 
+func TestProximaCentena(t *testing.T) {
+	assert.Equal(t, 100.0, proximaCentena(43.50))
+	assert.Equal(t, 100.0, proximaCentena(71.25))
+	assert.Equal(t, 200.0, proximaCentena(104.99))
+}
+
 func Test_mustFormat(t *testing.T) {
 	assert.Equal(t, "resumo", mustFormat("resumo", nil))
 	assert.Equal(t, "resumo", mustFormat("resumo", assert.AnError))
