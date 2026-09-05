@@ -9,6 +9,7 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	whatsappdto "github.com/rafapasa/mcp-server-openerp/internal/dto/whatsapp"
+	"github.com/rafapasa/mcp-server-openerp/internal/intent"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/pkg/phone"
@@ -87,6 +88,15 @@ func (p *Processor) Process(ctx context.Context, req whatsappdto.WebhookRequest)
 				}
 
 				input := p.buildMessageInput(ctx, msg)
+				if p.isHumanHandoffActive(ctx, cliente.ID) && !intent.IsVoltarProBot(input.Text) {
+					p.forwardToHuman(ctx, cliente.ID, tenantID, msg.From, input)
+					if p.shouldPromptHandoffTimeout(ctx, cliente.ID) {
+						if err := p.whatsApp.SendMessage(msg.From, "⏳ Seu atendimento humano ainda está aguardando resposta. Você prefere continuar aguardando ou *voltar pro bot*?"); err != nil {
+							logger.Error(ctx, "Erro ao enviar alerta de handoff", zap.Error(err))
+						}
+					}
+					continue
+				}
 
 				resposta, err := p.carrinhoService.ProcessarMensagem(ctx, cliente.ID, tenantID, input)
 				if err != nil {
@@ -98,10 +108,46 @@ func (p *Processor) Process(ctx context.Context, req whatsappdto.WebhookRequest)
 					if err := p.whatsApp.SendMessage(msg.From, resposta); err != nil {
 						logger.Error(ctx, "Erro ao enviar resposta WhatsApp", zap.Error(err), zap.String("to", msg.From))
 					}
+
 				}
 			}
 		}
 	}
+}
+
+func (p *Processor) isHumanHandoffActive(ctx context.Context, clienteID uint) bool {
+	if p.cacheLayer == nil {
+		return false
+	}
+	_, err := p.cacheLayer.GetWithContext(ctx, fmt.Sprintf("atendimento:humano:%d", clienteID))
+	return err == nil
+}
+
+func (p *Processor) shouldPromptHandoffTimeout(ctx context.Context, clienteID uint) bool {
+	if p.cacheLayer == nil {
+		return false
+	}
+	key := fmt.Sprintf("atendimento:humano:%d", clienteID)
+	raw, err := p.cacheLayer.GetWithContext(ctx, key)
+	if err != nil {
+		return false
+	}
+	startedAt, err := time.Parse(time.RFC3339, raw)
+	if err != nil || time.Since(startedAt) < 10*time.Minute {
+		return false
+	}
+	alertKey := fmt.Sprintf("atendimento:humano:alerta:%d", clienteID)
+	set, err := p.cacheLayer.SetNXWithContext(ctx, alertKey, "1", 10*time.Minute)
+	return err == nil && set
+}
+
+func (p *Processor) forwardToHuman(ctx context.Context, clienteID, tenantID uint, telefone string, input dto.MessageInput) {
+	logger.Info(ctx, "mensagem encaminhada para atendimento humano",
+		zap.Uint("cliente_id", clienteID),
+		zap.Uint("tenant_id", tenantID),
+		zap.String("telefone", telefone),
+		zap.String("source", string(input.Source)),
+	)
 }
 
 func (p *Processor) isDuplicate(ctx context.Context, messageID string) bool {

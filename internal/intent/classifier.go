@@ -25,6 +25,8 @@ const (
 	IntentAdd
 	IntentRemove
 	IntentCheckout
+	IntentFalarComAtendente
+	IntentVoltarProBot
 	IntentOther
 )
 
@@ -42,6 +44,21 @@ var (
 	viewBase      = []string{"ver carrinho", "meu carrinho", "ver pedido", "o que tenho", "q tenho", "carrinho"}
 	limparBase    = []string{"limpar carrinho", "limpar tudo", "limpar pedido", "limpe tudo", "esvaziar carrinho", "apagar carrinho", "zera o carrinho"}
 )
+
+func IsFalarComAtendente(raw string) bool {
+	norm := normalize(raw)
+	return strings.Contains(norm, "atendente") ||
+		strings.Contains(norm, "falar com humano") ||
+		strings.Contains(norm, "suporte") ||
+		strings.Contains(norm, "ajuda")
+}
+
+func IsVoltarProBot(raw string) bool {
+	norm := normalize(raw)
+	return strings.Contains(norm, "voltar pro bot") ||
+		strings.Contains(norm, "voltar para o bot") ||
+		strings.Contains(norm, "sair do atendimento")
+}
 
 func normalize(s string) string {
 	s = strings.ToLower(s)
@@ -175,6 +192,12 @@ func ClassifyV2(raw string, lastGreeting time.Time) Result {
 	norm := normalize(raw)
 	if norm == "" {
 		return Result{Type: IntentNone}
+	}
+	if IsVoltarProBot(norm) {
+		return Result{Type: IntentVoltarProBot, Score: 1}
+	}
+	if IsFalarComAtendente(norm) {
+		return Result{Type: IntentFalarComAtendente, Score: 1}
 	}
 	// anti-spam saudação 3min
 	if !lastGreeting.IsZero() && time.Since(lastGreeting) < 3*time.Minute {

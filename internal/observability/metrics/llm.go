@@ -53,6 +53,12 @@ var (
 		},
 		[]string{"intent"},
 	)
+	HandoffStarted = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "handoff_iniciado_total",
+			Help: "Total de handoffs do bot para atendimento humano",
+		},
+	)
 )
 
 // LLMRequest registra uma chamada LLM
@@ -61,6 +67,10 @@ func LLMRequest(provider, model, status string, latency float64) {
 	if status == "success" {
 		LLMRequestsLatency.WithLabelValues(provider, model).Observe(latency)
 	}
+}
+
+func RegisterHandoffStarted() {
+	HandoffStarted.Inc()
 }
 
 // LLMTokens registra tokens usados

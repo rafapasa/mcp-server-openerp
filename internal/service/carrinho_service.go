@@ -16,6 +16,7 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/metrics"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 	"github.com/rafapasa/mcp-server-openerp/pkg/viacep"
 	"go.uber.org/zap"
@@ -113,6 +114,25 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 	if textoBase == "" {
 		return "Não entendi, pode repetir?", nil
 	}
+	intentRes := intent.ClassifyV2(textoBase, time.Time{})
+	if intentRes.Type == intent.IntentFalarComAtendente {
+		if s.cache != nil {
+			if err := s.cache.SetWithContext(ctx, handoffKey(clienteID), time.Now().UTC().Format(time.RFC3339), 30*time.Minute); err != nil {
+				return "", fmt.Errorf("erro ao ativar atendimento humano: %w", err)
+			}
+		}
+		metrics.RegisterHandoffStarted()
+		logger.Info(ctx, "handoff_iniciado", zap.Uint("cliente_id", clienteID), zap.Uint("tenant_id", tenantID))
+		return "👨‍💼 Te conectei com um atendente, pode falar que ele vai ver aqui. Digite *voltar pro bot* para voltar.", nil
+	}
+	if intentRes.Type == intent.IntentVoltarProBot {
+		if s.cache != nil {
+			if err := s.cache.DeleteWithContext(ctx, handoffKey(clienteID)); err != nil {
+				return "", fmt.Errorf("erro ao reativar bot: %w", err)
+			}
+		}
+		return "🤖 Voltei a atender você. Como posso ajudar?", nil
+	}
 
 	// 2. Se está em fluxo de endereço (só entra aqui DEPOIS de iniciar finalizar)
 	if carrinhoAtual != nil && carrinhoAtual.Estado != "" && carrinhoAtual.Estado != dto.EstadoAberto {
@@ -157,7 +177,6 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 	}
 
 	// 3. Fast-path 0 token usando seu classifier V2
-	intentRes := intent.ClassifyV2(textoBase, time.Time{})
 	switch intentRes.Type {
 	case intent.IntentGreeting:
 		return intent.GreetingResponse("", time.Now().Hour()), nil
@@ -169,6 +188,7 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 		if resp := intent.SmallTalkResponse(textoBase); resp != "" {
 			return resp, nil
 		}
+
 	case intent.IntentThanks:
 		return intent.ThanksResponse(), nil
 	case intent.IntentViewCart:
@@ -282,6 +302,10 @@ func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 		return "", err
 	}
 	return s.FormatResumoCarrinho(ctx, carrinho)
+}
+
+func handoffKey(clienteID uint) string {
+	return fmt.Sprintf("atendimento:humano:%d", clienteID)
 }
 
 func (s *CarrinhoService) iniciarFluxoFinalizacao(ctx context.Context, clienteID, tenantID uint) (string, error) {
