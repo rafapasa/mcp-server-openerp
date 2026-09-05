@@ -79,7 +79,7 @@ func (c *httpClient) Buscar(ctx context.Context, cep string) (*Endereco, error) 
 	if err := json.Unmarshal(body, &endereco); err != nil {
 		return nil, fmt.Errorf("erro ao interpretar resposta ViaCEP: %w", err)
 	}
-	if endereco.Erro || endereco.Logradouro == "" || endereco.Cidade == "" || endereco.Estado == "" {
+	if endereco.Erro || endereco.Cidade == "" || endereco.Estado == "" {
 		return nil, fmt.Errorf("CEP não encontrado")
 	}
 	endereco.CEP = formatarCEP(cepNumerico)

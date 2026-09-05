@@ -415,10 +415,18 @@ func (s *carrinhoService) handleNovoEndereco(ctx context.Context, clienteID, ten
 		return "⚠️ Não encontrei esse CEP. Confira e envie o endereço novamente com um CEP válido.", nil
 	}
 	req.CEP = enderecoViaCEP.CEP
-	req.Logradouro = enderecoViaCEP.Logradouro
-	req.Bairro = enderecoViaCEP.Bairro
-	req.Cidade = enderecoViaCEP.Cidade
-	req.Estado = enderecoViaCEP.Estado
+	if enderecoViaCEP.Logradouro != "" {
+		req.Logradouro = enderecoViaCEP.Logradouro
+	}
+	if enderecoViaCEP.Bairro != "" {
+		req.Bairro = enderecoViaCEP.Bairro
+	}
+	if enderecoViaCEP.Cidade != "" {
+		req.Cidade = enderecoViaCEP.Cidade
+	}
+	if enderecoViaCEP.Estado != "" {
+		req.Estado = enderecoViaCEP.Estado
+	}
 	carrinho.EnderecoPendente = req
 	carrinho.EnderecoConfirmacaoID = nil
 	carrinho.Estado = dto.EstadoAguardandoConfirmacaoEndereco

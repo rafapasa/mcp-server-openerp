@@ -37,3 +37,17 @@ func TestHTTPClientBuscarRejeitaCEPInvalidoOuNaoEncontrado(t *testing.T) {
 	_, err = NewHTTPClient(server.URL, server.Client()).Buscar(context.Background(), "89874000")
 	require.Error(t, err)
 }
+
+func TestHTTPClientBuscarAceitaCEPRegionalSemLogradouro(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/89874000/json/", r.URL.Path)
+		_, _ = w.Write([]byte(`{"cep":"89874-000","logradouro":"","bairro":"","localidade":"MARAVILHA","uf":"SC"}`))
+	}))
+	defer server.Close()
+
+	result, err := NewHTTPClient(server.URL, server.Client()).Buscar(context.Background(), "89874-000")
+	require.NoError(t, err)
+	require.Equal(t, "Maravilha", result.Cidade)
+	require.Equal(t, "SC", result.Estado)
+	require.Empty(t, result.Logradouro)
+}

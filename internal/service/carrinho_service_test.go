@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 	"github.com/rafapasa/mcp-server-openerp/internal/mocks"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
+	"github.com/rafapasa/mcp-server-openerp/pkg/viacep"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -190,6 +193,30 @@ func Test_parseEnderecoTexto(t *testing.T) {
 		require.NotNil(t, req)
 		assert.Equal(t, "S/N", req.Numero)
 	})
+
+	t.Run("endereço informado na homologação", func(t *testing.T) {
+		req := parseEnderecoTexto("Rua das Gaivotas, 345, Maravilha SC, 89874-000")
+		require.NotNil(t, req)
+		assert.Equal(t, "Rua das Gaivotas", req.Logradouro)
+		assert.Equal(t, "345", req.Numero)
+		assert.Equal(t, "89874-000", req.CEP)
+	})
+}
+
+func TestCarrinhoService_validarEnderecoViaCEP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/89874000/json/", r.URL.Path)
+		_, _ = w.Write([]byte(`{"cep":"89874-000","logradouro":"","bairro":"","localidade":"MARAVILHA","uf":"SC"}`))
+	}))
+	defer server.Close()
+
+	svc := &carrinhoService{
+		viacepClient: viacep.NewHTTPClient(server.URL, server.Client()),
+	}
+	endereco, err := svc.buscarCEP(testCtx(), "89874-000")
+	require.NoError(t, err)
+	require.Equal(t, "Maravilha", endereco.Cidade)
+	require.Equal(t, "SC", endereco.Estado)
 }
 
 func TestCarrinhoService_CalcularTotal(t *testing.T) {
