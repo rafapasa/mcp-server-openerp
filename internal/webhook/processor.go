@@ -4,6 +4,7 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
@@ -21,6 +22,10 @@ import (
 type WhatsAppSender interface {
 	SendMessage(to, text string) error
 	DownloadMedia(ctx context.Context, mediaID string) ([]byte, error)
+}
+
+type buttonSender interface {
+	SendButtons(ctx context.Context, to, body string, labels []string) error
 }
 
 type Processor struct {
@@ -105,6 +110,10 @@ func (p *Processor) Process(ctx context.Context, req whatsappdto.WebhookRequest)
 				}
 
 				if resposta != "" {
+					if p.shouldSendCartButtons(input, resposta) {
+						p.sendCartResponse(ctx, cliente.ID, tenantID, msg.From, resposta)
+						continue
+					}
 					if err := p.whatsApp.SendMessage(msg.From, resposta); err != nil {
 						logger.Error(ctx, "Erro ao enviar resposta WhatsApp", zap.Error(err), zap.String("to", msg.From))
 					}
@@ -113,6 +122,39 @@ func (p *Processor) Process(ctx context.Context, req whatsappdto.WebhookRequest)
 			}
 		}
 	}
+}
+
+func (p *Processor) shouldSendCartButtons(input dto.MessageInput, response string) bool {
+	return input.Source == models.SourceText &&
+		strings.Contains(response, "🛒") &&
+		strings.Contains(response, "Carrinho")
+}
+
+func (p *Processor) sendCartResponse(ctx context.Context, clienteID, tenantID uint, to, response string) {
+	sender, ok := p.whatsApp.(buttonSender)
+	if !ok || p.cacheLayer == nil {
+		_ = p.whatsApp.SendMessage(to, response)
+		return
+	}
+	key := fmt.Sprintf("carrinho:debounce:%d:%d", tenantID, clienteID)
+	if err := p.cacheLayer.SetWithContext(ctx, key, response, 5*time.Second); err != nil {
+		logger.Error(ctx, "Erro ao armazenar debounce do carrinho", zap.Error(err))
+		return
+	}
+	lockKey := key + ":lock"
+	scheduled, err := p.cacheLayer.SetNXWithContext(ctx, lockKey, "1", 5*time.Second)
+	if err != nil || !scheduled {
+		return
+	}
+	go func() {
+		time.Sleep(2 * time.Second)
+		latest, err := p.cacheLayer.GetWithContext(context.Background(), key)
+		if err == nil {
+			_ = sender.SendButtons(context.Background(), to, latest, []string{"Adicionar mais", "Finalizar pedido", "Limpar"})
+		}
+		_ = p.cacheLayer.DeleteWithContext(context.Background(), key)
+		_ = p.cacheLayer.DeleteWithContext(context.Background(), lockKey)
+	}()
 }
 
 func (p *Processor) isHumanHandoffActive(ctx context.Context, clienteID uint) bool {
@@ -232,6 +274,9 @@ func (p *Processor) buildMessageInput(ctx context.Context, msg whatsappdto.Messa
 		return dto.MessageInput{Source: models.SourceImage, Text: caption}
 
 	default:
+		if msg.Type == "interactive" && msg.Interactive.ButtonReply.ID != "" {
+			return dto.MessageInput{Source: models.SourceText, Text: msg.Interactive.ButtonReply.ID}
+		}
 		return dto.MessageInput{Source: models.SourceText, Text: msg.Text.Body}
 	}
 }

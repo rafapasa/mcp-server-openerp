@@ -114,6 +114,15 @@ func (s *carrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 	if textoBase == "" {
 		return "Não entendi, pode repetir?", nil
 	}
+	switch strings.ToLower(textoBase) {
+	case "carrinho_adicionar":
+		return "Claro! Qual item você gostaria de adicionar?", nil
+	case "carrinho_finalizar":
+		return s.iniciarFluxoFinalizacao(ctx, clienteID, tenantID)
+	case "carrinho_limpar":
+		_ = s.LimparCarrinho(ctx, clienteID, tenantID)
+		return "🗑️ Carrinho limpo!", nil
+	}
 	intentRes := intent.ClassifyV2(textoBase, time.Time{})
 	if intentRes.Type == intent.IntentFalarComAtendente {
 		if s.cache != nil {
