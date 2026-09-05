@@ -413,3 +413,107 @@ func TestCardapioService_ListarProdutosHumanizado(t *testing.T) {
 		assert.Equal(t, 10, strings.Count(resultado, "• "))
 	})
 }
+
+func novoCardapioServiceMockWithCache(t *testing.T) (*cardapioService, *mocks.MockProdutoRepository, *mocks.MockRedisInterface) {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	produtoRepo := mocks.NewMockProdutoRepository(ctrl)
+	redisMock := mocks.NewMockRedisInterface(ctrl)
+
+	svc := &cardapioService{
+		produtoRepo: produtoRepo,
+		tenantRepo:  nil,
+		cache:       redisMock,
+	}
+	return svc, produtoRepo, redisMock
+}
+
+func TestCardapioService_InvalidateCache(t *testing.T) {
+	t.Run("invalida chave principal e pattern", func(t *testing.T) {
+		svc, _, redisMock := novoCardapioServiceMockWithCache(t)
+		ctx := testCtx()
+		redisMock.EXPECT().DeleteWithContext(ctx, "cardapio:2").Return(nil).Times(1)
+		redisMock.EXPECT().InvalidateByTenant(ctx, "cardapio:2*").Return(nil).Times(1)
+
+		err := svc.InvalidateCache(ctx, 2)
+		require.NoError(t, err)
+	})
+
+	t.Run("cache nil não quebra", func(t *testing.T) {
+		svc, _ := novoCardapioServiceMock(t)
+		err := svc.InvalidateCache(testCtx(), 2)
+		require.NoError(t, err)
+	})
+}
+
+func TestCardapioService_Create(t *testing.T) {
+	t.Run("cria e invalida cache", func(t *testing.T) {
+		svc, produtoRepo, redisMock := novoCardapioServiceMockWithCache(t)
+		ctx := testCtx()
+		produto := &models.Produto{TenantID: 2, Nome: "Coca", Preco: 5}
+
+		produtoRepo.EXPECT().Create(ctx, produto).Return(nil)
+		redisMock.EXPECT().DeleteWithContext(ctx, "cardapio:2").Return(nil)
+		redisMock.EXPECT().InvalidateByTenant(ctx, "cardapio:2*").Return(nil)
+
+		err := svc.Create(ctx, produto)
+		require.NoError(t, err)
+	})
+}
+
+func TestCardapioService_Update(t *testing.T) {
+	t.Run("atualiza e invalida cache", func(t *testing.T) {
+		svc, produtoRepo, redisMock := novoCardapioServiceMockWithCache(t)
+		ctx := testCtx()
+		produto := &models.Produto{ID: 10, TenantID: 2, Nome: "X-Bacon", Preco: 30}
+
+		produtoRepo.EXPECT().Update(ctx, produto).Return(nil)
+		redisMock.EXPECT().DeleteWithContext(ctx, "cardapio:2").Return(nil)
+		redisMock.EXPECT().InvalidateByTenant(ctx, "cardapio:2*").Return(nil)
+
+		err := svc.Update(ctx, produto)
+		require.NoError(t, err)
+	})
+}
+
+func TestCardapioService_Delete(t *testing.T) {
+	t.Run("deleta e invalida cache", func(t *testing.T) {
+		svc, produtoRepo, redisMock := novoCardapioServiceMockWithCache(t)
+		ctx := testCtx()
+
+		produtoRepo.EXPECT().Delete(ctx, uint(99)).Return(nil)
+		redisMock.EXPECT().DeleteWithContext(ctx, "cardapio:2").Return(nil)
+		redisMock.EXPECT().InvalidateByTenant(ctx, "cardapio:2*").Return(nil)
+
+		err := svc.Delete(ctx, 99, 2)
+		require.NoError(t, err)
+	})
+}
+
+func TestCardapioService_UpdateDisponibilidade(t *testing.T) {
+	t.Run("atualiza disponibilidade e invalida", func(t *testing.T) {
+		svc, produtoRepo, redisMock := novoCardapioServiceMockWithCache(t)
+		ctx := testCtx()
+		produto := &models.Produto{ID: 5, TenantID: 2, Nome: "X-Bacon", Disponivel: true}
+
+		produtoRepo.EXPECT().FindByID(ctx, uint(5)).Return(produto, nil)
+		produtoRepo.EXPECT().Update(ctx, gomock.Any()).Return(nil)
+		redisMock.EXPECT().DeleteWithContext(ctx, "cardapio:2").Return(nil)
+		redisMock.EXPECT().InvalidateByTenant(ctx, "cardapio:2*").Return(nil)
+
+		err := svc.UpdateDisponibilidade(ctx, 5, 2, false)
+		require.NoError(t, err)
+	})
+
+	t.Run("tenant diferente retorna erro", func(t *testing.T) {
+		svc, produtoRepo, _ := novoCardapioServiceMockWithCache(t)
+		ctx := testCtx()
+		produto := &models.Produto{ID: 5, TenantID: 2}
+
+		produtoRepo.EXPECT().FindByID(ctx, uint(5)).Return(produto, nil)
+
+		err := svc.UpdateDisponibilidade(ctx, 5, 99, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "não pertence ao tenant")
+	})
+}

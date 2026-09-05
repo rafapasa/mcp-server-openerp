@@ -1,4 +1,4 @@
-// internal/service/cardapio_service.go - CLEAN mantendo métodos públicos do front
+// internal/service/cardapio_service.go - FIX dev-11 + preserva lógica original humanizado
 package service
 
 import (
@@ -10,6 +10,7 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
+	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 	"go.uber.org/zap"
@@ -33,9 +34,16 @@ func NewCardapioService(
 	}
 }
 
-func (s *cardapioService) GetCardapio(ctx context.Context, tenantID uint) ([]dto.ProdutoItem, error) {
-	cacheKey := fmt.Sprintf("cardapio:%d", tenantID)
+func cardapioCacheKey(tenantID uint) string {
+	return fmt.Sprintf("cardapio:%d", tenantID)
+}
 
+func cardapioListCachePattern(tenantID uint) string {
+	return fmt.Sprintf("cardapio:%d*", tenantID)
+}
+
+func (s *cardapioService) GetCardapio(ctx context.Context, tenantID uint) ([]dto.ProdutoItem, error) {
+	cacheKey := cardapioCacheKey(tenantID)
 	cardapio, err := database.GetOrSet(s.cache, ctx, cacheKey, 1*time.Hour, func() ([]dto.ProdutoItem, error) {
 		produtos, err := s.produtoRepo.FindByTenantDisponiveis(ctx, tenantID)
 		if err != nil {
@@ -48,13 +56,9 @@ func (s *cardapioService) GetCardapio(ctx context.Context, tenantID uint) ([]dto
 				cat = p.Categoria.Nome
 			}
 			out = append(out, dto.ProdutoItem{
-				ID:           p.ID,
-				Nome:         p.Nome,
-				Categoria:    cat,
-				Descricao:    p.Descricao,
-				Preco:        p.Preco,
-				Ingredientes: p.Ingredientes,
-				Disponivel:   p.Disponivel,
+				ID: p.ID, Nome: p.Nome, Categoria: cat,
+				Descricao: p.Descricao, Preco: p.Preco,
+				Ingredientes: p.Ingredientes, Disponivel: p.Disponivel,
 			})
 		}
 		return out, nil
@@ -65,6 +69,67 @@ func (s *cardapioService) GetCardapio(ctx context.Context, tenantID uint) ([]dto
 	}
 	return cardapio, nil
 }
+
+// === dev-11 Invalidação ===
+
+func (s *cardapioService) InvalidateCache(ctx context.Context, tenantID uint) error {
+	if s.cache == nil {
+		return nil
+	}
+	key := cardapioCacheKey(tenantID)
+	if err := s.cache.DeleteWithContext(ctx, key); err != nil {
+		logger.Error(ctx, "falha ao deletar cache cardapio principal", zap.Error(err), zap.String("key", key))
+	}
+	pattern := cardapioListCachePattern(tenantID)
+	if err := s.cache.InvalidateByTenant(ctx, pattern); err != nil {
+		logger.Error(ctx, "falha ao invalidar pattern cardapio", zap.Error(err), zap.String("pattern", pattern))
+		return err
+	}
+	logger.Info(ctx, "cache cardapio invalidado", zap.Uint("tenant_id", tenantID))
+	return nil
+}
+
+func (s *cardapioService) Create(ctx context.Context, produto *models.Produto) error {
+	if err := s.produtoRepo.Create(ctx, produto); err != nil {
+		return err
+	}
+	_ = s.InvalidateCache(ctx, produto.TenantID)
+	return nil
+}
+
+func (s *cardapioService) Update(ctx context.Context, produto *models.Produto) error {
+	if err := s.produtoRepo.Update(ctx, produto); err != nil {
+		return err
+	}
+	_ = s.InvalidateCache(ctx, produto.TenantID)
+	return nil
+}
+
+func (s *cardapioService) Delete(ctx context.Context, id uint, tenantID uint) error {
+	if err := s.produtoRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+	_ = s.InvalidateCache(ctx, tenantID)
+	return nil
+}
+
+func (s *cardapioService) UpdateDisponibilidade(ctx context.Context, id uint, tenantID uint, disponivel bool) error {
+	produto, err := s.produtoRepo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if produto.TenantID != tenantID {
+		return fmt.Errorf("produto não pertence ao tenant")
+	}
+	produto.Disponivel = disponivel
+	if err := s.produtoRepo.Update(ctx, produto); err != nil {
+		return err
+	}
+	_ = s.InvalidateCache(ctx, tenantID)
+	return nil
+}
+
+// === Métodos originais preservados exatamente como nos testes ===
 
 func (s *cardapioService) BuscarProdutoPorNome(ctx context.Context, tenantID string, nome string) (*dto.ProdutoItem, error) {
 	var tenantIDUint uint
@@ -80,13 +145,9 @@ func (s *cardapioService) BuscarProdutoPorNome(ctx context.Context, tenantID str
 		cat = produto.Categoria.Nome
 	}
 	return &dto.ProdutoItem{
-		ID:           produto.ID,
-		Nome:         produto.Nome,
-		Categoria:    cat,
-		Descricao:    produto.Descricao,
-		Preco:        produto.Preco,
-		Ingredientes: produto.Ingredientes,
-		Disponivel:   produto.Disponivel,
+		ID: produto.ID, Nome: produto.Nome, Categoria: cat,
+		Descricao: produto.Descricao, Preco: produto.Preco,
+		Ingredientes: produto.Ingredientes, Disponivel: produto.Disponivel,
 	}, nil
 }
 
@@ -158,53 +219,54 @@ func (s *cardapioService) FormatarCardapio(cardapio []dto.ProdutoItem) string {
 	return sb.String()
 }
 
-// ListarCategoriasHumanizado - frase curta para WhatsApp
+// ListarCategoriasHumanizado - restaura lógica original que os testes esperam
 func (s *cardapioService) ListarCategoriasHumanizado(cardapio []dto.ProdutoItem) string {
 	seen := make(map[string]bool)
 	var cats []string
-	for _, p := range cardapio {
-		c := strings.TrimSpace(p.Categoria)
-		if c == "" || seen[c] {
+	for _, item := range cardapio {
+		c := strings.TrimSpace(item.Categoria)
+		if c == "" {
 			continue
 		}
-		seen[c] = true
-		cats = append(cats, c)
+		if !seen[c] {
+			seen[c] = true
+			cats = append(cats, c)
+		}
 	}
 	if len(cats) == 0 {
 		return "No momento não encontrei categorias no cardápio. Me diga o que você procura! 😊"
 	}
-	return fmt.Sprintf(
-		"Temos %s. Você tá com fome, com sede ou os dois? 😊",
-		strings.Join(cats, ", "),
-	)
+	return fmt.Sprintf("Temos %s. Você tá com fome, com sede ou os dois? 😊", strings.Join(cats, ", "))
 }
 
-// ListarProdutosHumanizado - sem filtro: 3 de cada categoria; com filtro: max 10
+// ListarProdutosHumanizado - restaura lógica original que os testes esperam
 func (s *cardapioService) ListarProdutosHumanizado(cardapio []dto.ProdutoItem, filtro string) string {
-	filtro = strings.ToLower(strings.TrimSpace(filtro))
+	filtroLower := strings.ToLower(strings.TrimSpace(filtro))
+	const max = 10
 
-	if filtro != "" {
+	if filtroLower != "" {
 		var matched []dto.ProdutoItem
 		for _, p := range cardapio {
-			nome := strings.ToLower(p.Nome)
-			cat := strings.ToLower(p.Categoria)
-			if strings.Contains(nome, filtro) || strings.Contains(cat, filtro) {
+			if strings.Contains(strings.ToLower(p.Nome), filtroLower) ||
+				strings.Contains(strings.ToLower(p.Categoria), filtroLower) {
 				matched = append(matched, p)
 			}
 		}
 		if len(matched) == 0 {
 			return fmt.Sprintf("Não achei produtos com \"%s\". Quer ver as categorias? 😊", filtro)
 		}
-		const max = 10
+		// trunca em 10
+		truncated := false
 		if len(matched) > max {
 			matched = matched[:max]
+			truncated = true
 		}
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("Olha o que encontrei pra \"%s\":\n", filtro))
 		for _, p := range matched {
 			sb.WriteString(fmt.Sprintf("• %s — R$ %.2f\n", p.Nome, p.Preco))
 		}
-		if len(matched) == max {
+		if truncated {
 			sb.WriteString("\nTem mais além desses. Quer filtrar melhor?")
 		}
 		return sb.String()
@@ -248,16 +310,10 @@ func (s *cardapioService) FindByID(ctx context.Context, id uint) (*dto.ProdutoDT
 		catNome = produto.Categoria.Nome
 	}
 	return &dto.ProdutoDTO{
-		ID:            produto.ID,
-		TenantID:      produto.TenantID,
-		CategoriaID:   produto.CategoriaID,
-		CategoriaNome: catNome,
-		Nome:          produto.Nome,
-		Descricao:     produto.Descricao,
-		Preco:         produto.Preco,
-		Disponivel:    produto.Disponivel,
-		CreatedAt:     produto.CreatedAt,
-		UpdatedAt:     produto.UpdatedAt,
+		ID: produto.ID, TenantID: produto.TenantID, CategoriaID: produto.CategoriaID,
+		CategoriaNome: catNome, Nome: produto.Nome, Descricao: produto.Descricao,
+		Preco: produto.Preco, Disponivel: produto.Disponivel,
+		CreatedAt: produto.CreatedAt, UpdatedAt: produto.UpdatedAt,
 	}, nil
 }
 
@@ -274,16 +330,9 @@ func (s *cardapioService) ListWithFilters(ctx context.Context, tenantID uint, ca
 			catNome = p.Categoria.Nome
 		}
 		result[i] = dto.ProdutoDTO{
-			ID:            p.ID,
-			TenantID:      p.TenantID,
-			CategoriaID:   p.CategoriaID,
-			CategoriaNome: catNome,
-			Nome:          p.Nome,
-			Descricao:     p.Descricao,
-			Preco:         p.Preco,
-			Disponivel:    p.Disponivel,
-			CreatedAt:     p.CreatedAt,
-			UpdatedAt:     p.UpdatedAt,
+			ID: p.ID, TenantID: p.TenantID, CategoriaID: p.CategoriaID, CategoriaNome: catNome,
+			Nome: p.Nome, Descricao: p.Descricao, Preco: p.Preco, Disponivel: p.Disponivel,
+			CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 		}
 	}
 	return result, total, nil
@@ -304,28 +353,19 @@ func (s *cardapioService) BuscarProdutoPorIdNoCardapio(cardapio []dto.ProdutoIte
 	return nil, fmt.Errorf("produto ID %d não encontrado no cardápio", produtoID)
 }
 
-// ReduzirPorKeywords - fluxo cardápio grande (max 30 itens)
-func (s *cardapioService) ReduzirPorKeywords(
-	ctx context.Context,
-	tenantID uint,
-	keywords []llm.LLMKeywordItemResult,
-) ([]dto.ProdutoItem, error) {
+func (s *cardapioService) ReduzirPorKeywords(ctx context.Context, tenantID uint, keywords []llm.LLMKeywordItemResult) ([]dto.ProdutoItem, error) {
 	if len(keywords) == 0 {
 		return []dto.ProdutoItem{}, nil
 	}
-
 	cardapio, err := s.GetCardapio(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
-
 	var out []dto.ProdutoItem
 	seen := make(map[uint]bool)
-
 	for _, kw := range keywords {
 		nomeLower := strings.ToLower(strings.TrimSpace(kw.Nome))
 		unidadeLower := strings.ToLower(strings.TrimSpace(kw.Unidade))
-
 		for _, p := range cardapio {
 			if seen[p.ID] {
 				continue
@@ -339,7 +379,6 @@ func (s *cardapioService) ReduzirPorKeywords(
 			}
 		}
 	}
-
 	if len(out) == 0 {
 		for _, kw := range keywords {
 			nomeLower := strings.ToLower(strings.TrimSpace(kw.Nome))
@@ -354,7 +393,6 @@ func (s *cardapioService) ReduzirPorKeywords(
 			}
 		}
 	}
-
 	const maxReduzido = 30
 	if len(out) > maxReduzido {
 		out = out[:maxReduzido]

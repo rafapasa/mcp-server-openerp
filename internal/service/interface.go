@@ -1,4 +1,4 @@
-// internal/service/interface.go - ATUALIZADO
+// internal/service/interface.go - FIX dev-11: invalidação cache
 package service
 
 import (
@@ -42,7 +42,6 @@ type PedidoServiceInterface interface {
 	Create(ctx context.Context, req *dto.CriarPedidoRequest) (*dto.PedidoDTO, error)
 }
 
-// ClienteServiceInterface mantém os métodos existentes, sem Update/Delete de endereço
 type ClienteServiceInterface interface {
 	Create(ctx context.Context, req *dto.CriarClienteRequest) (*dto.ClienteDTO, error)
 	FindByID(ctx context.Context, id uint) (*dto.ClienteDTO, error)
@@ -62,7 +61,7 @@ type ClienteServiceInterface interface {
 	AdicionarEndereco(ctx context.Context, clienteID uint, req *dto.CriarEnderecoRequest) (*dto.EnderecoDTO, error)
 	ListarEnderecos(ctx context.Context, clienteID uint) ([]dto.EnderecoDTO, error)
 	DefinirEnderecoPrincipal(ctx context.Context, clienteID, enderecoID uint) error
-	RemoverEndereco(ctx context.Context, clienteID, enderecoID uint) error // mantém interface mas implementação fará soft-delete apenas se necessário, fluxo novo não usa
+	RemoverEndereco(ctx context.Context, clienteID, enderecoID uint) error
 	AtualizarDocumento(ctx context.Context, clienteID uint, inscricaoFederal string) error
 	ValidarDocumento(inscricaoFederal string) (string, error)
 	IsAtivo(ctx context.Context, clienteID uint) (bool, error)
@@ -100,6 +99,12 @@ type CardapioServiceInterface interface {
 	ListWithFilters(ctx context.Context, tenantID uint, categoriaID *uint, disponivel *bool, nome string, page, limit int) ([]dto.ProdutoDTO, int64, error)
 	FindByID(ctx context.Context, id uint) (*dto.ProdutoDTO, error)
 	ReduzirPorKeywords(ctx context.Context, tenantID uint, keywords []llm.LLMKeywordItemResult) ([]dto.ProdutoItem, error)
+	// === NOVO dev-11 ===
+	InvalidateCache(ctx context.Context, tenantID uint) error
+	Create(ctx context.Context, produto *models.Produto) error
+	Update(ctx context.Context, produto *models.Produto) error
+	Delete(ctx context.Context, id uint, tenantID uint) error
+	UpdateDisponibilidade(ctx context.Context, id uint, tenantID uint, disponivel bool) error
 }
 
 type LLMServiceInterface interface {

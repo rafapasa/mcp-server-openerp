@@ -8,7 +8,7 @@ func TestFSEmbedContemMigracoes(t *testing.T) {
 		"000002_create_categorias.up.sql",
 		"000003_create_produtos.up.sql",
 		"000004_add_whatsapp_fields_to_tenants.up.sql",
-		"000005_add_segmento_to_tenants.up.sql",
+		"000005_add_produtos_indexes.up.sql",
 	}
 	for _, name := range want {
 		if _, err := FS.ReadFile(name); err != nil {

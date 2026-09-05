@@ -5,6 +5,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 	"go.uber.org/zap"
@@ -171,6 +172,95 @@ func (h *APIHandlers) GetProdutoFiber(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "not found"})
 	}
 	return c.JSON(produto)
+}
+
+// === NOVO dev-11: Produto CRUD com invalidação ===
+
+// POST /api/v1/produtos
+func (h *APIHandlers) CreateProdutoFiber(c *fiber.Ctx) error {
+	tenantID, err := h.getTenantIdByHeaderFiber(c)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	}
+	var req models.Produto
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	}
+	req.TenantID = tenantID
+	if err := h.cardapioService.Create(c.Context(), &req); err != nil {
+		logger.Error(c.Context(), "erro criar produto", zap.Error(err))
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(201).JSON(req)
+}
+
+// PUT /api/v1/produtos/:id - FIX dev-11 invalida cache
+func (h *APIHandlers) UpdateProdutoFiber(c *fiber.Ctx) error {
+	tenantID, err := h.getTenantIdByHeaderFiber(c)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	}
+	id, _ := strconv.Atoi(c.Params("id"))
+	var req models.Produto
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	}
+	req.ID = uint(id)
+	req.TenantID = tenantID
+
+	// busca existente para garantir ownership
+	existing, err := h.cardapioService.FindByID(c.Context(), uint(id))
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "not found"})
+	}
+	if existing.TenantID != tenantID {
+		return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
+	}
+
+	// merge simples: mantém campos não enviados? Para simplificar, atualiza o model
+	produtoModel := models.Produto{
+		ID: req.ID, TenantID: tenantID, CategoriaID: req.CategoriaID,
+		Nome: req.Nome, Descricao: req.Descricao, Preco: req.Preco,
+		Ingredientes: req.Ingredientes, Disponivel: req.Disponivel,
+		TempoPreparo: req.TempoPreparo,
+	}
+	if err := h.cardapioService.Update(c.Context(), &produtoModel); err != nil {
+		logger.Error(c.Context(), "erro atualizar produto", zap.Error(err))
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "updated", "id": id})
+}
+
+// DELETE /api/v1/produtos/:id
+func (h *APIHandlers) DeleteProdutoFiber(c *fiber.Ctx) error {
+	tenantID, err := h.getTenantIdByHeaderFiber(c)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	}
+	id, _ := strconv.Atoi(c.Params("id"))
+	if err := h.cardapioService.Delete(c.Context(), uint(id), tenantID); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "deleted"})
+}
+
+// PATCH /api/v1/produtos/:id/disponibilidade
+func (h *APIHandlers) UpdateDisponibilidadeFiber(c *fiber.Ctx) error {
+	tenantID, err := h.getTenantIdByHeaderFiber(c)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	}
+	id, _ := strconv.Atoi(c.Params("id"))
+	var req struct {
+		Disponivel bool `json:"disponivel"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	}
+	if err := h.cardapioService.UpdateDisponibilidade(c.Context(), uint(id), tenantID, req.Disponivel); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "updated"})
 }
 
 func (h *APIHandlers) getTenantIdByHeaderFiber(c *fiber.Ctx) (uint, error) {
