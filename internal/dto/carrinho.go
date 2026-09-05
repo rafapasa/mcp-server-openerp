@@ -41,4 +41,5 @@ type Carrinho struct {
 	Pagamentos             []PedidoPagamentoInput `json:"pagamentos,omitempty"`
 	FormaPagamentoPendente uint                   `json:"forma_pagamento_pendente,omitempty"`
 	ValorPagamentoPendente float64                `json:"valor_pagamento_pendente,omitempty"`
+	PagamentoDividido      bool                   `json:"pagamento_dividido,omitempty"`
 }

@@ -88,7 +88,7 @@ func (w *WhatsAppClient) SendButtons(ctx context.Context, to, body string, label
 	}
 	buttons := make([]map[string]string, len(labels))
 	for i, label := range labels {
-		buttons[i] = map[string]string{"id": buttonID(label), "title": label}
+		buttons[i] = map[string]string{"type": "reply", "id": buttonID(label), "title": label}
 	}
 	return w.sendButtonsPayload(ctx, to, body, buttons)
 }
@@ -99,12 +99,22 @@ func (w *WhatsAppClient) sendButtonsWithIDs(ctx context.Context, to, body string
 	}
 	buttons := make([]map[string]string, len(labels))
 	for i := range labels {
-		buttons[i] = map[string]string{"id": ids[i], "title": labels[i]}
+		buttons[i] = map[string]string{"type": "reply", "id": ids[i], "title": labels[i]}
 	}
 	return w.sendButtonsPayload(ctx, to, body, buttons)
 }
 
 func (w *WhatsAppClient) sendButtonsPayload(ctx context.Context, to, body string, buttons []map[string]string) error {
+	replies := make([]map[string]interface{}, 0, len(buttons))
+	for _, button := range buttons {
+		replies = append(replies, map[string]interface{}{
+			"type": "reply",
+			"reply": map[string]string{
+				"id":    button["id"],
+				"title": button["title"],
+			},
+		})
+	}
 	return w.sendJSON(ctx, map[string]interface{}{
 		"messaging_product": "whatsapp",
 		"to":                to,
@@ -113,7 +123,7 @@ func (w *WhatsAppClient) sendButtonsPayload(ctx context.Context, to, body string
 			"type": "button",
 			"body": map[string]string{"text": body},
 			"action": map[string]interface{}{
-				"buttons": buttons,
+				"buttons": replies,
 			},
 		},
 	})

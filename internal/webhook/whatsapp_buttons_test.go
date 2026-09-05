@@ -36,9 +36,10 @@ func TestWhatsAppClientSendButtons(t *testing.T) {
 
 	interactive := payload["interactive"].(map[string]interface{})
 	buttons := interactive["action"].(map[string]interface{})["buttons"].([]interface{})
-	require.Equal(t, "carrinho_adicionar", buttons[0].(map[string]interface{})["id"])
-	require.Equal(t, "carrinho_finalizar", buttons[1].(map[string]interface{})["id"])
-	require.Equal(t, "carrinho_limpar", buttons[2].(map[string]interface{})["id"])
+	require.Equal(t, "reply", buttons[0].(map[string]interface{})["type"])
+	require.Equal(t, "carrinho_adicionar", buttons[0].(map[string]interface{})["reply"].(map[string]interface{})["id"])
+	require.Equal(t, "carrinho_finalizar", buttons[1].(map[string]interface{})["reply"].(map[string]interface{})["id"])
+	require.Equal(t, "carrinho_limpar", buttons[2].(map[string]interface{})["reply"].(map[string]interface{})["id"])
 }
 
 func TestProcessorBuildMessageInputButton(t *testing.T) {
@@ -65,8 +66,8 @@ func TestProcessorSendPaymentResponse(t *testing.T) {
 		gotBody = payload["type"].(string)
 		interactive := payload["interactive"].(map[string]interface{})
 		buttons := interactive["action"].(map[string]interface{})["buttons"].([]interface{})
-		require.Equal(t, "pagamento_1", buttons[0].(map[string]interface{})["id"])
-		require.Equal(t, "Dinheiro", buttons[0].(map[string]interface{})["title"])
+		require.Equal(t, "pagamento_1", buttons[0].(map[string]interface{})["reply"].(map[string]interface{})["id"])
+		require.Equal(t, "Dinheiro", buttons[0].(map[string]interface{})["reply"].(map[string]interface{})["title"])
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()

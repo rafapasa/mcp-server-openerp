@@ -536,6 +536,7 @@ func (s *carrinhoService) iniciarPagamento(ctx context.Context, clienteID, tenan
 	carrinho.Pagamentos = nil
 	carrinho.FormaPagamentoPendente = 0
 	carrinho.ValorPagamentoPendente = 0
+	carrinho.PagamentoDividido = false
 	if err := s.saveCarrinho(ctx, carrinho); err != nil {
 		return "", err
 	}
@@ -548,17 +549,40 @@ func (s *carrinhoService) handleSelecaoPagamento(ctx context.Context, clienteID,
 		return "", err
 	}
 	texto = strings.TrimSpace(strings.ToLower(texto))
+	if strings.Contains(texto, "divid") || strings.Contains(texto, "mais de uma") || strings.Contains(texto, "duas formas") {
+		carrinho.PagamentoDividido = true
+		if err := s.saveCarrinho(ctx, carrinho); err != nil {
+			return "", err
+		}
+		return "Escolha a primeira forma de pagamento:", nil
+	}
 	texto = strings.TrimPrefix(texto, "pagamento_")
 	idx, err := strconv.Atoi(texto)
 	if err != nil || idx < 1 || idx > len(formas) {
 		return helpers.FormatListaFormasPagamento(formas), nil
 	}
 	carrinho.FormaPagamentoPendente = formas[idx-1].ID
-	carrinho.Estado = dto.EstadoAguardandoValorPagamento
-	if err := s.saveCarrinho(ctx, carrinho); err != nil {
-		return "", err
+	forma := formas[idx-1]
+	if carrinho.PagamentoDividido {
+		carrinho.Estado = dto.EstadoAguardandoValorPagamento
+		if err := s.saveCarrinho(ctx, carrinho); err != nil {
+			return "", err
+		}
+		return "💰 Qual valor será pago com esta forma de pagamento?", nil
 	}
-	return "💰 Qual valor será pago com esta forma de pagamento?", nil
+	carrinho.ValorPagamentoPendente = s.CalcularTotal(carrinho) - s.totalPagamentos(carrinho)
+	if forma.Tipo == models.TipoPagamentoDinheiro {
+		carrinho.Estado = dto.EstadoAguardandoTroco
+		if err := s.saveCarrinho(ctx, carrinho); err != nil {
+			return "", err
+		}
+		return "💵 Vai precisar de troco? Se sim, informe para quanto. Se não, responda *não*.", nil
+	}
+	carrinho.Pagamentos = append(carrinho.Pagamentos, dto.PedidoPagamentoInput{
+		FormaPagamentoID: forma.ID,
+		Valor:            carrinho.ValorPagamentoPendente,
+	})
+	return s.continuarPagamento(ctx, clienteID, tenantID, carrinho)
 }
 
 func (s *carrinhoService) handleValorPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
@@ -608,6 +632,7 @@ func (s *carrinhoService) handleTrocoPagamento(ctx context.Context, clienteID, t
 func (s *carrinhoService) continuarPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho) (string, error) {
 	carrinho.FormaPagamentoPendente = 0
 	carrinho.ValorPagamentoPendente = 0
+	carrinho.PagamentoDividido = false
 	if s.totalPagamentos(carrinho) >= s.CalcularTotal(carrinho)-0.01 {
 		if carrinho.EnderecoID == nil {
 			return "", fmt.Errorf("endereço não selecionado para finalizar o pedido")
