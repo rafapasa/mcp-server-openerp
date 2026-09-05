@@ -615,7 +615,7 @@ func (s *carrinhoService) handleValorPagamento(ctx context.Context, clienteID, t
 func (s *carrinhoService) handleTrocoPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
 	var troco *float64
 	if strings.ToLower(strings.TrimSpace(texto)) != "não" && strings.ToLower(strings.TrimSpace(texto)) != "nao" {
-		valor, err := parseValor(texto)
+		valor, err := parseValorFromText(texto)
 		if err != nil || valor < carrinho.ValorPagamentoPendente {
 			return "⚠️ Informe um valor de troco maior ou igual ao valor pago, ou responda *não*.", nil
 		}
@@ -660,9 +660,24 @@ func (s *carrinhoService) totalPagamentos(carrinho *dto.Carrinho) float64 {
 
 func parseValor(texto string) (float64, error) {
 	texto = strings.TrimSpace(strings.ReplaceAll(texto, "R$", ""))
-	texto = strings.ReplaceAll(texto, ".", "")
-	texto = strings.ReplaceAll(texto, ",", ".")
+	if strings.Contains(texto, ",") {
+		texto = strings.ReplaceAll(texto, ".", "")
+		texto = strings.ReplaceAll(texto, ",", ".")
+	} else if strings.Count(texto, ".") > 1 {
+		lastDot := strings.LastIndex(texto, ".")
+		texto = strings.ReplaceAll(texto[:lastDot], ".", "") + texto[lastDot:]
+	}
 	return strconv.ParseFloat(strings.TrimSpace(texto), 64)
+}
+
+var valorMonetarioPattern = regexp.MustCompile(`(?i)(?:r\$\s*)?\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?`)
+
+func parseValorFromText(texto string) (float64, error) {
+	match := valorMonetarioPattern.FindString(texto)
+	if match == "" {
+		return 0, fmt.Errorf("nenhum valor monetário encontrado")
+	}
+	return parseValor(match)
 }
 
 func (s *carrinhoService) mergeItem(carrinho *dto.Carrinho, item dto.ItemCarrinho) *dto.Carrinho {

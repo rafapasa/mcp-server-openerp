@@ -71,9 +71,34 @@ func Test_parseUint(t *testing.T) {
 		{name: "texto inválido", in: "abc", want: 0},
 		{name: "vazio", in: "", want: 0},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, parseUint(tt.in))
+		})
+	}
+}
+
+func TestParseValorFromText(t *testing.T) {
+	tests := []struct {
+		texto string
+		want  float64
+	}{
+		{texto: "Troco para 100", want: 100},
+		{texto: "R$ 100,00", want: 100},
+		{texto: "pode ser 1.234,56", want: 1234.56},
+		{texto: "cem reais", want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.texto, func(t *testing.T) {
+			valor, err := parseValorFromText(tt.texto)
+			if tt.want == 0 {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.InDelta(t, tt.want, valor, 0.001)
 		})
 	}
 }
