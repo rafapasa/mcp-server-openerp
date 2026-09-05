@@ -87,7 +87,8 @@ func TestParseValorFromText(t *testing.T) {
 		{texto: "Troco para 100", want: 100},
 		{texto: "R$ 100,00", want: 100},
 		{texto: "pode ser 1.234,56", want: 1234.56},
-		{texto: "cem reais", want: 0},
+		{texto: "Troco para duzentos", want: 200},
+		{texto: "cem reais", want: 100},
 	}
 
 	for _, tt := range tests {

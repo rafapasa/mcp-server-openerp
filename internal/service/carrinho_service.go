@@ -693,10 +693,36 @@ var valorMonetarioPattern = regexp.MustCompile(`(?i)(?:r\$\s*)?\d{1,3}(?:\.\d{3}
 
 func parseValorFromText(texto string) (float64, error) {
 	match := valorMonetarioPattern.FindString(texto)
-	if match == "" {
-		return 0, fmt.Errorf("nenhum valor monetário encontrado")
+	if match != "" {
+		return parseValor(match)
 	}
-	return parseValor(match)
+	valoresPorExtenso := map[string]float64{
+		"cem":          100,
+		"cento":        100,
+		"duzentos":     200,
+		"duzentas":     200,
+		"trezentos":    300,
+		"trezentas":    300,
+		"quatrocentos": 400,
+		"quatrocentas": 400,
+		"quinhentos":   500,
+		"quinhentas":   500,
+		"seiscentos":   600,
+		"seiscentas":   600,
+		"setecentos":   700,
+		"setecentas":   700,
+		"oitocentos":   800,
+		"oitocentas":   800,
+		"novecentos":   900,
+		"novecentas":   900,
+	}
+	for _, palavra := range strings.Fields(strings.ToLower(texto)) {
+		palavra = strings.Trim(palavra, ".,!?;:")
+		if valor, ok := valoresPorExtenso[palavra]; ok {
+			return valor, nil
+		}
+	}
+	return 0, fmt.Errorf("nenhum valor monetário encontrado")
 }
 
 func (s *carrinhoService) mergeItem(carrinho *dto.Carrinho, item dto.ItemCarrinho) *dto.Carrinho {
