@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -73,6 +74,31 @@ func TestHandleWebhookFiber_GET_Subscribe_ModeDiferente(t *testing.T) {
 
 	// modo != subscribe nem consulta o banco
 	req := httptest.NewRequest("GET", "/webhook?hub.mode=outro&hub.verify_token=x&hub.challenge=ch", nil)
+	resp, err := app.Test(req, -1)
+	require.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+func TestHandleWebhookFiber_POST_AssinaturaInvalidaRetornaForbidden(t *testing.T) {
+	body := `{"entry":[{"changes":[{"value":{"metadata":{"phone_number_id":"123456789012"}}}]}]}`
+
+	ctrl := gomock.NewController(t)
+	tenantMock := mocks.NewMockTenantServiceInterface(ctrl)
+	tenantMock.EXPECT().
+		GetByWhatsAppPhoneID(gomock.Any(), "123456789012").
+		Return(&dto.TenantDTO{ID: 2}, nil)
+
+	h := NewWebhookHandler(
+		&config.Config{WhatsAppAppSecret: "segredo-meta"},
+		&Processor{},
+		tenantMock,
+	)
+	app := novoAppComLogger()
+	app.Post("/webhook", h.HandleWebhookFiber)
+
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(body))
+	req.Header.Set("X-Hub-Signature-256", "sha256=assinatura-invalida")
+
 	resp, err := app.Test(req, -1)
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode)

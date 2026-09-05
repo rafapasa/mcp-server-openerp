@@ -50,12 +50,7 @@ func VerifyWebhookHandlerFiber(c *fiber.Ctx, cfg config.Config, tenantService se
 
 	secret := strings.TrimSpace(cfg.WhatsAppAppSecret)
 	if secret == "" {
-		// FAIL CLOSED em produção
-		if cfg.IsProduction() {
-			return false, fmt.Errorf("WHATSAPP_APP_SECRET não configurado")
-		}
-		logger.Warn(c.UserContext(), "WHATSAPP_APP_SECRET não configurado - validação por tenant em dev")
-		return true, nil
+		return false, fmt.Errorf("WHATSAPP_APP_SECRET não configurado")
 	}
 
 	mac := hmac.New(sha256.New, []byte(secret))

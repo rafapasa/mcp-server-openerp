@@ -47,7 +47,7 @@ func (h *WebhookHandler) HandleWebhookFiber(c *fiber.Ctx) error {
 	ok, err := VerifyWebhookHandlerFiber(c, *h.cfg, h.tenantService)
 	if !ok {
 		logger.Warn(ctx, "Falha na validação de segurança do webhook", zap.Error(err), zap.String("ip", c.IP()))
-		return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
+		return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 	}
 
 	body := c.Body()
