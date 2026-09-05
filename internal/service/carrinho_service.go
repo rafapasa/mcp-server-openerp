@@ -103,7 +103,10 @@ func (s *carrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 		zap.String("source", string(input.Source)),
 	)
 
-	carrinhoAtual, _ := s.GetCarrinho(ctx, clienteID, tenantID)
+	carrinhoAtual, err := s.GetCarrinho(ctx, clienteID, tenantID)
+	if err != nil {
+		return "", err
+	}
 
 	// 1. Texto base (audio/imagem -> texto)
 	textoBase, err := s.llmService.ObterTextoBase(ctx, tenantID, input)
@@ -155,9 +158,13 @@ func (s *carrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 			carrinhoAtual.EnderecoPendente = nil
 			carrinhoAtual.EnderecoConfirmacaoID = nil
 			carrinhoAtual.Pagamentos = nil
-			_ = s.saveCarrinho(ctx, carrinhoAtual)
+			if err := s.saveCarrinho(ctx, carrinhoAtual); err != nil {
+				return "", err
+			}
 			if strings.Contains(textoLower, "limpar") {
-				_ = s.LimparCarrinho(ctx, clienteID, tenantID)
+				if err := s.LimparCarrinho(ctx, clienteID, tenantID); err != nil {
+					return "", err
+				}
 				return "🗑️ Carrinho limpo!", nil
 			}
 			return "Checkout cancelado. Seu carrinho continua aqui 👇\n" + mustFormat(s.FormatResumoCarrinhoByCliente(ctx, clienteID, tenantID)), nil
@@ -170,7 +177,9 @@ func (s *carrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 			}
 			// se não parece endereço, reseta e continua fluxo normal (ex: "quero mais um x")
 			carrinhoAtual.Estado = dto.EstadoAberto
-			_ = s.saveCarrinho(ctx, carrinhoAtual)
+			if err := s.saveCarrinho(ctx, carrinhoAtual); err != nil {
+				return "", err
+			}
 		case dto.EstadoAguardandoEnderecoNovo:
 			if len(textoBase) >= 10 {
 				return s.handleNovoEndereco(ctx, clienteID, tenantID, carrinhoAtual, textoBase)
@@ -341,7 +350,9 @@ func (s *carrinhoService) iniciarFluxoFinalizacao(ctx context.Context, clienteID
 	if len(enderecos) == 0 {
 		carrinho.Estado = dto.EstadoAguardandoEnderecoNovo
 		carrinho.TentativasEndereco = 0
-		_ = s.saveCarrinho(ctx, carrinho)
+		if err := s.saveCarrinho(ctx, carrinho); err != nil {
+			return "", err
+		}
 		return helpers.FormatSolicitarNovoEndereco(false), nil
 	}
 
@@ -356,7 +367,9 @@ func (s *carrinhoService) handleSelecaoEndereco(ctx context.Context, clienteID, 
 
 	if textoLimpo == "novo" || strings.Contains(textoLimpo, "novo endereço") || textoLimpo == "outro" || textoLimpo == "cadastrar" {
 		carrinho.Estado = dto.EstadoAguardandoEnderecoNovo
-		_ = s.saveCarrinho(ctx, carrinho)
+		if err := s.saveCarrinho(ctx, carrinho); err != nil {
+			return "", err
+		}
 		return helpers.FormatSolicitarNovoEndereco(true), nil
 	}
 
@@ -364,7 +377,9 @@ func (s *carrinhoService) handleSelecaoEndereco(ctx context.Context, clienteID, 
 		enderecos, err := s.clienteService.ListarEnderecos(ctx, clienteID)
 		if err != nil || idx < 1 || idx > len(enderecos) {
 			carrinho.TentativasEndereco++
-			_ = s.saveCarrinho(ctx, carrinho)
+			if err := s.saveCarrinho(ctx, carrinho); err != nil {
+				return "", err
+			}
 			if carrinho.TentativasEndereco >= 2 {
 				return helpers.FormatListaEnderecos(enderecos), nil
 			}
