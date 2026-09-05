@@ -27,7 +27,7 @@ const (
 	limiteCardapioPequeno = 80
 )
 
-type CarrinhoService struct {
+type carrinhoService struct {
 	cache                 database.RedisInterface
 	cardapioService       CardapioServiceInterface
 	pedidoService         PedidoServiceInterface
@@ -48,7 +48,7 @@ func NewCarrinhoService(
 	formaPagamentoService FormaPagamentoServiceInterface,
 	viacepClient viacep.Client,
 ) CarrinhoServiceInterface {
-	return &CarrinhoService{
+	return &carrinhoService{
 		cache:                 cache,
 		cardapioService:       cardapioService,
 		pedidoService:         pedidoService,
@@ -60,11 +60,11 @@ func NewCarrinhoService(
 	}
 }
 
-func (s *CarrinhoService) getKey(clienteID, tenantID uint) string {
+func (s *carrinhoService) getKey(clienteID, tenantID uint) string {
 	return fmt.Sprintf("carrinho:%d:%d", tenantID, clienteID)
 }
 
-func (s *CarrinhoService) GetCarrinho(ctx context.Context, clienteID, tenantID uint) (*dto.Carrinho, error) {
+func (s *carrinhoService) GetCarrinho(ctx context.Context, clienteID, tenantID uint) (*dto.Carrinho, error) {
 	key := s.getKey(clienteID, tenantID)
 	carrinho, err := database.GetOrSet(s.cache, ctx, key, 2*time.Minute, func() (*dto.Carrinho, error) {
 		return &dto.Carrinho{
@@ -85,7 +85,7 @@ func (s *CarrinhoService) GetCarrinho(ctx context.Context, clienteID, tenantID u
 	return carrinho, nil
 }
 
-func (s *CarrinhoService) saveCarrinho(ctx context.Context, carrinho *dto.Carrinho) error {
+func (s *carrinhoService) saveCarrinho(ctx context.Context, carrinho *dto.Carrinho) error {
 	carrinho.UpdatedAt = time.Now()
 	key := s.getKey(parseUint(carrinho.ClienteID), parseUint(carrinho.TenantID))
 	if err := s.cache.SetJSONWithContext(ctx, key, carrinho, TTLCarrinho*time.Second); err != nil {
@@ -94,7 +94,7 @@ func (s *CarrinhoService) saveCarrinho(ctx context.Context, carrinho *dto.Carrin
 	return nil
 }
 
-func (s *CarrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tenantID uint, input dto.MessageInput) (string, error) {
+func (s *carrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tenantID uint, input dto.MessageInput) (string, error) {
 	logger.Info(
 		ctx, "[CARRINHO] Processando mensagem",
 		zap.Uint("cliente_id", clienteID),
@@ -308,7 +308,7 @@ func handoffKey(clienteID uint) string {
 	return fmt.Sprintf("atendimento:humano:%d", clienteID)
 }
 
-func (s *CarrinhoService) iniciarFluxoFinalizacao(ctx context.Context, clienteID, tenantID uint) (string, error) {
+func (s *carrinhoService) iniciarFluxoFinalizacao(ctx context.Context, clienteID, tenantID uint) (string, error) {
 	carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return "", err
@@ -336,7 +336,7 @@ func (s *CarrinhoService) iniciarFluxoFinalizacao(ctx context.Context, clienteID
 	return helpers.FormatListaEnderecos(enderecos), nil
 }
 
-func (s *CarrinhoService) handleSelecaoEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
+func (s *carrinhoService) handleSelecaoEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
 	textoLimpo := strings.TrimSpace(strings.ToLower(texto))
 
 	if textoLimpo == "novo" || strings.Contains(textoLimpo, "novo endereço") || textoLimpo == "outro" || textoLimpo == "cadastrar" {
@@ -370,7 +370,7 @@ func (s *CarrinhoService) handleSelecaoEndereco(ctx context.Context, clienteID, 
 	return helpers.FormatListaEnderecos(enderecos), nil
 }
 
-func (s *CarrinhoService) handleNovoEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
+func (s *carrinhoService) handleNovoEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
 	texto = strings.TrimSpace(texto)
 	if len(texto) < 10 {
 		return helpers.FormatErroEndereco("Endereço muito curto. Preciso de rua e número."), nil
@@ -413,7 +413,7 @@ func (s *CarrinhoService) handleNovoEndereco(ctx context.Context, clienteID, ten
 	return helpers.FormatConfirmacaoEndereco(req), nil
 }
 
-func (s *CarrinhoService) prepararConfirmacaoEnderecoExistente(ctx context.Context, carrinho *dto.Carrinho, endereco dto.EnderecoDTO) (string, error) {
+func (s *carrinhoService) prepararConfirmacaoEnderecoExistente(ctx context.Context, carrinho *dto.Carrinho, endereco dto.EnderecoDTO) (string, error) {
 	id := endereco.ID
 	carrinho.EnderecoID = &id
 	carrinho.EnderecoConfirmacaoID = &id
@@ -429,7 +429,7 @@ func (s *CarrinhoService) prepararConfirmacaoEnderecoExistente(ctx context.Conte
 	}), nil
 }
 
-func (s *CarrinhoService) handleConfirmacaoEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
+func (s *carrinhoService) handleConfirmacaoEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
 	resposta := strings.ToLower(strings.TrimSpace(texto))
 	if resposta != "sim" && resposta != "s" && resposta != "não" && resposta != "nao" && resposta != "n" {
 		return "Confirma esse endereço? Responda *sim* ou *corrigir*.", nil
@@ -458,14 +458,14 @@ func (s *CarrinhoService) handleConfirmacaoEndereco(ctx context.Context, cliente
 	return s.iniciarPagamento(ctx, clienteID, tenantID, carrinho, *carrinho.EnderecoID)
 }
 
-func (s *CarrinhoService) buscarCEP(ctx context.Context, cep string) (*viacep.Endereco, error) {
+func (s *carrinhoService) buscarCEP(ctx context.Context, cep string) (*viacep.Endereco, error) {
 	key := "viacep:" + strings.ReplaceAll(strings.TrimSpace(cep), "-", "")
 	return database.GetOrSet(s.cache, ctx, key, 30*24*time.Hour, func() (*viacep.Endereco, error) {
 		return s.viacepClient.Buscar(ctx, cep)
 	})
 }
 
-func (s *CarrinhoService) finalizarComEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, enderecoID uint) (string, error) {
+func (s *carrinhoService) finalizarComEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, enderecoID uint) (string, error) {
 	clienteDTO, _ := s.clienteService.FindByID(ctx, clienteID)
 	nomeCliente := ""
 	if clienteDTO != nil {
@@ -494,7 +494,7 @@ func (s *CarrinhoService) finalizarComEndereco(ctx context.Context, clienteID, t
 	return s.FormatarPedidoConfirmado(pedidoConfirmado), nil
 }
 
-func (s *CarrinhoService) iniciarPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, enderecoID uint) (string, error) {
+func (s *carrinhoService) iniciarPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, enderecoID uint) (string, error) {
 	if s.formaPagamentoService == nil {
 		return s.finalizarComEndereco(ctx, clienteID, tenantID, carrinho, enderecoID)
 	}
@@ -516,7 +516,7 @@ func (s *CarrinhoService) iniciarPagamento(ctx context.Context, clienteID, tenan
 	return helpers.FormatListaFormasPagamento(formas), nil
 }
 
-func (s *CarrinhoService) handleSelecaoPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
+func (s *carrinhoService) handleSelecaoPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
 	formas, err := s.formaPagamentoService.Listar(ctx, tenantID, true)
 	if err != nil {
 		return "", err
@@ -533,7 +533,7 @@ func (s *CarrinhoService) handleSelecaoPagamento(ctx context.Context, clienteID,
 	return "💰 Qual valor será pago com esta forma de pagamento?", nil
 }
 
-func (s *CarrinhoService) handleValorPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
+func (s *carrinhoService) handleValorPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
 	valor, err := parseValor(texto)
 	if err != nil || valor <= 0 {
 		return "⚠️ Informe um valor válido, por exemplo: *50,00*.", nil
@@ -560,7 +560,7 @@ func (s *CarrinhoService) handleValorPagamento(ctx context.Context, clienteID, t
 	return s.continuarPagamento(ctx, clienteID, tenantID, carrinho)
 }
 
-func (s *CarrinhoService) handleTrocoPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
+func (s *carrinhoService) handleTrocoPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
 	var troco *float64
 	if strings.ToLower(strings.TrimSpace(texto)) != "não" && strings.ToLower(strings.TrimSpace(texto)) != "nao" {
 		valor, err := parseValor(texto)
@@ -577,7 +577,7 @@ func (s *CarrinhoService) handleTrocoPagamento(ctx context.Context, clienteID, t
 	return s.continuarPagamento(ctx, clienteID, tenantID, carrinho)
 }
 
-func (s *CarrinhoService) continuarPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho) (string, error) {
+func (s *carrinhoService) continuarPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho) (string, error) {
 	carrinho.FormaPagamentoPendente = 0
 	carrinho.ValorPagamentoPendente = 0
 	if s.totalPagamentos(carrinho) >= s.CalcularTotal(carrinho)-0.01 {
@@ -597,7 +597,7 @@ func (s *CarrinhoService) continuarPagamento(ctx context.Context, clienteID, ten
 	return "✅ Forma registrada. Escolha outra forma para completar o valor.\n\n" + helpers.FormatListaFormasPagamento(formas), nil
 }
 
-func (s *CarrinhoService) totalPagamentos(carrinho *dto.Carrinho) float64 {
+func (s *carrinhoService) totalPagamentos(carrinho *dto.Carrinho) float64 {
 	total := 0.0
 	for _, pagamento := range carrinho.Pagamentos {
 		total += pagamento.Valor
@@ -612,7 +612,7 @@ func parseValor(texto string) (float64, error) {
 	return strconv.ParseFloat(strings.TrimSpace(texto), 64)
 }
 
-func (s *CarrinhoService) mergeItem(carrinho *dto.Carrinho, item dto.ItemCarrinho) *dto.Carrinho {
+func (s *carrinhoService) mergeItem(carrinho *dto.Carrinho, item dto.ItemCarrinho) *dto.Carrinho {
 	for i, existing := range carrinho.Itens {
 		if existing.ProdutoItem.ID == item.ProdutoItem.ID {
 			carrinho.Itens[i].Quantidade += item.Quantidade
@@ -626,7 +626,7 @@ func (s *CarrinhoService) mergeItem(carrinho *dto.Carrinho, item dto.ItemCarrinh
 	return carrinho
 }
 
-func (s *CarrinhoService) AdicionarItem(ctx context.Context, clienteID, tenantID uint, item dto.ItemCarrinho) error {
+func (s *carrinhoService) AdicionarItem(ctx context.Context, clienteID, tenantID uint, item dto.ItemCarrinho) error {
 	carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return err
@@ -635,7 +635,7 @@ func (s *CarrinhoService) AdicionarItem(ctx context.Context, clienteID, tenantID
 	return s.saveCarrinho(ctx, carrinho)
 }
 
-func (s *CarrinhoService) RemoverItem(ctx context.Context, clienteID, tenantID uint, itemCarrinho dto.ItemCarrinho, quantidade int) error {
+func (s *carrinhoService) RemoverItem(ctx context.Context, clienteID, tenantID uint, itemCarrinho dto.ItemCarrinho, quantidade int) error {
 	carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return err
@@ -653,12 +653,12 @@ func (s *CarrinhoService) RemoverItem(ctx context.Context, clienteID, tenantID u
 	return fmt.Errorf("item '%s' não encontrado", itemCarrinho.ProdutoItem.Nome)
 }
 
-func (s *CarrinhoService) LimparCarrinho(ctx context.Context, clienteID, tenantID uint) error {
+func (s *carrinhoService) LimparCarrinho(ctx context.Context, clienteID, tenantID uint) error {
 	key := s.getKey(clienteID, tenantID)
 	return s.cache.DeleteWithContext(ctx, key)
 }
 
-func (s *CarrinhoService) CalcularTotal(carrinho *dto.Carrinho) float64 {
+func (s *carrinhoService) CalcularTotal(carrinho *dto.Carrinho) float64 {
 	total := 0.0
 	for _, item := range carrinho.Itens {
 		total += item.Preco * float64(item.Quantidade)
@@ -666,7 +666,7 @@ func (s *CarrinhoService) CalcularTotal(carrinho *dto.Carrinho) float64 {
 	return total
 }
 
-func (s *CarrinhoService) CalcularTempoEstimado(carrinho *dto.Carrinho) int {
+func (s *carrinhoService) CalcularTempoEstimado(carrinho *dto.Carrinho) int {
 	if len(carrinho.Itens) == 0 {
 		return 0
 	}
@@ -677,15 +677,15 @@ func (s *CarrinhoService) CalcularTempoEstimado(carrinho *dto.Carrinho) int {
 	return 15 + (total * 5)
 }
 
-func (s *CarrinhoService) FinalizarCarrinho(ctx context.Context, clienteID, tenantID uint, clienteNome string) (*dto.PedidoConfirmado, error) {
+func (s *carrinhoService) FinalizarCarrinho(ctx context.Context, clienteID, tenantID uint, clienteNome string) (*dto.PedidoConfirmado, error) {
 	return s.FinalizarCarrinhoComEndereco(ctx, clienteID, tenantID, clienteNome, 0)
 }
 
-func (s *CarrinhoService) FinalizarCarrinhoComEndereco(ctx context.Context, clienteID, tenantID uint, clienteNome string, enderecoID uint) (*dto.PedidoConfirmado, error) {
+func (s *carrinhoService) FinalizarCarrinhoComEndereco(ctx context.Context, clienteID, tenantID uint, clienteNome string, enderecoID uint) (*dto.PedidoConfirmado, error) {
 	return s.FinalizarCarrinhoComEnderecoEPagamentos(ctx, clienteID, tenantID, clienteNome, enderecoID, nil)
 }
 
-func (s *CarrinhoService) FinalizarCarrinhoComEnderecoEPagamentos(ctx context.Context, clienteID, tenantID uint, clienteNome string, enderecoID uint, pagamentos []dto.PedidoPagamentoInput) (*dto.PedidoConfirmado, error) {
+func (s *carrinhoService) FinalizarCarrinhoComEnderecoEPagamentos(ctx context.Context, clienteID, tenantID uint, clienteNome string, enderecoID uint, pagamentos []dto.PedidoPagamentoInput) (*dto.PedidoConfirmado, error) {
 	carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return nil, err
@@ -719,15 +719,15 @@ func (s *CarrinhoService) FinalizarCarrinhoComEnderecoEPagamentos(ctx context.Co
 	return confirmado, nil
 }
 
-func (s *CarrinhoService) BuscarProdutos(ctx context.Context, tenantID, termo string, limit int) ([]dto.ProdutoItem, error) {
+func (s *carrinhoService) BuscarProdutos(ctx context.Context, tenantID, termo string, limit int) ([]dto.ProdutoItem, error) {
 	return s.produtoRepo.BuscarProdutosPorNome(ctx, tenantID, termo, limit)
 }
 
-func (s *CarrinhoService) BuscarProdutosLote(ctx context.Context, tenantID string, nomes []string) (map[string]dto.ProdutoItem, error) {
+func (s *carrinhoService) BuscarProdutosLote(ctx context.Context, tenantID string, nomes []string) (map[string]dto.ProdutoItem, error) {
 	return s.produtoRepo.BuscarProdutosLote(ctx, tenantID, nomes)
 }
 
-func (s *CarrinhoService) FormatResumoCarrinhoByCliente(ctx context.Context, clienteID, tenantID uint) (string, error) {
+func (s *carrinhoService) FormatResumoCarrinhoByCliente(ctx context.Context, clienteID, tenantID uint) (string, error) {
 	carrinho, err := s.GetCarrinho(ctx, clienteID, tenantID)
 	if err != nil {
 		return "", err
@@ -735,13 +735,13 @@ func (s *CarrinhoService) FormatResumoCarrinhoByCliente(ctx context.Context, cli
 	return s.FormatResumoCarrinho(ctx, carrinho)
 }
 
-func (s *CarrinhoService) FormatResumoCarrinho(ctx context.Context, carrinho *dto.Carrinho) (string, error) {
+func (s *carrinhoService) FormatResumoCarrinho(ctx context.Context, carrinho *dto.Carrinho) (string, error) {
 	total := s.CalcularTotal(carrinho)
 	tempo := s.CalcularTempoEstimado(carrinho)
 	return helpers.FormatResumoCarrinho(carrinho.Itens, total, tempo), nil
 }
 
-func (s *CarrinhoService) FormatarPedidoConfirmado(pedido *dto.PedidoConfirmado) string {
+func (s *carrinhoService) FormatarPedidoConfirmado(pedido *dto.PedidoConfirmado) string {
 	return helpers.FormatRespostaPedido(pedido)
 }
 

@@ -16,6 +16,7 @@ import (
 
 var cepPattern = regexp.MustCompile(`^\d{5}-?\d{3}$`)
 
+// Endereco representa um endereço retornado pelo serviço ViaCEP.
 type Endereco struct {
 	CEP        string `json:"cep"`
 	Logradouro string `json:"logradouro"`
@@ -25,30 +26,34 @@ type Endereco struct {
 	Erro       bool   `json:"erro"`
 }
 
+// Client consulta e normaliza endereços por CEP.
 type Client interface {
 	Buscar(ctx context.Context, cep string) (*Endereco, error)
 }
 
-type HTTPClient struct {
+type httpClient struct {
 	baseURL string
 	client  *http.Client
 }
 
+// NewClient cria um cliente ViaCEP com a URL padrão do serviço.
 func NewClient() Client {
-	return &HTTPClient{
+	return &httpClient{
 		baseURL: "https://viacep.com.br/ws",
 		client:  &http.Client{Timeout: 5 * time.Second},
 	}
 }
 
+// NewHTTPClient cria um cliente ViaCEP usando uma URL e um cliente HTTP personalizados.
 func NewHTTPClient(baseURL string, client *http.Client) Client {
 	if client == nil {
 		client = &http.Client{Timeout: 5 * time.Second}
 	}
-	return &HTTPClient{baseURL: strings.TrimRight(baseURL, "/"), client: client}
+	return &httpClient{baseURL: strings.TrimRight(baseURL, "/"), client: client}
 }
 
-func (c *HTTPClient) Buscar(ctx context.Context, cep string) (*Endereco, error) {
+// Buscar consulta e normaliza o endereço correspondente ao CEP informado.
+func (c *httpClient) Buscar(ctx context.Context, cep string) (*Endereco, error) {
 	cep = strings.TrimSpace(cep)
 	if !cepPattern.MatchString(cep) {
 		return nil, fmt.Errorf("CEP inválido")

@@ -36,18 +36,18 @@ type EnderecoRepositoryInterface interface {
 }
 
 // EnderecoRepository implementa o repositório de endereços
-type EnderecoRepository struct {
+type enderecoRepository struct {
 	db *gorm.DB
 }
 
 // NewEnderecoRepository cria um novo repositório de endereços
 func NewEnderecoRepository(db *gorm.DB) EnderecoRepositoryInterface {
-	return &EnderecoRepository{db: db}
+	return &enderecoRepository{db: db}
 }
 
 // WithTx retorna uma nova instância com a transação
-func (r *EnderecoRepository) WithTx(tx *gorm.DB) EnderecoRepositoryInterface {
-	return &EnderecoRepository{db: tx}
+func (r *enderecoRepository) WithTx(tx *gorm.DB) EnderecoRepositoryInterface {
+	return &enderecoRepository{db: tx}
 }
 
 // ============================================
@@ -55,12 +55,12 @@ func (r *EnderecoRepository) WithTx(tx *gorm.DB) EnderecoRepositoryInterface {
 // ============================================
 
 // Create cria um novo endereço
-func (r *EnderecoRepository) Create(ctx context.Context, endereco *models.Endereco) error {
+func (r *enderecoRepository) Create(ctx context.Context, endereco *models.Endereco) error {
 	return r.db.WithContext(ctx).Create(endereco).Error
 }
 
 // FindByID busca um endereço pelo ID
-func (r *EnderecoRepository) FindByID(ctx context.Context, id uint) (*models.Endereco, error) {
+func (r *enderecoRepository) FindByID(ctx context.Context, id uint) (*models.Endereco, error) {
 	var endereco models.Endereco
 	err := r.db.WithContext(ctx).
 		Preload("Cliente").
@@ -72,7 +72,7 @@ func (r *EnderecoRepository) FindByID(ctx context.Context, id uint) (*models.End
 }
 
 // FindByCliente busca todos os endereços de um cliente
-func (r *EnderecoRepository) FindByCliente(ctx context.Context, clienteID uint) ([]models.Endereco, error) {
+func (r *enderecoRepository) FindByCliente(ctx context.Context, clienteID uint) ([]models.Endereco, error) {
 	var enderecos []models.Endereco
 	err := r.db.WithContext(ctx).
 		Where("cliente_id = ?", clienteID).
@@ -82,7 +82,7 @@ func (r *EnderecoRepository) FindByCliente(ctx context.Context, clienteID uint) 
 }
 
 // FindByClienteAtivos busca apenas os endereços ativos de um cliente
-func (r *EnderecoRepository) FindByClienteAtivos(ctx context.Context, clienteID uint) ([]models.Endereco, error) {
+func (r *enderecoRepository) FindByClienteAtivos(ctx context.Context, clienteID uint) ([]models.Endereco, error) {
 	var enderecos []models.Endereco
 	err := r.db.WithContext(ctx).
 		Where("cliente_id = ? AND deleted_at IS NULL", clienteID).
@@ -93,17 +93,17 @@ func (r *EnderecoRepository) FindByClienteAtivos(ctx context.Context, clienteID 
 
 // Update atualiza um endereço
 // NOTA: Endereços são imutáveis! Use Delete + Create para "editar"
-func (r *EnderecoRepository) Update(ctx context.Context, endereco *models.Endereco) error {
+func (r *enderecoRepository) Update(ctx context.Context, endereco *models.Endereco) error {
 	return r.db.WithContext(ctx).Save(endereco).Error
 }
 
 // Delete realiza soft delete do endereço
-func (r *EnderecoRepository) Delete(ctx context.Context, id uint) error {
+func (r *enderecoRepository) Delete(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Delete(&models.Endereco{}, id).Error
 }
 
 // DeletePermanente remove permanentemente o endereço (cuidado!)
-func (r *EnderecoRepository) DeletePermanente(ctx context.Context, id uint) error {
+func (r *enderecoRepository) DeletePermanente(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Unscoped().Delete(&models.Endereco{}, id).Error
 }
 
@@ -112,7 +112,7 @@ func (r *EnderecoRepository) DeletePermanente(ctx context.Context, id uint) erro
 // ============================================
 
 // FindPrincipal busca o endereço principal de um cliente
-func (r *EnderecoRepository) FindPrincipal(ctx context.Context, clienteID uint) (*models.Endereco, error) {
+func (r *enderecoRepository) FindPrincipal(ctx context.Context, clienteID uint) (*models.Endereco, error) {
 	var endereco models.Endereco
 	err := r.db.WithContext(ctx).
 		Where("cliente_id = ? AND principal = ? AND deleted_at IS NULL", clienteID, true).
@@ -124,7 +124,7 @@ func (r *EnderecoRepository) FindPrincipal(ctx context.Context, clienteID uint) 
 }
 
 // FindByCEP busca endereços por CEP
-func (r *EnderecoRepository) FindByCEP(ctx context.Context, cep string) ([]models.Endereco, error) {
+func (r *enderecoRepository) FindByCEP(ctx context.Context, cep string) ([]models.Endereco, error) {
 	var enderecos []models.Endereco
 	err := r.db.WithContext(ctx).
 		Where("cep = ?", cep).
@@ -134,7 +134,7 @@ func (r *EnderecoRepository) FindByCEP(ctx context.Context, cep string) ([]model
 }
 
 // FindByClienteETipo busca endereços de um cliente por tipo
-func (r *EnderecoRepository) FindByClienteETipo(ctx context.Context, clienteID uint, tipo string) ([]models.Endereco, error) {
+func (r *enderecoRepository) FindByClienteETipo(ctx context.Context, clienteID uint, tipo string) ([]models.Endereco, error) {
 	var enderecos []models.Endereco
 	err := r.db.WithContext(ctx).
 		Where("cliente_id = ? AND tipo = ? AND deleted_at IS NULL", clienteID, tipo).
@@ -148,7 +148,7 @@ func (r *EnderecoRepository) FindByClienteETipo(ctx context.Context, clienteID u
 // ============================================
 
 // CountByCliente conta o total de endereços de um cliente
-func (r *EnderecoRepository) CountByCliente(ctx context.Context, clienteID uint) (int64, error) {
+func (r *enderecoRepository) CountByCliente(ctx context.Context, clienteID uint) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&models.Endereco{}).
@@ -158,7 +158,7 @@ func (r *EnderecoRepository) CountByCliente(ctx context.Context, clienteID uint)
 }
 
 // CountAtivosByCliente conta os endereços ativos de um cliente
-func (r *EnderecoRepository) CountAtivosByCliente(ctx context.Context, clienteID uint) (int64, error) {
+func (r *enderecoRepository) CountAtivosByCliente(ctx context.Context, clienteID uint) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&models.Endereco{}).
@@ -172,7 +172,7 @@ func (r *EnderecoRepository) CountAtivosByCliente(ctx context.Context, clienteID
 // ============================================
 
 // UnsetPrincipalByCliente desmarca o flag principal de todos os endereços ativos de um cliente
-func (r *EnderecoRepository) UnsetPrincipalByCliente(ctx context.Context, clienteID uint) error {
+func (r *enderecoRepository) UnsetPrincipalByCliente(ctx context.Context, clienteID uint) error {
 	return r.db.WithContext(ctx).
 		Model(&models.Endereco{}).
 		Where("cliente_id = ? AND deleted_at IS NULL", clienteID).

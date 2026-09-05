@@ -43,7 +43,7 @@ func TestValidarFormaPagamento(t *testing.T) {
 }
 
 func TestPedidoServicePrepararPagamentos(t *testing.T) {
-	service := &PedidoService{
+	service := &pedidoService{
 		formaPagamentoRepo: &pagamentoFormaRepoFake{
 			forma: &models.FormaPagamento{
 				ID: 1, TenantID: 10, Tipo: models.TipoPagamentoDinheiro, Ativo: true,

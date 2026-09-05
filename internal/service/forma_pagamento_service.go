@@ -17,15 +17,15 @@ var tiposFormaPagamento = map[string]struct{}{
 	models.TipoPagamentoCartaoDebito:  {},
 }
 
-type FormaPagamentoService struct {
+type formaPagamentoService struct {
 	repo repository.FormaPagamentoRepository
 }
 
 func NewFormaPagamentoService(repo repository.FormaPagamentoRepository) FormaPagamentoServiceInterface {
-	return &FormaPagamentoService{repo: repo}
+	return &formaPagamentoService{repo: repo}
 }
 
-func (s *FormaPagamentoService) Listar(ctx context.Context, tenantID uint, apenasAtivas bool) ([]dto.FormaPagamentoDTO, error) {
+func (s *formaPagamentoService) Listar(ctx context.Context, tenantID uint, apenasAtivas bool) ([]dto.FormaPagamentoDTO, error) {
 	formas, err := s.repo.FindByTenant(ctx, tenantID, apenasAtivas)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao listar formas de pagamento: %w", err)
@@ -37,7 +37,7 @@ func (s *FormaPagamentoService) Listar(ctx context.Context, tenantID uint, apena
 	return result, nil
 }
 
-func (s *FormaPagamentoService) Buscar(ctx context.Context, tenantID, id uint) (*dto.FormaPagamentoDTO, error) {
+func (s *formaPagamentoService) Buscar(ctx context.Context, tenantID, id uint) (*dto.FormaPagamentoDTO, error) {
 	forma, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("forma de pagamento não encontrada: %w", err)
@@ -49,7 +49,7 @@ func (s *FormaPagamentoService) Buscar(ctx context.Context, tenantID, id uint) (
 	return &result, nil
 }
 
-func (s *FormaPagamentoService) Criar(ctx context.Context, tenantID uint, req dto.CriarFormaPagamentoRequest) (*dto.FormaPagamentoDTO, error) {
+func (s *formaPagamentoService) Criar(ctx context.Context, tenantID uint, req dto.CriarFormaPagamentoRequest) (*dto.FormaPagamentoDTO, error) {
 	nome, tipo, err := validarFormaPagamento(req.Nome, req.Tipo)
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func (s *FormaPagamentoService) Criar(ctx context.Context, tenantID uint, req dt
 	return &result, nil
 }
 
-func (s *FormaPagamentoService) Atualizar(ctx context.Context, tenantID, id uint, req dto.AtualizarFormaPagamentoRequest) (*dto.FormaPagamentoDTO, error) {
+func (s *formaPagamentoService) Atualizar(ctx context.Context, tenantID, id uint, req dto.AtualizarFormaPagamentoRequest) (*dto.FormaPagamentoDTO, error) {
 	forma, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("forma de pagamento não encontrada: %w", err)
@@ -86,7 +86,7 @@ func (s *FormaPagamentoService) Atualizar(ctx context.Context, tenantID, id uint
 	return &result, nil
 }
 
-func (s *FormaPagamentoService) Inativar(ctx context.Context, tenantID, id uint) error {
+func (s *formaPagamentoService) Inativar(ctx context.Context, tenantID, id uint) error {
 	forma, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("forma de pagamento não encontrada: %w", err)

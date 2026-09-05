@@ -19,14 +19,14 @@ import (
 )
 
 // novoClienteServiceMock cria o serviço com repositórios mockados via gomock.
-func novoClienteServiceMock(t *testing.T) (*ClienteService, *mocks.MockClienteRepositoryInterface, *mocks.MockEnderecoRepositoryInterface) {
+func novoClienteServiceMock(t *testing.T) (*clienteService, *mocks.MockClienteRepositoryInterface, *mocks.MockEnderecoRepositoryInterface) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
 	clienteRepo := mocks.NewMockClienteRepositoryInterface(ctrl)
 	enderecoRepo := mocks.NewMockEnderecoRepositoryInterface(ctrl)
 
-	svc := &ClienteService{
+	svc := &clienteService{
 		clienteRepo:  clienteRepo,
 		enderecoRepo: enderecoRepo,
 	}
