@@ -161,3 +161,13 @@ func FormatEnderecoCadastrado(endereco *dto.EnderecoDTO) string {
 func FormatErroEndereco(msg string) string {
 	return fmt.Sprintf("⚠️ %s\n\n%s", msg, FormatSolicitarNovoEndereco(true))
 }
+
+func FormatListaFormasPagamento(formas []dto.FormaPagamentoDTO) string {
+	var sb strings.Builder
+	sb.WriteString("💳 **COMO VAI PAGAR?**\n\n")
+	for i, forma := range formas {
+		sb.WriteString(fmt.Sprintf("*%d* - %s\n", i+1, forma.Nome))
+	}
+	sb.WriteString("\nVocê pode escolher mais de uma forma de pagamento.")
+	return sb.String()
+}

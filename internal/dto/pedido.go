@@ -26,16 +26,17 @@ type PedidoExtraido struct {
 // ============================================
 
 type PedidoConfirmado struct {
-	ID              int               `json:"id"`
-	TenantID        string            `json:"tenant_id"`
-	ClienteID       string            `json:"cliente_id"`
-	ClienteNome     string            `json:"cliente_nome"`
-	Itens           []ItemPedidoInput `json:"itens"`
-	Total           float64           `json:"total"`
-	TempoEstimado   int               `json:"tempo_estimado"`
-	Status          string            `json:"status"`
-	CriadoEm        string            `json:"criado_em"`
-	EnderecoEntrega *EnderecoDTO      `json:"endereco_entrega,omitempty"`
+	ID              int                  `json:"id"`
+	TenantID        string               `json:"tenant_id"`
+	ClienteID       string               `json:"cliente_id"`
+	ClienteNome     string               `json:"cliente_nome"`
+	Itens           []ItemPedidoInput    `json:"itens"`
+	Total           float64              `json:"total"`
+	TempoEstimado   int                  `json:"tempo_estimado"`
+	Status          string               `json:"status"`
+	CriadoEm        string               `json:"criado_em"`
+	EnderecoEntrega *EnderecoDTO         `json:"endereco_entrega,omitempty"`
+	Pagamentos      []PedidoPagamentoDTO `json:"pagamentos,omitempty"`
 }
 
 // ============================================
@@ -43,21 +44,22 @@ type PedidoConfirmado struct {
 // ============================================
 
 type PedidoDTO struct {
-	ID                uint            `json:"id"`
-	TenantID          uint            `json:"tenant_id"`
-	ClienteID         *uint           `json:"cliente_id"`
-	ClienteNome       string          `json:"cliente_nome"`
-	ClienteTelefone   string          `json:"cliente_telefone"`
-	EnderecoEntregaID *uint           `json:"endereco_entrega_id"`
-	EnderecoEntrega   *EnderecoDTO    `json:"endereco_entrega,omitempty"`
-	Itens             []ItemPedidoDTO `json:"itens"`
-	Total             float64         `json:"total"`
-	Status            string          `json:"status"`
-	Observacoes       string          `json:"observacoes"`
-	TempoEstimado     int             `json:"tempo_estimado"`
-	Origem            string          `json:"origem"`
-	CreatedAt         time.Time       `json:"created_at"`
-	UpdatedAt         time.Time       `json:"updated_at"`
+	ID                uint                 `json:"id"`
+	TenantID          uint                 `json:"tenant_id"`
+	ClienteID         *uint                `json:"cliente_id"`
+	ClienteNome       string               `json:"cliente_nome"`
+	ClienteTelefone   string               `json:"cliente_telefone"`
+	EnderecoEntregaID *uint                `json:"endereco_entrega_id"`
+	EnderecoEntrega   *EnderecoDTO         `json:"endereco_entrega,omitempty"`
+	Itens             []ItemPedidoDTO      `json:"itens"`
+	Total             float64              `json:"total"`
+	Status            string               `json:"status"`
+	Observacoes       string               `json:"observacoes"`
+	TempoEstimado     int                  `json:"tempo_estimado"`
+	Origem            string               `json:"origem"`
+	CreatedAt         time.Time            `json:"created_at"`
+	UpdatedAt         time.Time            `json:"updated_at"`
+	Pagamentos        []PedidoPagamentoDTO `json:"pagamentos,omitempty"`
 }
 
 // ItemPedidoDTO - MERGE: tinha versão com ProdutoID e versão sem

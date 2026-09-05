@@ -253,3 +253,18 @@ func (mr *MockPedidoServiceInterfaceMockRecorder) ProcessarPedidoComEndereco(ctx
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessarPedidoComEndereco", reflect.TypeOf((*MockPedidoServiceInterface)(nil).ProcessarPedidoComEndereco), ctx, tenantID, clienteID, clienteNome, pedidoExtraido, enderecoEntregaID)
 }
+
+// ProcessarPedidoComEnderecoEPagamentos mocks base method.
+func (m *MockPedidoServiceInterface) ProcessarPedidoComEnderecoEPagamentos(ctx context.Context, tenantID, clienteID uint, clienteNome string, pedidoExtraido *dto.PedidoExtraido, enderecoEntregaID *uint, pagamentos []dto.PedidoPagamentoInput) (*dto.PedidoConfirmado, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ProcessarPedidoComEnderecoEPagamentos", ctx, tenantID, clienteID, clienteNome, pedidoExtraido, enderecoEntregaID, pagamentos)
+	ret0, _ := ret[0].(*dto.PedidoConfirmado)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ProcessarPedidoComEnderecoEPagamentos indicates an expected call of ProcessarPedidoComEnderecoEPagamentos.
+func (mr *MockPedidoServiceInterfaceMockRecorder) ProcessarPedidoComEnderecoEPagamentos(ctx, tenantID, clienteID, clienteNome, pedidoExtraido, enderecoEntregaID, pagamentos any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessarPedidoComEnderecoEPagamentos", reflect.TypeOf((*MockPedidoServiceInterface)(nil).ProcessarPedidoComEnderecoEPagamentos), ctx, tenantID, clienteID, clienteNome, pedidoExtraido, enderecoEntregaID, pagamentos)
+}

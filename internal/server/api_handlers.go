@@ -12,10 +12,11 @@ import (
 )
 
 type APIHandlers struct {
-	authService     service.AuthServiceInterface
-	clienteService  service.ClienteServiceInterface
-	pedidoService   service.PedidoServiceInterface
-	cardapioService service.CardapioServiceInterface
+	authService           service.AuthServiceInterface
+	clienteService        service.ClienteServiceInterface
+	pedidoService         service.PedidoServiceInterface
+	cardapioService       service.CardapioServiceInterface
+	formaPagamentoService service.FormaPagamentoServiceInterface
 }
 
 func NewAPIHandlers(
@@ -23,10 +24,12 @@ func NewAPIHandlers(
 	clienteService service.ClienteServiceInterface,
 	pedidoService service.PedidoServiceInterface,
 	cardapioService service.CardapioServiceInterface,
+	formaPagamentoService service.FormaPagamentoServiceInterface,
 ) *APIHandlers {
 	return &APIHandlers{
 		authService: authService, clienteService: clienteService,
 		pedidoService: pedidoService, cardapioService: cardapioService,
+		formaPagamentoService: formaPagamentoService,
 	}
 }
 
@@ -261,6 +264,86 @@ func (h *APIHandlers) UpdateDisponibilidadeFiber(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"status": "updated"})
+}
+
+func (h *APIHandlers) ListFormasPagamentoFiber(c *fiber.Ctx) error {
+	tenantID, err := h.getTenantIdByHeaderFiber(c)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	}
+	apenasAtivas := c.Query("ativas", "true") != "false"
+	formas, err := h.formaPagamentoService.Listar(c.Context(), tenantID, apenasAtivas)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(formas)
+}
+
+func (h *APIHandlers) GetFormaPagamentoFiber(c *fiber.Ctx) error {
+	tenantID, err := h.getTenantIdByHeaderFiber(c)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	}
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "id inválido"})
+	}
+	forma, err := h.formaPagamentoService.Buscar(c.Context(), tenantID, uint(id))
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(forma)
+}
+
+func (h *APIHandlers) CreateFormaPagamentoFiber(c *fiber.Ctx) error {
+	tenantID, err := h.getTenantIdByHeaderFiber(c)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	}
+	var req dto.CriarFormaPagamentoRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	}
+	forma, err := h.formaPagamentoService.Criar(c.Context(), tenantID, req)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(201).JSON(forma)
+}
+
+func (h *APIHandlers) UpdateFormaPagamentoFiber(c *fiber.Ctx) error {
+	tenantID, err := h.getTenantIdByHeaderFiber(c)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	}
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "id inválido"})
+	}
+	var req dto.AtualizarFormaPagamentoRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	}
+	forma, err := h.formaPagamentoService.Atualizar(c.Context(), tenantID, uint(id), req)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(forma)
+}
+
+func (h *APIHandlers) DeleteFormaPagamentoFiber(c *fiber.Ctx) error {
+	tenantID, err := h.getTenantIdByHeaderFiber(c)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	}
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "id inválido"})
+	}
+	if err := h.formaPagamentoService.Inativar(c.Context(), tenantID, uint(id)); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "deactivated"})
 }
 
 func (h *APIHandlers) getTenantIdByHeaderFiber(c *fiber.Ctx) (uint, error) {

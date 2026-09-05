@@ -30,9 +30,10 @@ type Pedido struct {
 	CreatedAt         time.Time       `gorm:"autoCreateTime;index:idx_pedidos_tenant_created,priority:2"`
 	UpdatedAt         time.Time       `gorm:"autoUpdateTime"`
 
-	Tenant          Tenant    `gorm:"foreignKey:TenantID"`
-	Cliente         *Cliente  `gorm:"foreignKey:ClienteID"`
-	EnderecoEntrega *Endereco `gorm:"foreignKey:EnderecoEntregaID"`
+	Tenant          Tenant            `gorm:"foreignKey:TenantID"`
+	Cliente         *Cliente          `gorm:"foreignKey:ClienteID"`
+	EnderecoEntrega *Endereco         `gorm:"foreignKey:EnderecoEntregaID"`
+	Pagamentos      []PedidoPagamento `gorm:"foreignKey:PedidoID"`
 }
 
 func (Pedido) TableName() string { return "pedidos" }

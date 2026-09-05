@@ -28,6 +28,7 @@ type CarrinhoServiceInterface interface {
 type PedidoServiceInterface interface {
 	ProcessarPedido(ctx context.Context, tenantID, clienteID uint, clienteNome string, pedidoExtraido *dto.PedidoExtraido) (*dto.PedidoConfirmado, error)
 	ProcessarPedidoComEndereco(ctx context.Context, tenantID, clienteID uint, clienteNome string, pedidoExtraido *dto.PedidoExtraido, enderecoEntregaID *uint) (*dto.PedidoConfirmado, error)
+	ProcessarPedidoComEnderecoEPagamentos(ctx context.Context, tenantID, clienteID uint, clienteNome string, pedidoExtraido *dto.PedidoExtraido, enderecoEntregaID *uint, pagamentos []dto.PedidoPagamentoInput) (*dto.PedidoConfirmado, error)
 	FindByTenant(ctx context.Context, tenantID uint) ([]dto.PedidoDTO, error)
 	CountPedidosHoje(ctx context.Context, tenantID uint) (int64, error)
 	CountPedidosSemana(ctx context.Context, tenantID uint) (int64, error)
@@ -40,6 +41,14 @@ type PedidoServiceInterface interface {
 	ListByCliente(ctx context.Context, clienteID uint, page, limit int) ([]dto.PedidoDTO, int64, error)
 	AtualizarStatusPedido(ctx context.Context, id uint, status string) (*dto.PedidoDTO, error)
 	Create(ctx context.Context, req *dto.CriarPedidoRequest) (*dto.PedidoDTO, error)
+}
+
+type FormaPagamentoServiceInterface interface {
+	Listar(ctx context.Context, tenantID uint, apenasAtivas bool) ([]dto.FormaPagamentoDTO, error)
+	Buscar(ctx context.Context, tenantID, id uint) (*dto.FormaPagamentoDTO, error)
+	Criar(ctx context.Context, tenantID uint, req dto.CriarFormaPagamentoRequest) (*dto.FormaPagamentoDTO, error)
+	Atualizar(ctx context.Context, tenantID, id uint, req dto.AtualizarFormaPagamentoRequest) (*dto.FormaPagamentoDTO, error)
+	Inativar(ctx context.Context, tenantID, id uint) error
 }
 
 type ClienteServiceInterface interface {

@@ -55,6 +55,8 @@ var providerSetRepository = wire.NewSet(
 	repository.NewClienteRepository,
 	repository.NewEnderecoRepository,
 	repository.NewUserRepository,
+	repository.NewFormaPagamentoRepository,
+	repository.NewPedidoPagamentoRepository,
 )
 
 var providerSetService = wire.NewSet(
@@ -65,6 +67,7 @@ var providerSetService = wire.NewSet(
 	service.NewPedidoService,
 	service.NewClienteService,
 	service.NewCarrinhoService, // agora recebe LLMServiceInterface
+	service.NewFormaPagamentoService,
 )
 
 var providerSetHandlers = wire.NewSet(

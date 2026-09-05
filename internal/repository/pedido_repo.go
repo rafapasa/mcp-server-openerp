@@ -196,6 +196,7 @@ func (r *pedidoRepository) FindWithFilters(ctx context.Context, tenantID uint, c
 
 	err := query.
 		Preload("EnderecoEntrega").
+		Preload("Pagamentos.FormaPagamento").
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -217,6 +218,7 @@ func (r *pedidoRepository) FindByCliente(ctx context.Context, clienteID uint, li
 
 	err := query.
 		Preload("EnderecoEntrega").
+		Preload("Pagamentos.FormaPagamento").
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -230,6 +232,7 @@ func (r *pedidoRepository) FindByID(ctx context.Context, id uint) (*models.Pedid
 	var pedido models.Pedido
 	err := r.db.WithContext(ctx).
 		Preload("EnderecoEntrega").
+		Preload("Pagamentos.FormaPagamento").
 		First(&pedido, id).Error
 	if err != nil {
 		return nil, err
