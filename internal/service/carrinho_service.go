@@ -615,7 +615,10 @@ func (s *carrinhoService) handleValorPagamento(ctx context.Context, clienteID, t
 
 func (s *carrinhoService) handleTrocoPagamento(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, texto string) (string, error) {
 	textoLimpo := strings.ToLower(strings.TrimSpace(texto))
-	if textoLimpo == "não" || textoLimpo == "nao" || textoLimpo == "n" {
+	if textoLimpo == "não" || textoLimpo == "nao" || textoLimpo == "n" ||
+		strings.Contains(textoLimpo, "sem troco") ||
+		strings.Contains(textoLimpo, "não preciso") ||
+		strings.Contains(textoLimpo, "nao preciso") {
 		return s.registrarTroco(ctx, clienteID, tenantID, carrinho, nil)
 	}
 
