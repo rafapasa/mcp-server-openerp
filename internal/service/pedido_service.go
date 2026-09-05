@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type PedidoService struct {
+type pedidoService struct {
 	pedidoRepo         repository.PedidoRepository
 	pagamentoRepo      repository.PedidoPagamentoRepository
 	formaPagamentoRepo repository.FormaPagamentoRepository
@@ -29,7 +29,7 @@ func NewPedidoService(
 	formaPagamentoRepo repository.FormaPagamentoRepository,
 	cardapioService CardapioServiceInterface,
 ) PedidoServiceInterface {
-	return &PedidoService{
+	return &pedidoService{
 		pedidoRepo:         pedidoRepo,
 		pagamentoRepo:      pagamentoRepo,
 		formaPagamentoRepo: formaPagamentoRepo,
@@ -38,7 +38,7 @@ func NewPedidoService(
 }
 
 // ProcessarPedido - assinatura original mantida para compatibilidade
-func (s *PedidoService) ProcessarPedido(
+func (s *pedidoService) ProcessarPedido(
 	ctx context.Context,
 	tenantID, clienteID uint,
 	clienteNome string,
@@ -48,7 +48,7 @@ func (s *PedidoService) ProcessarPedido(
 }
 
 // ProcessarPedidoComEndereco - NOVO, sem chamar outros repos
-func (s *PedidoService) ProcessarPedidoComEndereco(
+func (s *pedidoService) ProcessarPedidoComEndereco(
 	ctx context.Context,
 	tenantID, clienteID uint,
 	clienteNome string,
@@ -58,7 +58,7 @@ func (s *PedidoService) ProcessarPedidoComEndereco(
 	return s.ProcessarPedidoComEnderecoEPagamentos(ctx, tenantID, clienteID, clienteNome, pedidoExtraido, enderecoEntregaID, nil)
 }
 
-func (s *PedidoService) ProcessarPedidoComEnderecoEPagamentos(
+func (s *pedidoService) ProcessarPedidoComEnderecoEPagamentos(
 	ctx context.Context,
 	tenantID, clienteID uint,
 	clienteNome string,
@@ -181,7 +181,7 @@ func (s *PedidoService) ProcessarPedidoComEnderecoEPagamentos(
 	return pedidoConfirmado, nil
 }
 
-func (s *PedidoService) CalcularTempoEstimado(itens []dto.ItemPedidoInput) int {
+func (s *pedidoService) CalcularTempoEstimado(itens []dto.ItemPedidoInput) int {
 	totalItems := 0
 	for _, item := range itens {
 		totalItems += item.Quantidade
@@ -189,54 +189,54 @@ func (s *PedidoService) CalcularTempoEstimado(itens []dto.ItemPedidoInput) int {
 	return 15 + (totalItems * 5)
 }
 
-func (s *PedidoService) AtualizarStatus(ctx context.Context, pedidoID uint, status string) error {
+func (s *pedidoService) AtualizarStatus(ctx context.Context, pedidoID uint, status string) error {
 	_, err := s.pedidoRepo.UpdateStatus(ctx, pedidoID, status)
 	return err
 }
 
-func (s *PedidoService) BuscarPedidosDoDia(ctx context.Context, tenantID uint) ([]models.Pedido, error) {
+func (s *pedidoService) BuscarPedidosDoDia(ctx context.Context, tenantID uint) ([]models.Pedido, error) {
 	hoje := time.Now()
 	inicio := time.Date(hoje.Year(), hoje.Month(), hoje.Day(), 0, 0, 0, 0, hoje.Location())
 	fim := inicio.Add(24 * time.Hour)
 	return s.pedidoRepo.FindByTenantPeriodo(ctx, tenantID, inicio, fim)
 }
 
-func (s *PedidoService) CountPedidosHoje(ctx context.Context, tenantID uint) (int64, error) {
+func (s *pedidoService) CountPedidosHoje(ctx context.Context, tenantID uint) (int64, error) {
 	hoje := time.Now()
 	inicio := time.Date(hoje.Year(), hoje.Month(), hoje.Day(), 0, 0, 0, 0, hoje.Location())
 	fim := inicio.Add(24 * time.Hour)
 	return s.pedidoRepo.CountByPeriodo(ctx, tenantID, inicio, fim)
 }
 
-func (s *PedidoService) CountPedidosSemana(ctx context.Context, tenantID uint) (int64, error) {
+func (s *pedidoService) CountPedidosSemana(ctx context.Context, tenantID uint) (int64, error) {
 	hoje := time.Now()
 	inicio := hoje.AddDate(0, 0, -7)
 	return s.pedidoRepo.CountByPeriodo(ctx, tenantID, inicio, hoje)
 }
 
-func (s *PedidoService) CountPorStatus(ctx context.Context, tenantID uint) (map[string]int64, error) {
+func (s *pedidoService) CountPorStatus(ctx context.Context, tenantID uint) (map[string]int64, error) {
 	return s.pedidoRepo.CountGroupByStatus(ctx, tenantID)
 }
 
-func (s *PedidoService) CountPendentes(ctx context.Context, tenantID uint) (int64, error) {
+func (s *pedidoService) CountPendentes(ctx context.Context, tenantID uint) (int64, error) {
 	return s.pedidoRepo.CountByStatus(ctx, tenantID, "pendente")
 }
 
-func (s *PedidoService) FaturamentoHoje(ctx context.Context, tenantID uint) (float64, error) {
+func (s *pedidoService) FaturamentoHoje(ctx context.Context, tenantID uint) (float64, error) {
 	hoje := time.Now()
 	inicio := time.Date(hoje.Year(), hoje.Month(), hoje.Day(), 0, 0, 0, 0, hoje.Location())
 	fim := inicio.Add(24 * time.Hour)
 	return s.pedidoRepo.SumTotalByPeriodo(ctx, tenantID, inicio, fim)
 }
 
-func (s *PedidoService) FaturamentoMes(ctx context.Context, tenantID uint) (float64, error) {
+func (s *pedidoService) FaturamentoMes(ctx context.Context, tenantID uint) (float64, error) {
 	hoje := time.Now()
 	inicio := time.Date(hoje.Year(), hoje.Month(), 1, 0, 0, 0, 0, hoje.Location())
 	fim := inicio.AddDate(0, 1, 0)
 	return s.pedidoRepo.SumTotalByPeriodo(ctx, tenantID, inicio, fim)
 }
 
-func (s *PedidoService) ListWithFilters(ctx context.Context, tenantID uint, clienteID uint, status string, dataInicio, dataFim time.Time, page, limit int) ([]dto.PedidoDTO, int64, error) {
+func (s *pedidoService) ListWithFilters(ctx context.Context, tenantID uint, clienteID uint, status string, dataInicio, dataFim time.Time, page, limit int) ([]dto.PedidoDTO, int64, error) {
 	offset := (page - 1) * limit
 	pedidos, total, err := s.pedidoRepo.FindWithFilters(ctx, tenantID, clienteID, status, dataInicio, dataFim, limit, offset)
 	if err != nil {
@@ -249,7 +249,7 @@ func (s *PedidoService) ListWithFilters(ctx context.Context, tenantID uint, clie
 	return result, total, nil
 }
 
-func (s *PedidoService) FindByID(ctx context.Context, id uint) (*dto.PedidoDTO, error) {
+func (s *pedidoService) FindByID(ctx context.Context, id uint) (*dto.PedidoDTO, error) {
 	pedido, err := s.pedidoRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -258,7 +258,7 @@ func (s *PedidoService) FindByID(ctx context.Context, id uint) (*dto.PedidoDTO, 
 	return &result, nil
 }
 
-func (s *PedidoService) ListByCliente(ctx context.Context, clienteID uint, page, limit int) ([]dto.PedidoDTO, int64, error) {
+func (s *pedidoService) ListByCliente(ctx context.Context, clienteID uint, page, limit int) ([]dto.PedidoDTO, int64, error) {
 	offset := (page - 1) * limit
 	pedidos, total, err := s.pedidoRepo.FindByCliente(ctx, clienteID, limit, offset)
 	if err != nil {
@@ -271,7 +271,7 @@ func (s *PedidoService) ListByCliente(ctx context.Context, clienteID uint, page,
 	return result, total, nil
 }
 
-func (s *PedidoService) AtualizarStatusPedido(ctx context.Context, id uint, status string) (*dto.PedidoDTO, error) {
+func (s *pedidoService) AtualizarStatusPedido(ctx context.Context, id uint, status string) (*dto.PedidoDTO, error) {
 	pedido, err := s.pedidoRepo.UpdateStatus(ctx, id, status)
 	if err != nil {
 		return nil, err
@@ -286,7 +286,7 @@ func (s *PedidoService) AtualizarStatusPedido(ctx context.Context, id uint, stat
 	return &result, nil
 }
 
-func (s *PedidoService) Create(ctx context.Context, req *dto.CriarPedidoRequest) (*dto.PedidoDTO, error) {
+func (s *pedidoService) Create(ctx context.Context, req *dto.CriarPedidoRequest) (*dto.PedidoDTO, error) {
 	logger.Info(ctx, "Criando novo pedido via API", zap.Uint("tenant_id", req.TenantID), zap.Int("itens_count", len(req.Itens)))
 	itensJSON, _ := json.Marshal(req.Itens)
 	pedido := &models.Pedido{
@@ -305,7 +305,7 @@ func (s *PedidoService) Create(ctx context.Context, req *dto.CriarPedidoRequest)
 	return &result, nil
 }
 
-func (s *PedidoService) converterParaDTO(pedido *models.Pedido) dto.PedidoDTO {
+func (s *pedidoService) converterParaDTO(pedido *models.Pedido) dto.PedidoDTO {
 	var itens []dto.ItemPedidoDTO
 	if pedido.Itens != nil {
 		_ = json.Unmarshal(pedido.Itens, &itens)
@@ -353,7 +353,7 @@ func (s *PedidoService) converterParaDTO(pedido *models.Pedido) dto.PedidoDTO {
 	}
 }
 
-func (s *PedidoService) prepararPagamentos(ctx context.Context, tenantID uint, total float64, inputs []dto.PedidoPagamentoInput) ([]models.PedidoPagamento, error) {
+func (s *pedidoService) prepararPagamentos(ctx context.Context, tenantID uint, total float64, inputs []dto.PedidoPagamentoInput) ([]models.PedidoPagamento, error) {
 	if len(inputs) == 0 {
 		return nil, nil
 	}
@@ -392,7 +392,7 @@ func (s *PedidoService) prepararPagamentos(ctx context.Context, tenantID uint, t
 	return pagamentos, nil
 }
 
-func (s *PedidoService) pagamentosDTO(ctx context.Context, pedidoID uint) []dto.PedidoPagamentoDTO {
+func (s *pedidoService) pagamentosDTO(ctx context.Context, pedidoID uint) []dto.PedidoPagamentoDTO {
 	if s.pagamentoRepo == nil {
 		return nil
 	}
@@ -419,7 +419,7 @@ func pagamentosModelDTO(pagamentos []models.PedidoPagamento) []dto.PedidoPagamen
 	return result
 }
 
-func (s *PedidoService) FindByTenant(ctx context.Context, tenantID uint) ([]dto.PedidoDTO, error) {
+func (s *pedidoService) FindByTenant(ctx context.Context, tenantID uint) ([]dto.PedidoDTO, error) {
 	if tenantID == 0 {
 		return nil, fmt.Errorf("tenant_id não informado")
 	}

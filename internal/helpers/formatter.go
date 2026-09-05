@@ -7,6 +7,19 @@ import (
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
+func FormatConfirmacaoEndereco(endereco *dto.CriarEnderecoRequest) string {
+	complemento := ""
+	if endereco.Complemento != "" {
+		complemento = " - " + endereco.Complemento
+	}
+	localidade := strings.Trim(strings.Join([]string{endereco.Bairro, endereco.Cidade}, ", "), ", ")
+	if localidade != "" {
+		localidade = " - " + localidade
+	}
+	return fmt.Sprintf("📍 **Confirma entrega em:** %s, %s%s%s - %s?\n\nResponda *sim* ou *corrigir*.",
+		endereco.Logradouro, endereco.Numero, complemento, localidade, endereco.Estado)
+}
+
 // FormatResumoCarrinho formata a mensagem de resumo do carrinho
 func FormatResumoCarrinho(itens []dto.ItemCarrinho, total float64, tempoEstimado int) string {
 	var sb strings.Builder

@@ -21,7 +21,7 @@ import (
 )
 
 // ClienteService implementa o serviço de clientes
-type ClienteService struct {
+type clienteService struct {
 	clienteRepo  repository.ClienteRepositoryInterface
 	enderecoRepo repository.EnderecoRepositoryInterface
 }
@@ -31,7 +31,7 @@ func NewClienteService(
 	clienteRepo repository.ClienteRepositoryInterface,
 	enderecoRepo repository.EnderecoRepositoryInterface,
 ) ClienteServiceInterface {
-	return &ClienteService{
+	return &clienteService{
 		clienteRepo:  clienteRepo,
 		enderecoRepo: enderecoRepo,
 	}
@@ -42,7 +42,7 @@ func NewClienteService(
 // ============================================
 
 // Create cria um novo cliente
-func (s *ClienteService) Create(ctx context.Context, req *dto.CriarClienteRequest) (*dto.ClienteDTO, error) {
+func (s *clienteService) Create(ctx context.Context, req *dto.CriarClienteRequest) (*dto.ClienteDTO, error) {
 	// 1. Valida dados
 	if err := s.validateCreateRequest(req); err != nil {
 		logger.Error(ctx, err.Error())
@@ -98,7 +98,7 @@ func (s *ClienteService) Create(ctx context.Context, req *dto.CriarClienteReques
 }
 
 // FindByID busca um cliente pelo ID
-func (s *ClienteService) FindByID(ctx context.Context, id uint) (*dto.ClienteDTO, error) {
+func (s *clienteService) FindByID(ctx context.Context, id uint) (*dto.ClienteDTO, error) {
 	cliente, err := s.clienteRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -111,7 +111,7 @@ func (s *ClienteService) FindByID(ctx context.Context, id uint) (*dto.ClienteDTO
 }
 
 // FindByTelefone busca um cliente pelo telefone
-func (s *ClienteService) FindByTelefone(ctx context.Context, telefone string, tenantID uint) (*dto.ClienteDTO, error) {
+func (s *clienteService) FindByTelefone(ctx context.Context, telefone string, tenantID uint) (*dto.ClienteDTO, error) {
 	cliente, err := s.clienteRepo.FindByTelefone(ctx, telefone, tenantID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -124,7 +124,7 @@ func (s *ClienteService) FindByTelefone(ctx context.Context, telefone string, te
 }
 
 // FindByTenant busca todos os clientes de um tenant
-func (s *ClienteService) FindByTenant(ctx context.Context, tenantID uint) ([]dto.ClienteDTO, error) {
+func (s *clienteService) FindByTenant(ctx context.Context, tenantID uint) ([]dto.ClienteDTO, error) {
 	clientes, err := s.clienteRepo.FindByTenant(ctx, fmt.Sprintf("%d", tenantID))
 	if err != nil {
 		return nil, fmt.Errorf("erro ao buscar clientes: %w", err)
@@ -139,7 +139,7 @@ func (s *ClienteService) FindByTenant(ctx context.Context, tenantID uint) ([]dto
 }
 
 // Update atualiza um cliente
-func (s *ClienteService) Update(ctx context.Context, id uint, req *dto.AtualizarClienteRequest) (*dto.ClienteDTO, error) {
+func (s *clienteService) Update(ctx context.Context, id uint, req *dto.AtualizarClienteRequest) (*dto.ClienteDTO, error) {
 	// 1. Busca cliente
 	cliente, err := s.clienteRepo.FindByID(ctx, id)
 	if err != nil {
@@ -177,7 +177,7 @@ func (s *ClienteService) Update(ctx context.Context, id uint, req *dto.Atualizar
 }
 
 // Delete exclui logicamente um cliente (soft delete)
-func (s *ClienteService) Delete(ctx context.Context, id uint) error {
+func (s *clienteService) Delete(ctx context.Context, id uint) error {
 	// Verifica se cliente existe
 	_, err := s.clienteRepo.FindByID(ctx, id)
 	if err != nil {
@@ -197,7 +197,7 @@ func (s *ClienteService) Delete(ctx context.Context, id uint) error {
 // ============================================
 
 // BuscarOuCriarPorTelefone busca um cliente pelo telefone ou cria um novo
-func (s *ClienteService) BuscarOuCriarPorTelefone(ctx context.Context, tenantID uint, telefone, nomePerfil string) (*dto.ClienteDTO, error) {
+func (s *clienteService) BuscarOuCriarPorTelefone(ctx context.Context, tenantID uint, telefone, nomePerfil string) (*dto.ClienteDTO, error) {
 	// 1. Busca cliente existente
 	cliente, err := s.clienteRepo.FindByTelefone(ctx, telefone, tenantID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -247,7 +247,7 @@ func (s *ClienteService) BuscarOuCriarPorTelefone(ctx context.Context, tenantID 
 }
 
 // BuscarPorNome busca clientes por nome
-func (s *ClienteService) BuscarPorNome(ctx context.Context, tenantID uint, nome string) ([]dto.ClienteDTO, error) {
+func (s *clienteService) BuscarPorNome(ctx context.Context, tenantID uint, nome string) ([]dto.ClienteDTO, error) {
 	clientes, err := s.clienteRepo.FindByNome(ctx, fmt.Sprintf("%d", tenantID), nome)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao buscar clientes por nome: %w", err)
@@ -262,7 +262,7 @@ func (s *ClienteService) BuscarPorNome(ctx context.Context, tenantID uint, nome 
 }
 
 // BuscarPorStatus busca clientes por status
-func (s *ClienteService) BuscarPorStatus(ctx context.Context, tenantID uint, status string) ([]dto.ClienteDTO, error) {
+func (s *clienteService) BuscarPorStatus(ctx context.Context, tenantID uint, status string) ([]dto.ClienteDTO, error) {
 	clientes, err := s.clienteRepo.FindByStatus(ctx, fmt.Sprintf("%d", tenantID), status)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao buscar clientes por status: %w", err)
@@ -277,7 +277,7 @@ func (s *ClienteService) BuscarPorStatus(ctx context.Context, tenantID uint, sta
 }
 
 // BuscarInativos busca clientes inativos há mais de N dias
-func (s *ClienteService) BuscarInativos(ctx context.Context, tenantID uint, diasInatividade int) ([]dto.ClienteDTO, error) {
+func (s *clienteService) BuscarInativos(ctx context.Context, tenantID uint, diasInatividade int) ([]dto.ClienteDTO, error) {
 	dataLimite := time.Now().AddDate(0, 0, -diasInatividade)
 	clientes, err := s.clienteRepo.FindByUltimoPedidoAntes(ctx, fmt.Sprintf("%d", tenantID), dataLimite)
 	if err != nil {
@@ -297,7 +297,7 @@ func (s *ClienteService) BuscarInativos(ctx context.Context, tenantID uint, dias
 // ============================================
 
 // ValidarCliente valida um cliente
-func (s *ClienteService) ValidarCliente(ctx context.Context, clienteID uint) (*dto.ClienteDTO, error) {
+func (s *clienteService) ValidarCliente(ctx context.Context, clienteID uint) (*dto.ClienteDTO, error) {
 	cliente, err := s.clienteRepo.FindByID(ctx, clienteID)
 	if err != nil {
 		return nil, fmt.Errorf("cliente não encontrado: %w", err)
@@ -316,7 +316,7 @@ func (s *ClienteService) ValidarCliente(ctx context.Context, clienteID uint) (*d
 }
 
 // AtualizarUltimoPedido atualiza a data do último pedido
-func (s *ClienteService) AtualizarUltimoPedido(ctx context.Context, clienteID uint) error {
+func (s *clienteService) AtualizarUltimoPedido(ctx context.Context, clienteID uint) error {
 	cliente, err := s.clienteRepo.FindByID(ctx, clienteID)
 	if err != nil {
 		return fmt.Errorf("cliente não encontrado: %w", err)
@@ -327,7 +327,7 @@ func (s *ClienteService) AtualizarUltimoPedido(ctx context.Context, clienteID ui
 }
 
 // AtualizarStatus atualiza o status do cliente
-func (s *ClienteService) AtualizarStatus(ctx context.Context, clienteID uint, status, motivo string) error {
+func (s *clienteService) AtualizarStatus(ctx context.Context, clienteID uint, status, motivo string) error {
 	cliente, err := s.clienteRepo.FindByID(ctx, clienteID)
 	if err != nil {
 		return fmt.Errorf("cliente não encontrado: %w", err)
@@ -338,12 +338,12 @@ func (s *ClienteService) AtualizarStatus(ctx context.Context, clienteID uint, st
 }
 
 // InativarCliente inativa um cliente
-func (s *ClienteService) InativarCliente(ctx context.Context, clienteID uint, motivo string) error {
+func (s *clienteService) InativarCliente(ctx context.Context, clienteID uint, motivo string) error {
 	return s.AtualizarStatus(ctx, clienteID, models.StatusClienteInativo, motivo)
 }
 
 // ReativarCliente reativa um cliente
-func (s *ClienteService) ReativarCliente(ctx context.Context, clienteID uint) error {
+func (s *clienteService) ReativarCliente(ctx context.Context, clienteID uint) error {
 	return s.AtualizarStatus(ctx, clienteID, models.StatusClienteAtivo, "Reativado após validação")
 }
 
@@ -352,7 +352,7 @@ func (s *ClienteService) ReativarCliente(ctx context.Context, clienteID uint) er
 // ============================================
 
 // AdicionarEndereco adiciona um endereço ao cliente
-func (s *ClienteService) AdicionarEndereco(ctx context.Context, clienteID uint, req *dto.CriarEnderecoRequest) (*dto.EnderecoDTO, error) {
+func (s *clienteService) AdicionarEndereco(ctx context.Context, clienteID uint, req *dto.CriarEnderecoRequest) (*dto.EnderecoDTO, error) {
 	// 1. Verifica se cliente existe
 	_, err := s.clienteRepo.FindByID(ctx, clienteID)
 	if err != nil {
@@ -403,7 +403,7 @@ func (s *ClienteService) AdicionarEndereco(ctx context.Context, clienteID uint, 
 }
 
 // ListarEnderecos lista os endereços de um cliente
-func (s *ClienteService) ListarEnderecos(ctx context.Context, clienteID uint) ([]dto.EnderecoDTO, error) {
+func (s *clienteService) ListarEnderecos(ctx context.Context, clienteID uint) ([]dto.EnderecoDTO, error) {
 	enderecos, err := s.enderecoRepo.FindByClienteAtivos(ctx, clienteID)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao listar endereços: %w", err)
@@ -418,7 +418,7 @@ func (s *ClienteService) ListarEnderecos(ctx context.Context, clienteID uint) ([
 }
 
 // DefinirEnderecoPrincipal define um endereço como principal
-func (s *ClienteService) DefinirEnderecoPrincipal(ctx context.Context, clienteID, enderecoID uint) error {
+func (s *clienteService) DefinirEnderecoPrincipal(ctx context.Context, clienteID, enderecoID uint) error {
 	// 1. Verifica se endereço existe e pertence ao cliente
 	endereco, err := s.enderecoRepo.FindByID(ctx, enderecoID)
 	if err != nil {
@@ -443,7 +443,7 @@ func (s *ClienteService) DefinirEnderecoPrincipal(ctx context.Context, clienteID
 }
 
 // RemoverEndereco remove um endereço (soft delete)
-func (s *ClienteService) RemoverEndereco(ctx context.Context, clienteID, enderecoID uint) error {
+func (s *clienteService) RemoverEndereco(ctx context.Context, clienteID, enderecoID uint) error {
 	// Verifica se endereço existe e pertence ao cliente
 	endereco, err := s.enderecoRepo.FindByID(ctx, enderecoID)
 	if err != nil {
@@ -465,7 +465,7 @@ func (s *ClienteService) RemoverEndereco(ctx context.Context, clienteID, enderec
 // ============================================
 
 // AtualizarDocumento atualiza o documento do cliente
-func (s *ClienteService) AtualizarDocumento(ctx context.Context, clienteID uint, inscricaoFederal string) error {
+func (s *clienteService) AtualizarDocumento(ctx context.Context, clienteID uint, inscricaoFederal string) error {
 	cliente, err := s.clienteRepo.FindByID(ctx, clienteID)
 	if err != nil {
 		return fmt.Errorf("cliente não encontrado: %w", err)
@@ -491,7 +491,7 @@ func (s *ClienteService) AtualizarDocumento(ctx context.Context, clienteID uint,
 }
 
 // ValidarDocumento valida um documento (CPF ou CNPJ)
-func (s *ClienteService) ValidarDocumento(inscricaoFederal string) (string, error) {
+func (s *clienteService) ValidarDocumento(inscricaoFederal string) (string, error) {
 	// Remove caracteres não numéricos
 	doc := strings.ReplaceAll(inscricaoFederal, ".", "")
 	doc = strings.ReplaceAll(doc, "-", "")
@@ -519,7 +519,7 @@ func (s *ClienteService) ValidarDocumento(inscricaoFederal string) (string, erro
 // ============================================
 
 // IsAtivo verifica se um cliente está ativo
-func (s *ClienteService) IsAtivo(ctx context.Context, clienteID uint) (bool, error) {
+func (s *clienteService) IsAtivo(ctx context.Context, clienteID uint) (bool, error) {
 	cliente, err := s.clienteRepo.FindByID(ctx, clienteID)
 	if err != nil {
 		return false, fmt.Errorf("cliente não encontrado: %w", err)
@@ -528,7 +528,7 @@ func (s *ClienteService) IsAtivo(ctx context.Context, clienteID uint) (bool, err
 }
 
 // GetStatus retorna o status do cliente
-func (s *ClienteService) GetStatus(ctx context.Context, clienteID uint) (string, error) {
+func (s *clienteService) GetStatus(ctx context.Context, clienteID uint) (string, error) {
 	cliente, err := s.clienteRepo.FindByID(ctx, clienteID)
 	if err != nil {
 		return "", fmt.Errorf("cliente não encontrado: %w", err)
@@ -541,7 +541,7 @@ func (s *ClienteService) GetStatus(ctx context.Context, clienteID uint) (string,
 // ============================================
 
 // ConverterParaDTO converte um model Cliente para DTO
-func (s *ClienteService) ConverterParaDTO(cliente *models.Cliente) *dto.ClienteDTO {
+func (s *clienteService) ConverterParaDTO(cliente *models.Cliente) *dto.ClienteDTO {
 	if cliente == nil {
 		return nil
 	}
@@ -578,7 +578,7 @@ func (s *ClienteService) ConverterParaDTO(cliente *models.Cliente) *dto.ClienteD
 }
 
 // converterEnderecoDTO converte um model Endereco para DTO
-func (s *ClienteService) converterEnderecoDTO(endereco *models.Endereco) *dto.EnderecoDTO {
+func (s *clienteService) converterEnderecoDTO(endereco *models.Endereco) *dto.EnderecoDTO {
 	if endereco == nil {
 		return nil
 	}
@@ -610,7 +610,7 @@ func (s *ClienteService) converterEnderecoDTO(endereco *models.Endereco) *dto.En
 // ============================================
 
 // validateCreateRequest valida a requisição de criação
-func (s *ClienteService) validateCreateRequest(req *dto.CriarClienteRequest) error {
+func (s *clienteService) validateCreateRequest(req *dto.CriarClienteRequest) error {
 	if req.TenantID == 0 {
 		return fmt.Errorf("tenant_id é obrigatório")
 	}
@@ -627,7 +627,7 @@ func (s *ClienteService) validateCreateRequest(req *dto.CriarClienteRequest) err
 }
 
 // compararNomes compara dois nomes usando similaridade
-func (s *ClienteService) compararNomes(nome1, nome2 string) bool {
+func (s *clienteService) compararNomes(nome1, nome2 string) bool {
 	if nome1 == "" || nome2 == "" {
 		return false
 	}
@@ -656,7 +656,7 @@ func (s *ClienteService) compararNomes(nome1, nome2 string) bool {
 // ============================================
 
 // CountByTenant conta clientes de um tenant
-func (s *ClienteService) CountByTenant(ctx context.Context, tenantID uint) (int64, error) {
+func (s *clienteService) CountByTenant(ctx context.Context, tenantID uint) (int64, error) {
 	return s.clienteRepo.CountByTenant(ctx, fmt.Sprintf("%d", tenantID))
 }
 
@@ -665,7 +665,7 @@ func (s *ClienteService) CountByTenant(ctx context.Context, tenantID uint) (int6
 // ============================================
 
 // ListWithFilters lista clientes com filtros e paginação
-func (s *ClienteService) ListWithFilters(ctx context.Context, tenantID uint, nome, telefone string, page, limit int) ([]dto.ClienteDTO, int64, error) {
+func (s *clienteService) ListWithFilters(ctx context.Context, tenantID uint, nome, telefone string, page, limit int) ([]dto.ClienteDTO, int64, error) {
 	offset := (page - 1) * limit
 
 	clientes, total, err := s.clienteRepo.FindWithFilters(ctx, tenantID, nome, telefone, limit, offset)

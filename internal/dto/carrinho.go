@@ -13,12 +13,13 @@ type ItemCarrinho struct {
 
 // Estados do carrinho para fluxo de entrega
 const (
-	EstadoAberto                   = "aberto"
-	EstadoAguardandoEnderecoLista  = "aguardando_endereco_selecao"
-	EstadoAguardandoEnderecoNovo   = "aguardando_endereco_novo"
-	EstadoAguardandoPagamento      = "aguardando_pagamento"
-	EstadoAguardandoValorPagamento = "aguardando_valor_pagamento"
-	EstadoAguardandoTroco          = "aguardando_troco"
+	EstadoAberto                        = "aberto"
+	EstadoAguardandoEnderecoLista       = "aguardando_endereco_selecao"
+	EstadoAguardandoEnderecoNovo        = "aguardando_endereco_novo"
+	EstadoAguardandoConfirmacaoEndereco = "aguardando_confirmacao_endereco"
+	EstadoAguardandoPagamento           = "aguardando_pagamento"
+	EstadoAguardandoValorPagamento      = "aguardando_valor_pagamento"
+	EstadoAguardandoTroco               = "aguardando_troco"
 )
 
 // Carrinho representa o carrinho de um cliente - agora com máquina de estados de endereço
@@ -33,6 +34,8 @@ type Carrinho struct {
 	Estado                 string                 `json:"estado,omitempty"`              // aberto | aguardando_endereco_selecao | aguardando_endereco_novo
 	EnderecoID             *uint                  `json:"endereco_id,omitempty"`         // ID do endereço escolhido para este pedido
 	EnderecoTemporario     string                 `json:"endereco_temporario,omitempty"` // texto cru quando usuário digita novo endereço antes de cadastrar
+	EnderecoPendente       *CriarEnderecoRequest  `json:"endereco_pendente,omitempty"`
+	EnderecoConfirmacaoID  *uint                  `json:"endereco_confirmacao_id,omitempty"`
 	TentativasEndereco     int                    `json:"tentativas_endereco,omitempty"` // evita loop infinito
 	Pagamentos             []PedidoPagamentoInput `json:"pagamentos,omitempty"`
 	FormaPagamentoPendente uint                   `json:"forma_pagamento_pendente,omitempty"`

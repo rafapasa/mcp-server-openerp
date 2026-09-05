@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// novoCarrinhoServiceMock cria o CarrinhoService com todas as dependências mockadas.
-func novoCarrinhoServiceMock(t *testing.T) (*CarrinhoService, *mocks.MockRedisInterface, *mocks.MockCardapioServiceInterface, *mocks.MockPedidoServiceInterface, *mocks.MockClienteServiceInterface, *mocks.MockProdutoRepository, *mocks.MockLLMServiceInterface) {
+// novoCarrinhoServiceMock cria o carrinhoService com todas as dependências mockadas.
+func novoCarrinhoServiceMock(t *testing.T) (*carrinhoService, *mocks.MockRedisInterface, *mocks.MockCardapioServiceInterface, *mocks.MockPedidoServiceInterface, *mocks.MockClienteServiceInterface, *mocks.MockProdutoRepository, *mocks.MockLLMServiceInterface) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
@@ -28,7 +28,7 @@ func novoCarrinhoServiceMock(t *testing.T) (*CarrinhoService, *mocks.MockRedisIn
 	produtoMock := mocks.NewMockProdutoRepository(ctrl)
 	llmMock := mocks.NewMockLLMServiceInterface(ctrl)
 
-	svc := &CarrinhoService{
+	svc := &carrinhoService{
 		cache:           redisMock,
 		cardapioService: cardapioMock,
 		pedidoService:   pedidoMock,
@@ -57,7 +57,7 @@ func mockRedisCacheHit(t *testing.T, redisMock *mocks.MockRedisInterface, carrin
 }
 
 func TestCarrinhoService_getKey(t *testing.T) {
-	svc := &CarrinhoService{}
+	svc := &carrinhoService{}
 	assert.Equal(t, "carrinho:5:3", svc.getKey(3, 5))
 }
 
@@ -170,7 +170,7 @@ func TestCarrinhoService_CalcularTotal(t *testing.T) {
 		{name: "um item", itens: []dto.ItemCarrinho{{Preco: 10.0, Quantidade: 2}}, expected: 20.0},
 		{name: "vários itens", itens: []dto.ItemCarrinho{{Preco: 5.0, Quantidade: 3}, {Preco: 7.5, Quantidade: 2}}, expected: 15.0 + 15.0},
 	}
-	svc := &CarrinhoService{}
+	svc := &carrinhoService{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, svc.CalcularTotal(&dto.Carrinho{Itens: tt.itens}))
@@ -179,7 +179,7 @@ func TestCarrinhoService_CalcularTotal(t *testing.T) {
 }
 
 func TestCarrinhoService_CalcularTempoEstimado(t *testing.T) {
-	svc := &CarrinhoService{}
+	svc := &carrinhoService{}
 
 	t.Run("carrinho vazio", func(t *testing.T) {
 		assert.Equal(t, 0, svc.CalcularTempoEstimado(&dto.Carrinho{}))
@@ -197,7 +197,7 @@ func TestCarrinhoService_CalcularTempoEstimado(t *testing.T) {
 }
 
 func TestCarrinhoService_mergeItem(t *testing.T) {
-	svc := &CarrinhoService{}
+	svc := &carrinhoService{}
 
 	t.Run("item novo é adicionado", func(t *testing.T) {
 		carrinho := &dto.Carrinho{}
@@ -231,7 +231,7 @@ func TestCarrinhoService_mergeItem(t *testing.T) {
 }
 
 func TestCarrinhoService_FormatResumoCarrinho(t *testing.T) {
-	svc := &CarrinhoService{}
+	svc := &carrinhoService{}
 
 	t.Run("carrinho vazio", func(t *testing.T) {
 		resumo, err := svc.FormatResumoCarrinho(testCtx(), &dto.Carrinho{})
@@ -251,7 +251,7 @@ func TestCarrinhoService_FormatResumoCarrinho(t *testing.T) {
 }
 
 func TestCarrinhoService_FormatarPedidoConfirmado(t *testing.T) {
-	svc := &CarrinhoService{}
+	svc := &carrinhoService{}
 
 	t.Run("pedido com endereço", func(t *testing.T) {
 		pedido := &dto.PedidoConfirmado{

@@ -82,6 +82,80 @@ func (w *WhatsAppClient) SendMessageCtx(ctx context.Context, to, message string)
 	return nil
 }
 
+func (w *WhatsAppClient) SendButtons(ctx context.Context, to, body string, labels []string) error {
+	if len(labels) == 0 || len(labels) > 3 {
+		return fmt.Errorf("quantidade de botões inválida: %d", len(labels))
+	}
+	buttons := make([]map[string]string, len(labels))
+	for i, label := range labels {
+		buttons[i] = map[string]string{"id": buttonID(label), "title": label}
+	}
+	return w.sendButtonsPayload(ctx, to, body, buttons)
+}
+
+func (w *WhatsAppClient) sendButtonsWithIDs(ctx context.Context, to, body string, ids, labels []string) error {
+	if len(ids) == 0 || len(ids) != len(labels) || len(ids) > 3 {
+		return fmt.Errorf("quantidade de botões inválida")
+	}
+	buttons := make([]map[string]string, len(labels))
+	for i := range labels {
+		buttons[i] = map[string]string{"id": ids[i], "title": labels[i]}
+	}
+	return w.sendButtonsPayload(ctx, to, body, buttons)
+}
+
+func (w *WhatsAppClient) sendButtonsPayload(ctx context.Context, to, body string, buttons []map[string]string) error {
+	return w.sendJSON(ctx, map[string]interface{}{
+		"messaging_product": "whatsapp",
+		"to":                to,
+		"type":              "interactive",
+		"interactive": map[string]interface{}{
+			"type": "button",
+			"body": map[string]string{"text": body},
+			"action": map[string]interface{}{
+				"buttons": buttons,
+			},
+		},
+	})
+}
+
+func buttonID(label string) string {
+	switch label {
+	case "Adicionar mais":
+		return "carrinho_adicionar"
+	case "Finalizar pedido":
+		return "carrinho_finalizar"
+	case "Limpar":
+		return "carrinho_limpar"
+	default:
+		return label
+	}
+}
+
+func (w *WhatsAppClient) sendJSON(ctx context.Context, payload interface{}) error {
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/%s/messages", w.apiURL, w.phoneNumber)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+w.accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := w.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("erro ao enviar mensagem: %d - %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
 // DownloadMedia - agora com ctx, usado só pra converter pra DTO
 func (w *WhatsAppClient) DownloadMedia(ctx context.Context, mediaID string) ([]byte, error) {
 	// 1. pega URL real da mídia

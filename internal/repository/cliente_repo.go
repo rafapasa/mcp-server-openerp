@@ -36,18 +36,18 @@ type ClienteRepositoryInterface interface {
 }
 
 // ClienteRepository implementa o repositório de clientes
-type ClienteRepository struct {
+type clienteRepository struct {
 	db *gorm.DB
 }
 
 // NewClienteRepository cria um novo repositório de clientes
 func NewClienteRepository(db *gorm.DB) ClienteRepositoryInterface {
-	return &ClienteRepository{db: db}
+	return &clienteRepository{db: db}
 }
 
 // WithTx retorna uma nova instância com a transação
-func (r *ClienteRepository) WithTx(tx *gorm.DB) ClienteRepositoryInterface {
-	return &ClienteRepository{db: tx}
+func (r *clienteRepository) WithTx(tx *gorm.DB) ClienteRepositoryInterface {
+	return &clienteRepository{db: tx}
 }
 
 // ============================================
@@ -55,12 +55,12 @@ func (r *ClienteRepository) WithTx(tx *gorm.DB) ClienteRepositoryInterface {
 // ============================================
 
 // Create cria um novo cliente
-func (r *ClienteRepository) Create(ctx context.Context, cliente *models.Cliente) error {
+func (r *clienteRepository) Create(ctx context.Context, cliente *models.Cliente) error {
 	return r.db.WithContext(ctx).Create(cliente).Error
 }
 
 // FindByID busca um cliente pelo ID
-func (r *ClienteRepository) FindByID(ctx context.Context, id uint) (*models.Cliente, error) {
+func (r *clienteRepository) FindByID(ctx context.Context, id uint) (*models.Cliente, error) {
 	var cliente models.Cliente
 	err := r.db.WithContext(ctx).
 		Preload("Enderecos").
@@ -75,7 +75,7 @@ func (r *ClienteRepository) FindByID(ctx context.Context, id uint) (*models.Clie
 }
 
 // FindByTelefone busca um cliente pelo telefone
-func (r *ClienteRepository) FindByTelefone(ctx context.Context, telefone string, tenantID uint) (*models.Cliente, error) {
+func (r *clienteRepository) FindByTelefone(ctx context.Context, telefone string, tenantID uint) (*models.Cliente, error) {
 	var cliente models.Cliente
 	err := r.db.WithContext(ctx).
 		Where("telefone = ? AND tenant_id = ?", telefone, tenantID).
@@ -95,7 +95,7 @@ func (r *ClienteRepository) FindByTelefone(ctx context.Context, telefone string,
 }
 
 // FindByTenant busca todos os clientes de um tenant
-func (r *ClienteRepository) FindByTenant(ctx context.Context, tenantID string) ([]models.Cliente, error) {
+func (r *clienteRepository) FindByTenant(ctx context.Context, tenantID string) ([]models.Cliente, error) {
 	var clientes []models.Cliente
 	err := r.db.WithContext(ctx).
 		Where("tenant_id = ?", tenantID).
@@ -108,13 +108,13 @@ func (r *ClienteRepository) FindByTenant(ctx context.Context, tenantID string) (
 }
 
 // Update atualiza um cliente
-func (r *ClienteRepository) Update(ctx context.Context, cliente *models.Cliente) error {
+func (r *clienteRepository) Update(ctx context.Context, cliente *models.Cliente) error {
 	return r.db.WithContext(ctx).Save(cliente).Error
 }
 
 // Delete exclui logicamente um cliente (soft delete)
 // Mantém histórico, apenas marca como inativo
-func (r *ClienteRepository) Delete(ctx context.Context, id uint) error {
+func (r *clienteRepository) Delete(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Delete(&models.Cliente{}, id).Error
 }
 
@@ -123,7 +123,7 @@ func (r *ClienteRepository) Delete(ctx context.Context, id uint) error {
 // ============================================
 
 // FindByStatus busca clientes por status
-func (r *ClienteRepository) FindByStatus(ctx context.Context, tenantID string, status string) ([]models.Cliente, error) {
+func (r *clienteRepository) FindByStatus(ctx context.Context, tenantID string, status string) ([]models.Cliente, error) {
 	var clientes []models.Cliente
 	err := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND status = ?", tenantID, status).
@@ -133,7 +133,7 @@ func (r *ClienteRepository) FindByStatus(ctx context.Context, tenantID string, s
 }
 
 // FindByNome busca clientes por nome (case insensitive)
-func (r *ClienteRepository) FindByNome(ctx context.Context, tenantID string, nome string) ([]models.Cliente, error) {
+func (r *clienteRepository) FindByNome(ctx context.Context, tenantID string, nome string) ([]models.Cliente, error) {
 	var clientes []models.Cliente
 	err := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND nome LIKE ?", tenantID, "%"+nome+"%").
@@ -143,7 +143,7 @@ func (r *ClienteRepository) FindByNome(ctx context.Context, tenantID string, nom
 }
 
 // FindByUltimoPedidoAntes busca clientes que não fizeram pedidos desde a data
-func (r *ClienteRepository) FindByUltimoPedidoAntes(ctx context.Context, tenantID string, data time.Time) ([]models.Cliente, error) {
+func (r *clienteRepository) FindByUltimoPedidoAntes(ctx context.Context, tenantID string, data time.Time) ([]models.Cliente, error) {
 	var clientes []models.Cliente
 	err := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND (ultimo_pedido_at IS NULL OR ultimo_pedido_at < ?)", tenantID, data).
@@ -156,7 +156,7 @@ func (r *ClienteRepository) FindByUltimoPedidoAntes(ctx context.Context, tenantI
 // ============================================
 
 // CountByTenant conta clientes de um tenant
-func (r *ClienteRepository) CountByTenant(ctx context.Context, tenantID string) (int64, error) {
+func (r *clienteRepository) CountByTenant(ctx context.Context, tenantID string) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&models.Cliente{}).
@@ -166,7 +166,7 @@ func (r *ClienteRepository) CountByTenant(ctx context.Context, tenantID string) 
 }
 
 // CountByStatus conta clientes por status
-func (r *ClienteRepository) CountByStatus(ctx context.Context, tenantID string, status string) (int64, error) {
+func (r *clienteRepository) CountByStatus(ctx context.Context, tenantID string, status string) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&models.Cliente{}).
@@ -179,7 +179,7 @@ func (r *ClienteRepository) CountByStatus(ctx context.Context, tenantID string, 
 // Adicione estes métodos ao ClienteRepository
 
 // FindWithFilters busca clientes com filtros e paginação
-func (r *ClienteRepository) FindWithFilters(ctx context.Context, tenantID uint, nome, telefone string, limit, offset int) ([]models.Cliente, int64, error) {
+func (r *clienteRepository) FindWithFilters(ctx context.Context, tenantID uint, nome, telefone string, limit, offset int) ([]models.Cliente, int64, error) {
 	var clientes []models.Cliente
 	var total int64
 

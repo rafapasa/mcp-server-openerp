@@ -39,14 +39,15 @@ type Profile struct {
 }
 
 type Message struct {
-	From      string      `json:"from"`
-	ID        string      `json:"id"`
-	Timestamp string      `json:"timestamp"`
-	Type      string      `json:"type"`
-	Text      MessageText `json:"text"`
-	Audio     Media       `json:"audio"`
-	Voice     Media       `json:"voice"`
-	Image     MediaImage  `json:"image"`
+	From        string      `json:"from"`
+	ID          string      `json:"id"`
+	Timestamp   string      `json:"timestamp"`
+	Type        string      `json:"type"`
+	Text        MessageText `json:"text"`
+	Audio       Media       `json:"audio"`
+	Voice       Media       `json:"voice"`
+	Image       MediaImage  `json:"image"`
+	Interactive Interactive `json:"interactive"`
 }
 
 type MessageText struct {
@@ -63,6 +64,16 @@ type MediaImage struct {
 	MimeType string `json:"mime_type"`
 	Caption  string `json:"caption"`
 	Sha256   string `json:"sha256"`
+}
+
+type Interactive struct {
+	Type        string      `json:"type"`
+	ButtonReply ButtonReply `json:"button_reply"`
+}
+
+type ButtonReply struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
 }
 
 type Status struct {

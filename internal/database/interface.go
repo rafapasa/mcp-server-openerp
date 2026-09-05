@@ -34,6 +34,6 @@ type RedisInterface interface {
 	Expire(key string, expiration time.Duration) error
 
 	// GetClient pode ser omitido se não for usado em serviços, mas mantenha se necessário
-	GetClient() *redis.Client                       // ou *redis.Client, mas evite dependência concreta
-	WithContext(ctx context.Context) RedisInterface // ou *Redis
+	GetClient() *redis.Client // ou *redis.Client, mas evite dependência concreta
+	WithContext(ctx context.Context) RedisInterface
 }

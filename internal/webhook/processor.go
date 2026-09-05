@@ -4,11 +4,14 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	whatsappdto "github.com/rafapasa/mcp-server-openerp/internal/dto/whatsapp"
+	"github.com/rafapasa/mcp-server-openerp/internal/intent"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/pkg/phone"
@@ -20,6 +23,10 @@ import (
 type WhatsAppSender interface {
 	SendMessage(to, text string) error
 	DownloadMedia(ctx context.Context, mediaID string) ([]byte, error)
+}
+
+type buttonSender interface {
+	SendButtons(ctx context.Context, to, body string, labels []string) error
 }
 
 type Processor struct {
@@ -87,6 +94,15 @@ func (p *Processor) Process(ctx context.Context, req whatsappdto.WebhookRequest)
 				}
 
 				input := p.buildMessageInput(ctx, msg)
+				if p.isHumanHandoffActive(ctx, cliente.ID) && !intent.IsVoltarProBot(input.Text) {
+					p.forwardToHuman(ctx, cliente.ID, tenantID, msg.From, input)
+					if p.shouldPromptHandoffTimeout(ctx, cliente.ID) {
+						if err := p.whatsApp.SendMessage(msg.From, "⏳ Seu atendimento humano ainda está aguardando resposta. Você prefere continuar aguardando ou *voltar pro bot*?"); err != nil {
+							logger.Error(ctx, "Erro ao enviar alerta de handoff", zap.Error(err))
+						}
+					}
+					continue
+				}
 
 				resposta, err := p.carrinhoService.ProcessarMensagem(ctx, cliente.ID, tenantID, input)
 				if err != nil {
@@ -95,13 +111,134 @@ func (p *Processor) Process(ctx context.Context, req whatsappdto.WebhookRequest)
 				}
 
 				if resposta != "" {
+					if p.shouldSendPaymentButtons(resposta) {
+						p.sendPaymentResponse(ctx, msg.From, resposta)
+						continue
+					}
+					if p.shouldSendCartButtons(input, resposta) {
+						p.sendCartResponse(ctx, cliente.ID, tenantID, msg.From, resposta)
+						continue
+					}
 					if err := p.whatsApp.SendMessage(msg.From, resposta); err != nil {
 						logger.Error(ctx, "Erro ao enviar resposta WhatsApp", zap.Error(err), zap.String("to", msg.From))
 					}
+
 				}
 			}
 		}
 	}
+}
+
+func (p *Processor) shouldSendCartButtons(input dto.MessageInput, response string) bool {
+	return input.Source == models.SourceText &&
+		strings.Contains(response, "🛒") &&
+		strings.Contains(response, "Carrinho")
+}
+
+func (p *Processor) shouldSendPaymentButtons(response string) bool {
+	return strings.Contains(response, "COMO VAI PAGAR?")
+}
+
+func (p *Processor) sendPaymentResponse(ctx context.Context, to, response string) {
+	sender, ok := p.whatsApp.(*WhatsAppClient)
+	if !ok {
+		_ = p.whatsApp.SendMessage(to, response)
+		return
+	}
+
+	var ids, labels []string
+	for _, line := range strings.Split(response, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "*") {
+			continue
+		}
+		end := strings.Index(line[1:], "*")
+		if end < 0 {
+			continue
+		}
+		end++
+		index, err := strconv.Atoi(line[1:end])
+		if err != nil {
+			continue
+		}
+		label := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line[end+1:]), "-"))
+		label = strings.TrimSpace(label)
+		if label == "" {
+			continue
+		}
+		ids = append(ids, fmt.Sprintf("pagamento_%d", index))
+		labels = append(labels, label)
+	}
+	if len(ids) == 0 || len(ids) > 3 {
+		_ = p.whatsApp.SendMessage(to, response)
+		return
+	}
+	if err := sender.sendButtonsWithIDs(ctx, to, response, ids, labels); err != nil {
+		logger.Error(ctx, "Erro ao enviar botões de pagamento", zap.Error(err))
+		_ = p.whatsApp.SendMessage(to, response)
+	}
+}
+
+func (p *Processor) sendCartResponse(ctx context.Context, clienteID, tenantID uint, to, response string) {
+	sender, ok := p.whatsApp.(buttonSender)
+	if !ok || p.cacheLayer == nil {
+		_ = p.whatsApp.SendMessage(to, response)
+		return
+	}
+	key := fmt.Sprintf("carrinho:debounce:%d:%d", tenantID, clienteID)
+	if err := p.cacheLayer.SetWithContext(ctx, key, response, 5*time.Second); err != nil {
+		logger.Error(ctx, "Erro ao armazenar debounce do carrinho", zap.Error(err))
+		return
+	}
+	lockKey := key + ":lock"
+	scheduled, err := p.cacheLayer.SetNXWithContext(ctx, lockKey, "1", 5*time.Second)
+	if err != nil || !scheduled {
+		return
+	}
+	go func() {
+		time.Sleep(2 * time.Second)
+		latest, err := p.cacheLayer.GetWithContext(context.Background(), key)
+		if err == nil {
+			_ = sender.SendButtons(context.Background(), to, latest, []string{"Adicionar mais", "Finalizar pedido", "Limpar"})
+		}
+		_ = p.cacheLayer.DeleteWithContext(context.Background(), key)
+		_ = p.cacheLayer.DeleteWithContext(context.Background(), lockKey)
+	}()
+}
+
+func (p *Processor) isHumanHandoffActive(ctx context.Context, clienteID uint) bool {
+	if p.cacheLayer == nil {
+		return false
+	}
+	_, err := p.cacheLayer.GetWithContext(ctx, fmt.Sprintf("atendimento:humano:%d", clienteID))
+	return err == nil
+}
+
+func (p *Processor) shouldPromptHandoffTimeout(ctx context.Context, clienteID uint) bool {
+	if p.cacheLayer == nil {
+		return false
+	}
+	key := fmt.Sprintf("atendimento:humano:%d", clienteID)
+	raw, err := p.cacheLayer.GetWithContext(ctx, key)
+	if err != nil {
+		return false
+	}
+	startedAt, err := time.Parse(time.RFC3339, raw)
+	if err != nil || time.Since(startedAt) < 10*time.Minute {
+		return false
+	}
+	alertKey := fmt.Sprintf("atendimento:humano:alerta:%d", clienteID)
+	set, err := p.cacheLayer.SetNXWithContext(ctx, alertKey, "1", 10*time.Minute)
+	return err == nil && set
+}
+
+func (p *Processor) forwardToHuman(ctx context.Context, clienteID, tenantID uint, telefone string, input dto.MessageInput) {
+	logger.Info(ctx, "mensagem encaminhada para atendimento humano",
+		zap.Uint("cliente_id", clienteID),
+		zap.Uint("tenant_id", tenantID),
+		zap.String("telefone", telefone),
+		zap.String("source", string(input.Source)),
+	)
 }
 
 func (p *Processor) isDuplicate(ctx context.Context, messageID string) bool {
@@ -186,6 +323,9 @@ func (p *Processor) buildMessageInput(ctx context.Context, msg whatsappdto.Messa
 		return dto.MessageInput{Source: models.SourceImage, Text: caption}
 
 	default:
+		if msg.Type == "interactive" && msg.Interactive.ButtonReply.ID != "" {
+			return dto.MessageInput{Source: models.SourceText, Text: msg.Interactive.ButtonReply.ID}
+		}
 		return dto.MessageInput{Source: models.SourceText, Text: msg.Text.Body}
 	}
 }

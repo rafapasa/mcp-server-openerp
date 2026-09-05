@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// ItemPedido representa um item incluído em um pedido.
 type ItemPedido struct {
 	ProdutoID  uint    `json:"produto_id"`
 	Nome       string  `json:"nome"`
@@ -13,6 +14,7 @@ type ItemPedido struct {
 	Observacao string  `json:"obs,omitempty"`
 }
 
+// Pedido representa um pedido de um cliente em um tenant.
 type Pedido struct {
 	ID                uint            `gorm:"primaryKey"`
 	TenantID          uint            `gorm:"not null;index"`

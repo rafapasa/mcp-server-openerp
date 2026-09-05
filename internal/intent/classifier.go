@@ -12,22 +12,39 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
+// IntentType identifica a intenção reconhecida em uma mensagem.
 type IntentType int
 
 const (
+	// IntentNone indica que nenhuma intenção foi reconhecida.
 	IntentNone IntentType = iota
+	// IntentGreeting indica uma saudação.
 	IntentGreeting
+	// IntentGreetingWithAdd indica saudação acompanhada de um item.
 	IntentGreetingWithAdd
+	// IntentSmallTalk indica conversa informal.
 	IntentSmallTalk
+	// IntentThanks indica agradecimento.
 	IntentThanks
+	// IntentViewCart indica consulta do carrinho.
 	IntentViewCart
+	// IntentClearCart indica limpeza do carrinho.
 	IntentClearCart
+	// IntentAdd indica adição de item.
 	IntentAdd
+	// IntentRemove indica remoção de item.
 	IntentRemove
+	// IntentCheckout indica finalização do pedido.
 	IntentCheckout
+	// IntentFalarComAtendente indica solicitação de atendimento humano.
+	IntentFalarComAtendente
+	// IntentVoltarProBot indica retorno ao atendimento automatizado.
+	IntentVoltarProBot
+	// IntentOther indica uma intenção não classificada.
 	IntentOther
 )
 
+// Result contém a intenção reconhecida, o texto restante e sua confiança.
 type Result struct {
 	Type      IntentType
 	CleanRest string
@@ -42,6 +59,22 @@ var (
 	viewBase      = []string{"ver carrinho", "meu carrinho", "ver pedido", "o que tenho", "q tenho", "carrinho"}
 	limparBase    = []string{"limpar carrinho", "limpar tudo", "limpar pedido", "limpe tudo", "esvaziar carrinho", "apagar carrinho", "zera o carrinho"}
 )
+
+func IsFalarComAtendente(raw string) bool {
+	norm := normalize(raw)
+	return strings.Contains(norm, "atendente") ||
+		strings.Contains(norm, "falar com humano") ||
+		strings.Contains(norm, "suporte") ||
+		strings.Contains(norm, "ajuda")
+}
+
+// IsVoltarProBot informa se a mensagem solicita o retorno ao bot.
+func IsVoltarProBot(raw string) bool {
+	norm := normalize(raw)
+	return strings.Contains(norm, "voltar pro bot") ||
+		strings.Contains(norm, "voltar para o bot") ||
+		strings.Contains(norm, "sair do atendimento")
+}
 
 func normalize(s string) string {
 	s = strings.ToLower(s)
@@ -171,10 +204,17 @@ func minInt(a, b int) int {
 	return b
 }
 
+// ClassifyV2 classifica uma mensagem considerando a última saudação recebida.
 func ClassifyV2(raw string, lastGreeting time.Time) Result {
 	norm := normalize(raw)
 	if norm == "" {
 		return Result{Type: IntentNone}
+	}
+	if IsVoltarProBot(norm) {
+		return Result{Type: IntentVoltarProBot, Score: 1}
+	}
+	if IsFalarComAtendente(norm) {
+		return Result{Type: IntentFalarComAtendente, Score: 1}
 	}
 	// anti-spam saudação 3min
 	if !lastGreeting.IsZero() && time.Since(lastGreeting) < 3*time.Minute {
@@ -220,11 +260,13 @@ func ClassifyV2(raw string, lastGreeting time.Time) Result {
 }
 
 // COMPATIBILIDADE - para seu handlers.go não quebrar
+// Classify classifica uma mensagem usando o classificador padrão.
 func Classify(raw string) IntentType {
 	res := ClassifyV2(raw, time.Time{})
 	return res.Type
 }
 
+// GreetingResponse gera uma resposta apropriada para uma saudação.
 func GreetingResponse(nome string, hour int) string {
 	saudacao := "Olá"
 	if hour >= 5 && hour < 12 {
@@ -240,6 +282,7 @@ func GreetingResponse(nome string, hour int) string {
 	return saudacao + "! 😊 O que vai querer hoje?"
 }
 
+// SmallTalkResponse gera uma resposta para uma mensagem informal.
 func SmallTalkResponse(raw string) string {
 	norm := normalize(raw)
 	if strings.Contains(norm, "tudo bem") || strings.Contains(norm, "td bem") {
@@ -252,10 +295,12 @@ func SmallTalkResponse(raw string) string {
 }
 
 // Para Thanks separado se quiser
+// ThanksResponse gera uma resposta para um agradecimento.
 func ThanksResponse() string {
 	return "Por nada! 😊 Se precisar, estou por aqui."
 }
 
+// ViewCartResponse gera uma resposta para a consulta do carrinho.
 func ViewCartResponse() string {
 	return "Claro! Deixa eu ver seu carrinho..."
 }

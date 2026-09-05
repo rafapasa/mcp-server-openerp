@@ -11,11 +11,12 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type Redis struct {
+type redisClient struct {
 	Client *redis.Client
 	ctx    context.Context
 }
 
+// NewRedis conecta ao Redis e retorna sua interface de acesso.
 func NewRedis(cfg *config.Config) (RedisInterface, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:         fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
@@ -30,36 +31,36 @@ func NewRedis(cfg *config.Config) (RedisInterface, error) {
 	}
 	logger.GetLogger().Info("✅ Redis conectado")
 	logger.GetLogger().Info(fmt.Sprintf("📊 Redis: %s:%s (DB: %d)", cfg.RedisHost, cfg.RedisPort, cfg.RedisDB))
-	return &Redis{Client: client, ctx: ctx}, nil
+	return &redisClient{Client: client, ctx: ctx}, nil
 }
 
-func (r *Redis) Close() error      { return r.Client.Close() }
-func (r *Redis) Ping() error       { return r.Client.Ping(r.ctx).Err() }
-func (r *Redis) IsConnected() bool { return r.Ping() == nil }
+func (r *redisClient) Close() error      { return r.Client.Close() }
+func (r *redisClient) Ping() error       { return r.Client.Ping(r.ctx).Err() }
+func (r *redisClient) IsConnected() bool { return r.Ping() == nil }
 
-func (r *Redis) Set(key string, value interface{}, expiration time.Duration) error {
+func (r *redisClient) Set(key string, value interface{}, expiration time.Duration) error {
 	return r.Client.Set(r.ctx, key, value, expiration).Err()
 }
 
-func (r *Redis) Get(key string) (string, error) {
+func (r *redisClient) Get(key string) (string, error) {
 	return r.Client.Get(r.ctx, key).Result()
 }
-func (r *Redis) Delete(keys ...string) error { return r.Client.Del(r.ctx, keys...).Err() }
-func (r *Redis) Exists(key string) (bool, error) {
+func (r *redisClient) Delete(keys ...string) error { return r.Client.Del(r.ctx, keys...).Err() }
+func (r *redisClient) Exists(key string) (bool, error) {
 	n, err := r.Client.Exists(r.ctx, key).Result()
 	return n > 0, err
 }
 
 // Deduplicação atômica
-func (r *Redis) SetNX(key string, value interface{}, ttl time.Duration) (bool, error) {
+func (r *redisClient) SetNX(key string, value interface{}, ttl time.Duration) (bool, error) {
 	return r.Client.SetNX(r.ctx, key, value, ttl).Result()
 }
 
-func (r *Redis) SetNXWithContext(ctx context.Context, key string, value interface{}, ttl time.Duration) (bool, error) {
+func (r *redisClient) SetNXWithContext(ctx context.Context, key string, value interface{}, ttl time.Duration) (bool, error) {
 	return r.Client.SetNX(ctx, key, value, ttl).Result()
 }
 
-func (r *Redis) GetJSON(key string, dest interface{}) error {
+func (r *redisClient) GetJSON(key string, dest interface{}) error {
 	if r == nil || r.Client == nil {
 		return redis.Nil
 	}
@@ -70,7 +71,7 @@ func (r *Redis) GetJSON(key string, dest interface{}) error {
 	return json.Unmarshal([]byte(data), dest)
 }
 
-func (r *Redis) SetJSON(key string, value interface{}, ttl time.Duration) error {
+func (r *redisClient) SetJSON(key string, value interface{}, ttl time.Duration) error {
 	if r == nil || r.Client == nil {
 		return nil
 	}
@@ -81,15 +82,15 @@ func (r *Redis) SetJSON(key string, value interface{}, ttl time.Duration) error 
 	return r.Client.Set(r.ctx, key, b, ttl).Err()
 }
 
-func (r *Redis) SetWithContext(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+func (r *redisClient) SetWithContext(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	return r.Client.Set(ctx, key, value, ttl).Err()
 }
 
-func (r *Redis) GetWithContext(ctx context.Context, key string) (string, error) {
+func (r *redisClient) GetWithContext(ctx context.Context, key string) (string, error) {
 	return r.Client.Get(ctx, key).Result()
 }
 
-func (r *Redis) GetJSONWithContext(ctx context.Context, key string, dest interface{}) error {
+func (r *redisClient) GetJSONWithContext(ctx context.Context, key string, dest interface{}) error {
 	data, err := r.Client.Get(ctx, key).Result()
 	if err != nil {
 		return err
@@ -97,7 +98,7 @@ func (r *Redis) GetJSONWithContext(ctx context.Context, key string, dest interfa
 	return json.Unmarshal([]byte(data), dest)
 }
 
-func (r *Redis) SetJSONWithContext(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+func (r *redisClient) SetJSONWithContext(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	b, err := json.Marshal(value)
 	if err != nil {
 		return err
@@ -105,6 +106,7 @@ func (r *Redis) SetJSONWithContext(ctx context.Context, key string, value interf
 	return r.Client.Set(ctx, key, b, ttl).Err()
 }
 
+// GetOrSet retorna o valor em cache ou executa a função para carregá-lo.
 func GetOrSet[T any](r RedisInterface, ctx context.Context, key string, ttl time.Duration, fn func() (T, error)) (T, error) {
 	var zero T
 	if r == nil || r.GetClient() == nil {
@@ -122,7 +124,7 @@ func GetOrSet[T any](r RedisInterface, ctx context.Context, key string, ttl time
 	return val, nil
 }
 
-func (r *Redis) InvalidateByTenant(ctx context.Context, pattern string) error {
+func (r *redisClient) InvalidateByTenant(ctx context.Context, pattern string) error {
 	keys, err := r.Client.Keys(ctx, pattern).Result()
 	if err != nil {
 		return err
@@ -133,14 +135,14 @@ func (r *Redis) InvalidateByTenant(ctx context.Context, pattern string) error {
 	return nil
 }
 
-func (r *Redis) DeleteWithContext(ctx context.Context, key string) error {
+func (r *redisClient) DeleteWithContext(ctx context.Context, key string) error {
 	return r.Client.Del(ctx, key).Err()
 }
 
-func (r *Redis) Expire(key string, expiration time.Duration) error {
+func (r *redisClient) Expire(key string, expiration time.Duration) error {
 	return r.Client.Expire(r.ctx, key, expiration).Err()
 }
-func (r *Redis) GetClient() *redis.Client { return r.Client }
-func (r *Redis) WithContext(ctx context.Context) RedisInterface {
-	return &Redis{Client: r.Client, ctx: ctx}
+func (r *redisClient) GetClient() *redis.Client { return r.Client }
+func (r *redisClient) WithContext(ctx context.Context) RedisInterface {
+	return &redisClient{Client: r.Client, ctx: ctx}
 }
