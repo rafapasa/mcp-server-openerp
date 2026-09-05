@@ -111,3 +111,139 @@ func TestVerifyWebhookHandlerFiber_TenantNaoEncontrado(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 }
+
+func TestVerifyWebhookHandlerFiber_AssinaturaAusente(t *testing.T) {
+	body := `{"entry":[{"changes":[{"value":{"metadata":{"phone_number_id":"123456789012"}}}]}]}`
+
+	ctrl := gomock.NewController(t)
+	tenantMock := mocks.NewMockTenantServiceInterface(ctrl)
+	tenantMock.EXPECT().
+		GetByWhatsAppPhoneID(gomock.Any(), "123456789012").
+		Return(&dto.TenantDTO{ID: 2}, nil)
+
+	app := novoAppComLogger()
+	app.Post("/webhook", func(c *fiber.Ctx) error {
+		ok, err := VerifyWebhookHandlerFiber(c, config.Config{
+			WhatsAppAppSecret: "segredo-meta",
+		}, tenantMock)
+		if !ok {
+			return c.Status(403).SendString(err.Error())
+		}
+		return c.SendStatus(200)
+	})
+
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(body))
+	resp, err := app.Test(req, -1)
+	require.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+func TestVerifyWebhookHandlerFiber_AssinaturaComPrefixoInvalido(t *testing.T) {
+	body := `{"entry":[{"changes":[{"value":{"metadata":{"phone_number_id":"123456789012"}}}]}]}`
+
+	ctrl := gomock.NewController(t)
+	tenantMock := mocks.NewMockTenantServiceInterface(ctrl)
+	tenantMock.EXPECT().
+		GetByWhatsAppPhoneID(gomock.Any(), "123456789012").
+		Return(&dto.TenantDTO{ID: 2}, nil)
+
+	app := novoAppComLogger()
+	app.Post("/webhook", func(c *fiber.Ctx) error {
+		ok, err := VerifyWebhookHandlerFiber(c, config.Config{
+			WhatsAppAppSecret: "segredo-meta",
+		}, tenantMock)
+		if !ok {
+			return c.Status(403).SendString(err.Error())
+		}
+		return c.SendStatus(200)
+	})
+
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(body))
+	req.Header.Set("X-Hub-Signature-256", "sha1="+assinaturaHMAC(t, []byte(body), "segredo-meta"))
+	resp, err := app.Test(req, -1)
+	require.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+func TestVerifyWebhookHandlerFiber_AssinaturaHexInvalido(t *testing.T) {
+	body := `{"entry":[{"changes":[{"value":{"metadata":{"phone_number_id":"123456789012"}}}]}]}`
+
+	ctrl := gomock.NewController(t)
+	tenantMock := mocks.NewMockTenantServiceInterface(ctrl)
+	tenantMock.EXPECT().
+		GetByWhatsAppPhoneID(gomock.Any(), "123456789012").
+		Return(&dto.TenantDTO{ID: 2}, nil)
+
+	app := novoAppComLogger()
+	app.Post("/webhook", func(c *fiber.Ctx) error {
+		ok, err := VerifyWebhookHandlerFiber(c, config.Config{
+			WhatsAppAppSecret: "segredo-meta",
+		}, tenantMock)
+		if !ok {
+			return c.Status(403).SendString(err.Error())
+		}
+		return c.SendStatus(200)
+	})
+
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(body))
+	req.Header.Set("X-Hub-Signature-256", "sha256=assinatura-com-hex-invalido")
+	resp, err := app.Test(req, -1)
+	require.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+func TestVerifyWebhookHandlerFiber_SegredoAusenteSempreRejeita(t *testing.T) {
+	body := `{"entry":[{"changes":[{"value":{"metadata":{"phone_number_id":"123456789012"}}}]}]}`
+
+	ctrl := gomock.NewController(t)
+	tenantMock := mocks.NewMockTenantServiceInterface(ctrl)
+	tenantMock.EXPECT().
+		GetByWhatsAppPhoneID(gomock.Any(), "123456789012").
+		Return(&dto.TenantDTO{ID: 2}, nil)
+
+	app := novoAppComLogger()
+	app.Post("/webhook", func(c *fiber.Ctx) error {
+		ok, err := VerifyWebhookHandlerFiber(c, config.Config{
+			Environment: "development",
+		}, tenantMock)
+		if !ok {
+			return c.Status(403).SendString(err.Error())
+		}
+		return c.SendStatus(200)
+	})
+
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(body))
+	req.Header.Set("X-Hub-Signature-256", "sha256="+assinaturaHMAC(t, []byte(body), ""))
+	resp, err := app.Test(req, -1)
+	require.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+func TestVerifyWebhookHandlerFiber_AssinaturaCalculadaSobreOCorpoBruto(t *testing.T) {
+	body := `{"entry":[{"changes":[{"value":{"metadata":{"phone_number_id":"123456789012"}}}]}]}`
+
+	ctrl := gomock.NewController(t)
+	tenantMock := mocks.NewMockTenantServiceInterface(ctrl)
+	tenantMock.EXPECT().
+		GetByWhatsAppPhoneID(gomock.Any(), "123456789012").
+		Return(&dto.TenantDTO{ID: 2}, nil)
+
+	app := novoAppComLogger()
+	app.Post("/webhook", func(c *fiber.Ctx) error {
+		ok, err := VerifyWebhookHandlerFiber(c, config.Config{
+			WhatsAppAppSecret: "segredo-meta",
+		}, tenantMock)
+		if !ok {
+			return c.Status(403).SendString(err.Error())
+		}
+		return c.SendStatus(200)
+	})
+
+	signature := assinaturaHMAC(t, []byte(body), "segredo-meta")
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(body+" "))
+	req.Header.Set("X-Hub-Signature-256", "sha256="+signature)
+
+	resp, err := app.Test(req, -1)
+	require.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
