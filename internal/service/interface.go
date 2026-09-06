@@ -81,7 +81,7 @@ type ClienteServiceInterface interface {
 }
 
 type AuthServiceInterface interface {
-	Authenticate(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponse, error)
+	Authenticate(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponseList, error)
 	ValidateToken(tokenString string) (*Claims, error)
 }
 

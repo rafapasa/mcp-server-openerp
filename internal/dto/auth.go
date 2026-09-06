@@ -12,6 +12,11 @@ type LoginResponse struct {
 	Expires string  `json:"expires_at"`
 }
 
+type LoginResponseList struct {
+	Count int             `json:"count"`
+	Users []LoginResponse `json:"users"`
+}
+
 type UserDTO struct {
 	ID       uint   `json:"id"`
 	TenantID uint   `json:"tenant_id"`

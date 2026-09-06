@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
@@ -27,4 +29,9 @@ func main() {
 	fmt.Printf("Assinatura esperada: %s\n", expectedSignature)
 	fmt.Printf("Assinatura recebida:  %s\n", assinaturaRecebida)
 	fmt.Printf("Match: %t\n", expectedSignature == assinaturaRecebida)
+
+	senha := "admin123"
+	has, _ := bcrypt.GenerateFromPassword([]byte(senha), bcrypt.DefaultCost)
+	fmt.Printf("Senha: %s\n", senha)
+	fmt.Printf("Hash: %s\n", string(has))
 }

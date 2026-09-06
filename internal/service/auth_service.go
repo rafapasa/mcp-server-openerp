@@ -29,50 +29,63 @@ func NewAuthService(userRepo repository.UserRepositoryInterface, cfg *config.Con
 	return &authService{userRepo: userRepo, cfg: cfg}
 }
 
-func (s *authService) Authenticate(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponse, error) {
-	user, err := s.userRepo.FindByEmail(ctx, req.TenantID, req.Email)
+func (s *authService) Authenticate(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponseList, error) {
+	users, err := s.userRepo.FindByEmail(ctx, req.TenantID, req.Email)
 	if err != nil {
 		return nil, errors.New("credenciais inválidas")
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+	if len(*users) == 0 {
 		return nil, errors.New("credenciais inválidas")
 	}
 
-	exp := time.Now().Add(24 * time.Hour)
-	claims := Claims{
-		UserID:   user.ID,
-		TenantID: user.TenantID,
-		Email:    user.Email,
-		Role:     user.Role,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(exp),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-		},
-	}
+	logins := &dto.LoginResponseList{}
+	for _, user := range *users {
+		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err == nil {
+			exp := time.Now().Add(24 * time.Hour)
+			claims := Claims{
+				UserID:   user.ID,
+				TenantID: user.TenantID,
+				Email:    user.Email,
+				Role:     user.Role,
+				RegisteredClaims: jwt.RegisteredClaims{
+					ExpiresAt: jwt.NewNumericDate(exp),
+					IssuedAt:  jwt.NewNumericDate(time.Now()),
+					NotBefore: jwt.NewNumericDate(time.Now()),
+				},
+			}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	secret := []byte(s.cfg.JWTSecret)
-	if len(secret) == 0 {
-		secret = []byte("default-secret-change-me")
-	}
-	tokenString, err := token.SignedString(secret)
-	if err != nil {
-		return nil, err
-	}
+			token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+			secret := []byte(s.cfg.JWTSecret)
+			if len(secret) == 0 {
+				secret = []byte("default-secret-change-me")
+			}
+			tokenString, err := token.SignedString(secret)
+			if err != nil {
+				return nil, err
+			}
 
-	return &dto.LoginResponse{
-		Token:   tokenString,
-		Expires: exp.Format(time.RFC3339),
-		User: dto.UserDTO{
-			ID:       user.ID,
-			TenantID: user.TenantID,
-			Nome:     user.Nome,
-			Email:    user.Email,
-			Role:     user.Role,
-		},
-	}, nil
+			logins.Count++
+			logins.Users = append(
+				logins.Users, dto.LoginResponse{
+					Token:   tokenString,
+					Expires: exp.Format(time.RFC3339),
+					User: dto.UserDTO{
+						ID:       user.ID,
+						TenantID: user.TenantID,
+						Nome:     user.Nome,
+						Email:    user.Email,
+						Role:     user.Role,
+					},
+				},
+			)
+
+		}
+	}
+	if len(logins.Users) <= 0 {
+		return nil, errors.New("credenciais inválidas")
+	}
+	return logins, nil
 }
 
 func (s *authService) ValidateToken(tokenString string) (*Claims, error) {

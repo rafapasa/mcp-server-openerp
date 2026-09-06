@@ -8,7 +8,7 @@ import (
 )
 
 type UserRepositoryInterface interface {
-	FindByEmail(ctx context.Context, tenantID uint, email string) (*models.User, error)
+	FindByEmail(ctx context.Context, tenantID uint, email string) (*[]models.User, error)
 	FindByID(ctx context.Context, id uint) (*models.User, error)
 	Create(ctx context.Context, user *models.User) error
 }
@@ -19,9 +19,14 @@ func NewUserRepository(db *gorm.DB) UserRepositoryInterface {
 	return &userRepository{db: db}
 }
 
-func (r *userRepository) FindByEmail(ctx context.Context, tenantID uint, email string) (*models.User, error) {
-	var u models.User
-	err := r.db.WithContext(ctx).Where("tenant_id > ? AND email = ? AND is_active = 1", tenantID, email).First(&u).Error
+func (r *userRepository) FindByEmail(ctx context.Context, tenantID uint, email string) (*[]models.User, error) {
+	var u []models.User
+	query := r.db.WithContext(ctx).Model(&models.User{}).Where("email = ? AND is_active = 1", email)
+	if tenantID == 0 {
+		err := query.Find(&u).Error
+		return &u, err
+	}
+	err := query.Where("tenant_id = ?", tenantID).Find(&u).Error
 	return &u, err
 }
 
