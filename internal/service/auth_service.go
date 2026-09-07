@@ -32,11 +32,11 @@ func NewAuthService(userRepo repository.UserRepositoryInterface, cfg *config.Con
 func (s *authService) Authenticate(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponseList, error) {
 	users, err := s.userRepo.FindByEmail(ctx, req.TenantID, req.Email)
 	if err != nil {
-		return nil, errors.New("credenciais inválidas")
+		return nil, errors.New("Erro busncando usuário: " + err.Error())
 	}
 
 	if len(*users) == 0 {
-		return nil, errors.New("credenciais inválidas")
+		return nil, errors.New("credenciais inválidas, usuário não encontrado")
 	}
 
 	logins := &dto.LoginResponseList{}
