@@ -17,6 +17,7 @@ type APIHandlers struct {
 	pedidoService         service.PedidoServiceInterface
 	cardapioService       service.CardapioServiceInterface
 	formaPagamentoService service.FormaPagamentoServiceInterface
+	tenantService         service.TenantServiceInterface
 }
 
 func NewAPIHandlers(
@@ -25,11 +26,15 @@ func NewAPIHandlers(
 	pedidoService service.PedidoServiceInterface,
 	cardapioService service.CardapioServiceInterface,
 	formaPagamentoService service.FormaPagamentoServiceInterface,
+	tenantService service.TenantServiceInterface,
 ) *APIHandlers {
 	return &APIHandlers{
-		authService: authService, clienteService: clienteService,
-		pedidoService: pedidoService, cardapioService: cardapioService,
+		authService:           authService,
+		clienteService:        clienteService,
+		pedidoService:         pedidoService,
+		cardapioService:       cardapioService,
 		formaPagamentoService: formaPagamentoService,
+		tenantService:         tenantService,
 	}
 }
 
@@ -177,8 +182,6 @@ func (h *APIHandlers) GetProdutoFiber(c *fiber.Ctx) error {
 	return c.JSON(produto)
 }
 
-// === NOVO dev-11: Produto CRUD com invalidação ===
-
 // POST /api/v1/produtos
 func (h *APIHandlers) CreateProdutoFiber(c *fiber.Ctx) error {
 	tenantID, err := h.getTenantIdByHeaderFiber(c)
@@ -197,7 +200,7 @@ func (h *APIHandlers) CreateProdutoFiber(c *fiber.Ctx) error {
 	return c.Status(201).JSON(req)
 }
 
-// PUT /api/v1/produtos/:id - FIX dev-11 invalida cache
+// PUT /api/v1/produtos/:id
 func (h *APIHandlers) UpdateProdutoFiber(c *fiber.Ctx) error {
 	tenantID, err := h.getTenantIdByHeaderFiber(c)
 	if err != nil {
@@ -211,7 +214,6 @@ func (h *APIHandlers) UpdateProdutoFiber(c *fiber.Ctx) error {
 	req.ID = uint(id)
 	req.TenantID = tenantID
 
-	// busca existente para garantir ownership
 	existing, err := h.cardapioService.FindByID(c.Context(), uint(id))
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "not found"})
@@ -220,7 +222,6 @@ func (h *APIHandlers) UpdateProdutoFiber(c *fiber.Ctx) error {
 		return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 	}
 
-	// merge simples: mantém campos não enviados? Para simplificar, atualiza o model
 	produtoModel := models.Produto{
 		ID: req.ID, TenantID: tenantID, CategoriaID: req.CategoriaID,
 		Nome: req.Nome, Descricao: req.Descricao, Preco: req.Preco,
@@ -344,6 +345,79 @@ func (h *APIHandlers) DeleteFormaPagamentoFiber(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"status": "deactivated"})
+}
+
+// ===================== TENANTS - usando só campos do model =====================
+
+// GET /tenants
+func (h *APIHandlers) ListTenantsFiber(c *fiber.Ctx) error {
+	tenants, err := h.tenantService.List(c.Context())
+	if err != nil {
+		logger.Error(c.Context(), "erro listar tenants", zap.Error(err))
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(tenants)
+}
+
+// GET /tenants/:id
+func (h *APIHandlers) GetTenantFiber(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "id inválido"})
+	}
+	tenant, err := h.tenantService.GetByID(c.Context(), uint(id))
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "tenant não encontrado"})
+	}
+	return c.JSON(tenant)
+}
+
+// POST /tenants
+func (h *APIHandlers) CreateTenantFiber(c *fiber.Ctx) error {
+	var req dto.CreateTenantDTO
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body", "details": err.Error()})
+	}
+	if req.Nome == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "nome é obrigatório"})
+	}
+	created, err := h.tenantService.Create(c.Context(), req)
+	if err != nil {
+		logger.Error(c.Context(), "erro criar tenant", zap.Error(err))
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(201).JSON(created)
+}
+
+// PUT /tenants/:id - usa UpdateTenantDTO com ponteiros, respeita model
+func (h *APIHandlers) UpdateTenantFiber(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "id inválido"})
+	}
+	var req dto.UpdateTenantDTO
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	}
+	updated, err := h.tenantService.Update(c.Context(), uint(id), req)
+	if err != nil {
+		logger.Error(c.Context(), "erro atualizar tenant", zap.Error(err), zap.Uint64("id", id))
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(updated)
+}
+
+// DELETE /tenants/:id
+func (h *APIHandlers) DeleteTenantFiber(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "id inválido"})
+	}
+	if err := h.tenantService.Delete(c.Context(), uint(id)); err != nil {
+		logger.Error(c.Context(), "erro deletar tenant", zap.Error(err), zap.Uint64("id", id))
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "deleted", "id": id})
 }
 
 func (h *APIHandlers) getTenantIdByHeaderFiber(c *fiber.Ctx) (uint, error) {

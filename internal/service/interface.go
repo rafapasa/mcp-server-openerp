@@ -1,4 +1,4 @@
-// internal/service/interface.go - FIX dev-11: invalidação cache
+// internal/service/interface.go - Tenant com Update e Delete
 package service
 
 import (
@@ -91,6 +91,8 @@ type TenantServiceInterface interface {
 	GetByTelefone(ctx context.Context, telefone string) (*dto.TenantDTO, error)
 	List(ctx context.Context) ([]dto.TenantDTO, error)
 	Create(ctx context.Context, input dto.CreateTenantDTO) (*dto.TenantDTO, error)
+	Update(ctx context.Context, id uint, input dto.UpdateTenantDTO) (*dto.TenantDTO, error)
+	Delete(ctx context.Context, id uint) error
 	GetPromptContext(ctx context.Context, tenantID uint) (nome, segmento string, err error)
 	GetByWhatsAppPhoneID(ctx context.Context, phoneID string) (*dto.TenantDTO, error)
 	GetByVerifyToken(ctx context.Context, token string) (*dto.TenantDTO, error)
@@ -108,7 +110,6 @@ type CardapioServiceInterface interface {
 	ListWithFilters(ctx context.Context, tenantID uint, categoriaID *uint, disponivel *bool, nome string, page, limit int) ([]dto.ProdutoDTO, int64, error)
 	FindByID(ctx context.Context, id uint) (*dto.ProdutoDTO, error)
 	ReduzirPorKeywords(ctx context.Context, tenantID uint, keywords []llm.LLMKeywordItemResult) ([]dto.ProdutoItem, error)
-	// === NOVO dev-11 ===
 	InvalidateCache(ctx context.Context, tenantID uint) error
 	Create(ctx context.Context, produto *models.Produto) error
 	Update(ctx context.Context, produto *models.Produto) error

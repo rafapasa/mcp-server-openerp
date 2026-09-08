@@ -7,7 +7,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// TenantRepository defines persistence operations for tenants.
 type TenantRepository interface {
 	FindByID(ctx context.Context, id uint) (*models.Tenant, error)
 	FindByCNPJ(ctx context.Context, cnpj string) (*models.Tenant, error)
@@ -16,6 +15,7 @@ type TenantRepository interface {
 	FindByVerifyToken(ctx context.Context, token string) (*models.Tenant, error)
 	Create(ctx context.Context, tenant *models.Tenant) error
 	Update(ctx context.Context, tenant *models.Tenant) error
+	Delete(ctx context.Context, id uint) error
 	List(ctx context.Context) ([]models.Tenant, error)
 }
 
@@ -23,7 +23,6 @@ type tenantRepository struct {
 	db *gorm.DB
 }
 
-// NewTenantRepository creates a repository for handling tenant persistence.
 func NewTenantRepository(db *gorm.DB) TenantRepository {
 	return &tenantRepository{db: db}
 }
@@ -74,6 +73,10 @@ func (r *tenantRepository) Create(ctx context.Context, tenant *models.Tenant) er
 
 func (r *tenantRepository) Update(ctx context.Context, tenant *models.Tenant) error {
 	return r.db.WithContext(ctx).Save(tenant).Error
+}
+
+func (r *tenantRepository) Delete(ctx context.Context, id uint) error {
+	return r.db.WithContext(ctx).Delete(&models.Tenant{}, id).Error
 }
 
 func (r *tenantRepository) List(ctx context.Context) ([]models.Tenant, error) {

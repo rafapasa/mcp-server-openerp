@@ -48,7 +48,7 @@ func InitializeApp() (*server.HttpServer, error) {
 	mcpServer := server.NewMCPServer(configConfig, cardapioServiceInterface, pedidoServiceInterface, carrinhoServiceInterface, unifiedLLM)
 	userRepositoryInterface := repository.NewUserRepository(db)
 	authServiceInterface := service.NewAuthService(userRepositoryInterface, configConfig)
-	apiHandlers := server.NewAPIHandlers(authServiceInterface, clienteServiceInterface, pedidoServiceInterface, cardapioServiceInterface, formaPagamentoServiceInterface)
+	apiHandlers := server.NewAPIHandlers(authServiceInterface, clienteServiceInterface, pedidoServiceInterface, cardapioServiceInterface, formaPagamentoServiceInterface, tenantServiceInterface)
 	whatsAppClient := webhook.NewWhatsAppClient()
 	processor := webhook.NewProcessor(whatsAppClient, tenantServiceInterface, clienteServiceInterface, carrinhoServiceInterface, redisInterface)
 	webhookHandler := webhook.NewWebhookHandler(configConfig, processor, tenantServiceInterface)

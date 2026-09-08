@@ -20,6 +20,10 @@ type fakeTenantRepo struct {
 	byVerifyToken *models.Tenant
 }
 
+func (f *fakeTenantRepo) Delete(ctx context.Context, id uint) error {
+	return nil
+}
+
 func (f *fakeTenantRepo) FindByID(ctx context.Context, id uint) (*models.Tenant, error) {
 	if f.byID == nil {
 		return nil, gorm.ErrRecordNotFound

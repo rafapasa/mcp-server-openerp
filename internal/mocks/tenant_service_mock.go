@@ -36,6 +36,21 @@ func NewMockTenantServiceInterface(ctrl *gomock.Controller) *MockTenantServiceIn
 	return mock
 }
 
+func (m *MockTenantServiceInterface) Update(ctx context.Context, id uint, input dto.UpdateTenantDTO) (*dto.TenantDTO, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Update", ctx, id, input)
+	ret0, _ := ret[0].(*dto.TenantDTO)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (m *MockTenantServiceInterface) Delete(ctx context.Context, id uint) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockTenantServiceInterface) EXPECT() *MockTenantServiceInterfaceMockRecorder {
 	return m.recorder
