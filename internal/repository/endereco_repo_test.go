@@ -14,7 +14,7 @@ import (
 )
 
 func setupTestDB(t *testing.T) *gorm.DB {
-	dsnRoot := "root:root@tcp(127.0.0.1:3306)/?charset=utf8mb4&parseTime=True&loc=Local"
+	dsnRoot := "root:root123@tcp(127.0.0.1:3306)/?charset=utf8mb4&parseTime=True&loc=Local"
 	dbRoot, err := gorm.Open(mysql.Open(dsnRoot), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Erro ao conectar no MySQL: %v", err)
@@ -26,7 +26,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	sqlDBRoot, _ := dbRoot.DB()
 	sqlDBRoot.Close()
 
-	dsn := "root:root@tcp(127.0.0.1:3306)/test_db?charset=utf8mb4&parseTime=True&loc=Local"
+	dsn := "root:root123@tcp(127.0.0.1:3306)/test_db?charset=utf8mb4&parseTime=True&loc=Local"
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Erro ao conectar no banco de teste: %v", err)

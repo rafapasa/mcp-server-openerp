@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
@@ -47,7 +48,7 @@ func (s *cardapioService) GetCardapio(ctx context.Context, tenantID uint) ([]dto
 	cardapio, err := database.GetOrSet(s.cache, ctx, cacheKey, 1*time.Hour, func() ([]dto.ProdutoItem, error) {
 		produtos, err := s.produtoRepo.FindByTenantDisponiveis(ctx, tenantID)
 		if err != nil {
-			return nil, fmt.Errorf("erro ao buscar cardápio: %w", err)
+			return nil, fmt.Errorf("falha ao listar produtos disponíveis: %w", err)
 		}
 		var out []dto.ProdutoItem
 		for _, p := range produtos {
@@ -119,7 +120,7 @@ func (s *cardapioService) UpdateDisponibilidade(ctx context.Context, id uint, te
 		return err
 	}
 	if produto.TenantID != tenantID {
-		return fmt.Errorf("produto não pertence ao tenant")
+		return apperror.NewForbiddenError("produto não pertence ao tenant")
 	}
 	produto.Disponivel = disponivel
 	if err := s.produtoRepo.Update(ctx, produto); err != nil {
@@ -134,11 +135,11 @@ func (s *cardapioService) UpdateDisponibilidade(ctx context.Context, id uint, te
 func (s *cardapioService) BuscarProdutoPorNome(ctx context.Context, tenantID string, nome string) (*dto.ProdutoItem, error) {
 	var tenantIDUint uint
 	if _, err := fmt.Sscan(tenantID, &tenantIDUint); err != nil {
-		return nil, fmt.Errorf("tenant_id inválido: %w", err)
+		return nil, apperror.NewBadRequestError("tenant_id inválido")
 	}
 	produto, err := s.produtoRepo.FindByNome(ctx, tenantIDUint, nome)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao buscar produto por nome: %w", err)
+		return nil, fmt.Errorf("falha ao buscar produto por nome: %w", err)
 	}
 	cat := ""
 	if produto.Categoria != nil {
@@ -154,7 +155,7 @@ func (s *cardapioService) BuscarProdutoPorNome(ctx context.Context, tenantID str
 func (s *cardapioService) ItemExisteNoCardapio(cardapio []dto.ProdutoItem, nome string) (*dto.ProdutoItem, error) {
 	nomeLower := strings.ToLower(strings.TrimSpace(nome))
 	if nomeLower == "" {
-		return nil, fmt.Errorf("nome do produto não pode ser vazio")
+		return nil, apperror.NewValidationError("nome do produto não pode ser vazio")
 	}
 	for _, item := range cardapio {
 		if strings.ToLower(item.Nome) == nomeLower {
@@ -165,7 +166,7 @@ func (s *cardapioService) ItemExisteNoCardapio(cardapio []dto.ProdutoItem, nome 
 			return &item, nil
 		}
 	}
-	return nil, fmt.Errorf("Produto %s não localizado", nome)
+	return nil, apperror.NewNotFoundError(fmt.Sprintf("Produto %s não localizado", nome))
 }
 
 func (s *cardapioService) EncontrarItemSimilar(cardapio []dto.ProdutoItem, nome string) string {
@@ -303,7 +304,7 @@ func (s *cardapioService) ListarProdutosHumanizado(cardapio []dto.ProdutoItem, f
 func (s *cardapioService) FindByID(ctx context.Context, id uint) (*dto.ProdutoDTO, error) {
 	produto, err := s.produtoRepo.FindByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao buscar produto: %w", err)
+		return nil, fmt.Errorf("falha ao buscar produto: %w", err)
 	}
 	catNome := ""
 	if produto.Categoria != nil {
@@ -321,7 +322,7 @@ func (s *cardapioService) ListWithFilters(ctx context.Context, tenantID uint, ca
 	offset := (page - 1) * limit
 	produtos, total, err := s.produtoRepo.FindWithFilters(ctx, tenantID, categoriaID, disponivel, nome, limit, offset)
 	if err != nil {
-		return nil, 0, fmt.Errorf("erro ao listar produtos: %w", err)
+		return nil, 0, fmt.Errorf("falha ao buscar produtos: %w", err)
 	}
 	result := make([]dto.ProdutoDTO, len(produtos))
 	for i, p := range produtos {
@@ -340,17 +341,17 @@ func (s *cardapioService) ListWithFilters(ctx context.Context, tenantID uint, ca
 
 func (s *cardapioService) BuscarProdutoPorIdNoCardapio(cardapio []dto.ProdutoItem, produtoID uint) (*dto.ProdutoItem, error) {
 	if len(cardapio) == 0 {
-		return nil, fmt.Errorf("cardápio vazio")
+		return nil, apperror.NewBadRequestError("cardápio vazio")
 	}
 	if produtoID == 0 {
-		return nil, fmt.Errorf("produtoID inválido")
+		return nil, apperror.NewBadRequestError("produtoID inválido")
 	}
 	for i := range cardapio {
 		if cardapio[i].ID == produtoID {
 			return &cardapio[i], nil
 		}
 	}
-	return nil, fmt.Errorf("produto ID %d não encontrado no cardápio", produtoID)
+	return nil, apperror.NewNotFoundError(fmt.Sprintf("produto ID %d não encontrado no cardápio", produtoID))
 }
 
 func (s *cardapioService) ReduzirPorKeywords(ctx context.Context, tenantID uint, keywords []llm.LLMKeywordItemResult) ([]dto.ProdutoItem, error) {
@@ -398,4 +399,25 @@ func (s *cardapioService) ReduzirPorKeywords(ctx context.Context, tenantID uint,
 		out = out[:maxReduzido]
 	}
 	return out, nil
+}
+
+func (s *cardapioService) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ProdutoDTO, int64, error) {
+	offset := (page - 1) * limit
+	produtos, total, err := s.produtoRepo.FindByTenantPaginated(ctx, tenantID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]dto.ProdutoDTO, len(produtos))
+	for i, p := range produtos {
+		catNome := ""
+		if p.Categoria != nil {
+			catNome = p.Categoria.Nome
+		}
+		result[i] = dto.ProdutoDTO{
+			ID: p.ID, TenantID: p.TenantID, CategoriaID: p.CategoriaID, CategoriaNome: catNome,
+			Nome: p.Nome, Descricao: p.Descricao, Preco: p.Preco, Disponivel: p.Disponivel,
+			CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
+		}
+	}
+	return result, total, nil
 }

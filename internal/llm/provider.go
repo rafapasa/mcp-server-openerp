@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
@@ -100,13 +101,30 @@ func NewUnifiedLLM(cfg *config.Config) *UnifiedLLM {
 	}
 }
 
+// HasValidConfig indica se há client de texto utilizável.
+func (u *UnifiedLLM) HasValidConfig() bool {
+	return u != nil && u.textClient != nil && u.textClient.GetProvider() != ""
+}
+
+// IsOnline verifica conectividade do textClient (dono do AppError de config/rede).
+func (u *UnifiedLLM) IsOnline(ctx context.Context) (bool, error) {
+	if !u.HasValidConfig() {
+		return false, apperror.NewBadRequestError("llm provider sem configuração válida")
+	}
+	_, err := u.GenerateResponse(ctx, "Responda apenas com a palavra: ok")
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (u *UnifiedLLM) GetProvider() string { return "unified" }
 func (u *UnifiedLLM) GetModel() string    { return "router" }
 
 func (u *UnifiedLLM) GenerateResponse(ctx context.Context, prompt string) (string, error) {
 	logger.Info(ctx, "[PROVIDER] GenerateResponse -> textClient", zap.Int("prompt_len", len(prompt)))
 	if u.textClient == nil {
-		return "", fmt.Errorf("textClient nil")
+		return "", apperror.NewInternalError("text LLM não configurado", nil)
 	}
 	raw, err := u.textClient.GenerateResponse(ctx, prompt)
 	if err != nil {
@@ -120,7 +138,7 @@ func (u *UnifiedLLM) GenerateResponse(ctx context.Context, prompt string) (strin
 func (u *UnifiedLLM) TranscribeAudio(ctx context.Context, audio []byte, prompt string) (string, error) {
 	logger.Info(ctx, "[PROVIDER] TranscribeAudio -> audioClient", zap.Int("audio_len", len(audio)))
 	if u.audioClient == nil {
-		return "", fmt.Errorf("audioClient nil")
+		return "", apperror.NewInternalError("audio LLM não configurado", nil)
 	}
 	if prompt == "" {
 		prompt = PromptTranscribeSimple
@@ -137,7 +155,7 @@ func (u *UnifiedLLM) TranscribeAudio(ctx context.Context, audio []byte, prompt s
 func (u *UnifiedLLM) DescribeImage(ctx context.Context, image []byte, prompt string) (string, error) {
 	logger.Info(ctx, "[PROVIDER] DescribeImage -> visionClient", zap.Int("image_len", len(image)))
 	if u.visionClient == nil {
-		return "", fmt.Errorf("visionClient nil")
+		return "", apperror.NewInternalError("vision LLM não configurado", nil)
 	}
 	if prompt == "" {
 		prompt = PromptVisionDescribe
@@ -309,12 +327,12 @@ func (u *UnifiedLLM) obterTextoBase(ctx context.Context, input dto.MessageInput)
 	switch input.Source {
 	case models.SourceAudio:
 		if len(input.Audio) == 0 {
-			return "", fmt.Errorf("áudio vazio")
+			return "", apperror.NewBadRequestError("áudio vazio")
 		}
 		return u.TranscribeAudio(ctx, input.Audio, PromptTranscribeSimple)
 	case models.SourceImage:
 		if len(input.Image) == 0 {
-			return "", fmt.Errorf("imagem vazia")
+			return "", apperror.NewBadRequestError("imagem vazia")
 		}
 		return u.DescribeImage(ctx, input.Image, input.Text)
 	default:

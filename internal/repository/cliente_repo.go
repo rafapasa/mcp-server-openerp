@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 )
@@ -25,6 +27,7 @@ type ClienteRepositoryInterface interface {
 	FindByStatus(ctx context.Context, tenantID string, status string) ([]models.Cliente, error)
 	FindByNome(ctx context.Context, tenantID string, nome string) ([]models.Cliente, error)
 	FindByUltimoPedidoAntes(ctx context.Context, tenantID string, data time.Time) ([]models.Cliente, error)
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]models.Cliente, int64, error)
 
 	// Contagem
 	CountByTenant(ctx context.Context, tenantID string) (int64, error)
@@ -45,6 +48,43 @@ func NewClienteRepository(db *gorm.DB) ClienteRepositoryInterface {
 	return &clienteRepository{db: db}
 }
 
+func (r *clienteRepository) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]models.Cliente, int64, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+	var clientes []models.Cliente
+	var total int64
+
+	err := r.db.WithContext(ctx).
+		Model(&models.Cliente{}).
+		Where("tenant_id = ?", tenantID).
+		Count(&total).Error
+	if err != nil {
+		return nil, 0, apperror.NewInternalError("falha ao contar clientes", err)
+	}
+
+	err = r.db.WithContext(ctx).
+		Model(&models.Cliente{}).
+		Where("tenant_id = ?", tenantID).
+		Offset(offset).
+		Limit(limit).
+		Find(&clientes).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Cliente{}, total, nil
+		}
+		return nil, 0, apperror.NewInternalError("falha ao buscar clientes", err)
+	}
+	if clientes == nil {
+		clientes = []models.Cliente{}
+	}
+	return clientes, total, nil
+}
+
 // WithTx retorna uma nova instância com a transação
 func (r *clienteRepository) WithTx(tx *gorm.DB) ClienteRepositoryInterface {
 	return &clienteRepository{db: tx}
@@ -56,7 +96,10 @@ func (r *clienteRepository) WithTx(tx *gorm.DB) ClienteRepositoryInterface {
 
 // Create cria um novo cliente
 func (r *clienteRepository) Create(ctx context.Context, cliente *models.Cliente) error {
-	return r.db.WithContext(ctx).Create(cliente).Error
+	if err := r.db.WithContext(ctx).Create(cliente).Error; err != nil {
+		return apperror.NewInternalError("falha ao criar cliente", err)
+	}
+	return nil
 }
 
 // FindByID busca um cliente pelo ID
@@ -69,7 +112,10 @@ func (r *clienteRepository) FindByID(ctx context.Context, id uint) (*models.Clie
 		}).
 		First(&cliente, id).Error
 	if err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperror.NewNotFoundError("cliente não encontrado")
+		}
+		return nil, apperror.NewInternalError("falha ao buscar cliente", err)
 	}
 	return &cliente, nil
 }
@@ -84,12 +130,14 @@ func (r *clienteRepository) FindByTelefone(ctx context.Context, telefone string,
 		}).
 		First(&cliente).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperror.NewNotFoundError("cliente não encontrado")
+		}
 		logger.Error(
 			ctx, "erro executando consulta SQL",
-			// zap.String("SQL", r.db.Commit().Statement.TableExpr.SQL),
 			zap.String("Erro", err.Error()),
 		)
-		return nil, err
+		return nil, apperror.NewInternalError("falha ao buscar cliente por telefone", err)
 	}
 	return &cliente, nil
 }
@@ -104,18 +152,30 @@ func (r *clienteRepository) FindByTenant(ctx context.Context, tenantID string) (
 		}).
 		Order("created_at DESC").
 		Find(&clientes).Error
-	return clientes, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Cliente{}, nil
+		}
+		return nil, apperror.NewInternalError("falha ao listar clientes", err)
+	}
+	return clientes, nil
 }
 
 // Update atualiza um cliente
 func (r *clienteRepository) Update(ctx context.Context, cliente *models.Cliente) error {
-	return r.db.WithContext(ctx).Save(cliente).Error
+	if err := r.db.WithContext(ctx).Save(cliente).Error; err != nil {
+		return apperror.NewInternalError("falha ao atualizar cliente", err)
+	}
+	return nil
 }
 
 // Delete exclui logicamente um cliente (soft delete)
 // Mantém histórico, apenas marca como inativo
 func (r *clienteRepository) Delete(ctx context.Context, id uint) error {
-	return r.db.WithContext(ctx).Delete(&models.Cliente{}, id).Error
+	if err := r.db.WithContext(ctx).Delete(&models.Cliente{}, id).Error; err != nil {
+		return apperror.NewInternalError("falha ao deletar cliente", err)
+	}
+	return nil
 }
 
 // ============================================
@@ -129,7 +189,13 @@ func (r *clienteRepository) FindByStatus(ctx context.Context, tenantID string, s
 		Where("tenant_id = ? AND status = ?", tenantID, status).
 		Order("ultimo_pedido_at DESC").
 		Find(&clientes).Error
-	return clientes, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Cliente{}, nil
+		}
+		return nil, apperror.NewInternalError("falha ao buscar clientes por status", err)
+	}
+	return clientes, nil
 }
 
 // FindByNome busca clientes por nome (case insensitive)
@@ -139,7 +205,13 @@ func (r *clienteRepository) FindByNome(ctx context.Context, tenantID string, nom
 		Where("tenant_id = ? AND nome LIKE ?", tenantID, "%"+nome+"%").
 		Order("nome ASC").
 		Find(&clientes).Error
-	return clientes, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Cliente{}, nil
+		}
+		return nil, apperror.NewInternalError("falha ao buscar clientes por nome", err)
+	}
+	return clientes, nil
 }
 
 // FindByUltimoPedidoAntes busca clientes que não fizeram pedidos desde a data
@@ -148,7 +220,13 @@ func (r *clienteRepository) FindByUltimoPedidoAntes(ctx context.Context, tenantI
 	err := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND (ultimo_pedido_at IS NULL OR ultimo_pedido_at < ?)", tenantID, data).
 		Find(&clientes).Error
-	return clientes, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Cliente{}, nil
+		}
+		return nil, apperror.NewInternalError("falha ao buscar clientes por último pedido", err)
+	}
+	return clientes, nil
 }
 
 // ============================================
@@ -162,7 +240,10 @@ func (r *clienteRepository) CountByTenant(ctx context.Context, tenantID string) 
 		Model(&models.Cliente{}).
 		Where("tenant_id = ?", tenantID).
 		Count(&count).Error
-	return count, err
+	if err != nil {
+		return 0, apperror.NewInternalError("falha ao contar clientes", err)
+	}
+	return count, nil
 }
 
 // CountByStatus conta clientes por status
@@ -172,11 +253,11 @@ func (r *clienteRepository) CountByStatus(ctx context.Context, tenantID string, 
 		Model(&models.Cliente{}).
 		Where("tenant_id = ? AND status = ?", tenantID, status).
 		Count(&count).Error
-	return count, err
+	if err != nil {
+		return 0, apperror.NewInternalError("falha ao contar clientes por status", err)
+	}
+	return count, nil
 }
-
-// internal/repository/cliente_repo.go
-// Adicione estes métodos ao ClienteRepository
 
 // FindWithFilters busca clientes com filtros e paginação
 func (r *clienteRepository) FindWithFilters(ctx context.Context, tenantID uint, nome, telefone string, limit, offset int) ([]models.Cliente, int64, error) {
@@ -193,7 +274,7 @@ func (r *clienteRepository) FindWithFilters(ctx context.Context, tenantID uint, 
 	}
 
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
+		return nil, 0, apperror.NewInternalError("falha ao contar clientes filtrados", err)
 	}
 
 	err := query.
@@ -205,5 +286,14 @@ func (r *clienteRepository) FindWithFilters(ctx context.Context, tenantID uint, 
 		Offset(offset).
 		Find(&clientes).Error
 
-	return clientes, total, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Cliente{}, total, nil
+		}
+		return nil, 0, apperror.NewInternalError("falha ao buscar clientes filtrados", err)
+	}
+	if clientes == nil {
+		clientes = []models.Cliente{}
+	}
+	return clientes, total, nil
 }

@@ -1,0 +1,692 @@
+{
+    "demanda": "Cria a func FindByTenantPaginated nos services e Repositories.",
+    "estrutura": [
+        {
+            "type": "directory",
+            "name": ".",
+            "contents": [
+                {
+                    "type": "directory",
+                    "name": "config",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "config.go"
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "database",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "interface.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "migrate.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "mysql.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "redis.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "seed.go"
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "di",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "provider.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "wire_gen.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "wire.go"
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "dto",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "auth.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "carrinho.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "cliente_dto.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "input..go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "llm.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "pagamento.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "pedido.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "produto.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "response_dto.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "tenant.go"
+                        },
+                        {
+                            "type": "directory",
+                            "name": "whatsapp",
+                            "contents": [
+                                {
+                                    "type": "file",
+                                    "name": "webhook.go"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "helpers",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "formatter.go"
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "intent",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "classifier.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "classifier_test.go"
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "llm",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "deepseek.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "factory.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "gemini.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "groq.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "helpers.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "interface.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "openai.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "preprocessor.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "prompts.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "provider.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "retry.go"
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "mocks",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "cardapio_service_mock.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "cliente_repo_mock.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "cliente_service_mock.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "endereco_repo_mock.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "generate.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "llm_service_mock.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "pedido_service_mock.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "produto_repo_mock.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "redis_interface_mock.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "tenant_service_mock.go"
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "models",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "categoria.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "cliente.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "constants.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "forma_pagamento.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "pedido.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "produto.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "tenant.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "types.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "users.go"
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "observability",
+                    "contents": [
+                        {
+                            "type": "directory",
+                            "name": "health",
+                            "contents": [
+                                {
+                                    "type": "file",
+                                    "name": "health.go"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "directory",
+                            "name": "logger",
+                            "contents": [
+                                {
+                                    "type": "file",
+                                    "name": "context.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "levels.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "logger.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "redact.go"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "directory",
+                            "name": "metrics",
+                            "contents": [
+                                {
+                                    "type": "file",
+                                    "name": "cart.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "db.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "llm.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "metrics.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "search.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "whatsapp.go"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "directory",
+                            "name": "middleware",
+                            "contents": [
+                                {
+                                    "type": "file",
+                                    "name": "logging.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "metrics.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "ratelimit.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "ratelimit_key.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "ratelimit_middleware.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "security.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "tracing.go"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "directory",
+                            "name": "security",
+                            "contents": [
+                                {
+                                    "type": "file",
+                                    "name": "sanitize.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "sanitize_helpers.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "validate.go"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "directory",
+                            "name": "tracing",
+                            "contents": [
+                                {
+                                    "type": "file",
+                                    "name": "attributes.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "tracer.go"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "pkg",
+                    "contents": [
+                        {
+                            "type": "directory",
+                            "name": "phone",
+                            "contents": [
+                                {
+                                    "type": "file",
+                                    "name": "normalize.go"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "repository",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "cliente_repo.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "endereco_repo.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "endereco_repo_test.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "pagamento_repo.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "pedido_repo.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "produto_repo.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "tenant_repo.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "user_repository.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "user_repository_test.go"
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "server",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "api_handlers.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "http_server.go"
+                        },
+                        {
+                            "type": "directory",
+                            "name": "icons",
+                            "contents": [
+                                {
+                                    "type": "file",
+                                    "name": "abacus.png"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "hourglass.png"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "package.png"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "robot.png"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "sun_behind_cloud.png"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "waving_hand.png"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "file",
+                            "name": "icons.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "mcp_server.go"
+                        },
+                        {
+                            "type": "directory",
+                            "name": "middleware",
+                            "contents": [
+                                {
+                                    "type": "file",
+                                    "name": "auth.go"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "directory",
+                            "name": "response",
+                            "contents": [
+                                {
+                                    "type": "file",
+                                    "name": "response.go"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "directory",
+                            "name": "tools",
+                            "contents": [
+                                {
+                                    "type": "file",
+                                    "name": "cardapio.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "carrinho.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "helpers.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "pedido.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "registry.go"
+                                },
+                                {
+                                    "type": "file",
+                                    "name": "whatsapp.go"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "service",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "auth_service.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "auth_service_test.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "cardapio_service.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "cardapio_service_test.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "carrinho_service.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "carrinho_service_test.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "cliente_service.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "cliente_service_test.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "forma_pagamento_service.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "interface.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "llm_service.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "pagamento_test.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "pedido_service.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "tenant_service.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "tenant_service_test.go"
+                        }
+                    ]
+                },
+                {
+                    "type": "directory",
+                    "name": "webhook",
+                    "contents": [
+                        {
+                            "type": "file",
+                            "name": "handlers.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "handlers_test.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "processor.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "security.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "security_test.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "whatsapp_buttons_test.go"
+                        },
+                        {
+                            "type": "file",
+                            "name": "whatsapp.go"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "report",
+            "directories": 27,
+            "files": 126
+        }
+    ],
+    "raiz": "/home/opc/prj/mcp-server-openerp/internal",
+    "rules": [
+        "Adicionar a função FindByTenantPaginated nos services e Repositories.",
+        "Atualize a interface dos services e dos repositories.",
+        "Adicione a função FindByTenantPaginated em todos os services que não possuem, exceto no service de tenant.",
+        "Atualize os testes unitários dos services e dos repositories.",
+        "Siga o padrão de desenvolvimento do projeto, o repositorio usa models o service dto",
+        "Seja Cuidados e não altere a assinatura das funções existentes, apenas adicione a nova função.",
+        "Siga a estrutira de pastas no json para localizar arquivos "
+    ]
+}

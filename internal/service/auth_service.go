@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
-	"errors"
 	"time"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
@@ -32,11 +32,11 @@ func NewAuthService(userRepo repository.UserRepositoryInterface, cfg *config.Con
 func (s *authService) Authenticate(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponseList, error) {
 	users, err := s.userRepo.FindByEmail(ctx, req.TenantID, req.Email)
 	if err != nil {
-		return nil, errors.New("credenciais inválidas")
+		return nil, err
 	}
 
-	if len(*users) == 0 {
-		return nil, errors.New("credenciais inválidas")
+	if users == nil || len(*users) == 0 {
+		return nil, apperror.NewUnauthorizedError("credenciais inválidas, usuário não encontrado")
 	}
 
 	logins := &dto.LoginResponseList{}
@@ -62,7 +62,7 @@ func (s *authService) Authenticate(ctx context.Context, req dto.LoginRequest) (*
 			}
 			tokenString, err := token.SignedString(secret)
 			if err != nil {
-				return nil, err
+				return nil, apperror.NewInternalError("falha ao gerar token", err)
 			}
 
 			logins.Count++
@@ -79,11 +79,10 @@ func (s *authService) Authenticate(ctx context.Context, req dto.LoginRequest) (*
 					},
 				},
 			)
-
 		}
 	}
 	if len(logins.Users) <= 0 {
-		return nil, errors.New("credenciais inválidas")
+		return nil, apperror.NewUnauthorizedError("credenciais inválidas")
 	}
 	return logins, nil
 }
@@ -97,10 +96,10 @@ func (s *authService) ValidateToken(tokenString string) (*Claims, error) {
 		return secret, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, apperror.NewUnauthorizedError("token inválido: " + err.Error())
 	}
 	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
 		return claims, nil
 	}
-	return nil, errors.New("token inválido")
+	return nil, apperror.NewUnauthorizedError("token inválido")
 }

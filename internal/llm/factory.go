@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"go.uber.org/zap"
@@ -20,30 +21,30 @@ func newLLMClient(provider string, cfg *config.Config) (LLMClient, error) {
 	case "openai":
 		if cfg.LlmOpenAiApiKey == "" {
 			logger.LogInfo("[FACTORY] OpenAI Key vazia, pulando")
-			return nil, fmt.Errorf("openai key vazia")
+			return nil, apperror.NewInternalError("openai key vazia", nil)
 		}
 		client = NewOpenAILLM(cfg)
 	case "groq":
 		if cfg.LlmGroqApiKey == "" {
 			logger.LogInfo("[FACTORY] Groq Key vazia, pulando")
-			return nil, fmt.Errorf("groq key vazia")
+			return nil, apperror.NewInternalError("groq key vazia", nil)
 		}
 		client = NewGroqLLM(cfg)
 	case "gemini":
 		if cfg.LlmGeminiApiKey == "" {
 			logger.LogInfo("[FACTORY] Gemini Key vazia, pulando")
-			return nil, fmt.Errorf("gemini key vazia")
+			return nil, apperror.NewInternalError("gemini key vazia", nil)
 		}
 		client = NewGeminiLLM(cfg)
 	case "deepseek":
 		if cfg.LlmDeepSeekApiKey == "" {
 			logger.LogInfo("[FACTORY] DeepSeek Key vazia, pulando")
-			return nil, fmt.Errorf("deepseek key vazia")
+			return nil, apperror.NewInternalError("deepseek key vazia", nil)
 		}
 		client = NewDeepSeekLLM(cfg)
 	default:
 		logger.LogInfo(fmt.Sprintf("[FACTORY] Provedor não suportado: %s", provider))
-		return nil, fmt.Errorf("provedor não suportado: %s", provider)
+		return nil, apperror.NewBadRequestError("provedor não suportado: " + provider)
 	}
 
 	// Log de sucesso

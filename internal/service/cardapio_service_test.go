@@ -70,7 +70,7 @@ func TestCardapioService_GetCardapio(t *testing.T) {
 
 		cardapio, err := svc.GetCardapio(testCtx(), 1)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "erro ao buscar cardápio")
+		assert.Contains(t, err.Error(), "falha ao listar produtos disponíveis")
 		assert.Nil(t, cardapio)
 	})
 }
@@ -91,7 +91,7 @@ func TestCardapioService_BuscarProdutoPorNome(t *testing.T) {
 		resultado, err := svc.BuscarProdutoPorNome(testCtx(), "1", "X-Bacon")
 		require.Error(t, err)
 		assert.ErrorIs(t, err, assert.AnError)
-		assert.Contains(t, err.Error(), "erro ao buscar produto por nome")
+		assert.Contains(t, err.Error(), "falha ao buscar produto por nome")
 		assert.Nil(t, resultado)
 	})
 
@@ -138,7 +138,7 @@ func TestCardapioService_FindByID(t *testing.T) {
 		resultado, err := svc.FindByID(testCtx(), 1)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, assert.AnError)
-		assert.Contains(t, err.Error(), "erro ao buscar produto")
+		assert.Contains(t, err.Error(), "falha ao buscar produto")
 		assert.Nil(t, resultado)
 	})
 }
@@ -168,7 +168,7 @@ func TestCardapioService_ListWithFilters(t *testing.T) {
 		_, _, err := svc.ListWithFilters(testCtx(), 1, nil, nil, "", 1, 10)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, assert.AnError)
-		assert.Contains(t, err.Error(), "erro ao listar produtos")
+		assert.Contains(t, err.Error(), "falha ao buscar produtos")
 	})
 }
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/helpers"
@@ -78,7 +79,7 @@ func (s *carrinhoService) GetCarrinho(ctx context.Context, clienteID, tenantID u
 		}, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("erro ao buscar carrinho: %w", err)
+		return nil, err
 	}
 	if carrinho.Estado == "" {
 		carrinho.Estado = dto.EstadoAberto
@@ -90,7 +91,7 @@ func (s *carrinhoService) saveCarrinho(ctx context.Context, carrinho *dto.Carrin
 	carrinho.UpdatedAt = time.Now()
 	key := s.getKey(parseUint(carrinho.ClienteID), parseUint(carrinho.TenantID))
 	if err := s.cache.SetJSONWithContext(ctx, key, carrinho, TTLCarrinho*time.Second); err != nil {
-		return fmt.Errorf("erro ao salvar carrinho: %w", err)
+		return err
 	}
 	return nil
 }
@@ -131,7 +132,7 @@ func (s *carrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 	if intentRes.Type == intent.IntentFalarComAtendente {
 		if s.cache != nil {
 			if err := s.cache.SetWithContext(ctx, handoffKey(clienteID), time.Now().UTC().Format(time.RFC3339), 30*time.Minute); err != nil {
-				return "", fmt.Errorf("erro ao ativar atendimento humano: %w", err)
+				return "", err
 			}
 		}
 		metrics.RegisterHandoffStarted()
@@ -141,7 +142,7 @@ func (s *carrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 	if intentRes.Type == intent.IntentVoltarProBot {
 		if s.cache != nil {
 			if err := s.cache.DeleteWithContext(ctx, handoffKey(clienteID)); err != nil {
-				return "", fmt.Errorf("erro ao reativar bot: %w", err)
+				return "", err
 			}
 		}
 		return "🤖 Voltei a atender você. Como posso ajudar?", nil
@@ -277,7 +278,7 @@ func (s *carrinhoService) ProcessarMensagem(ctx context.Context, clienteID, tena
 	cardapio, err := s.cardapioService.GetCardapio(ctx, tenantID)
 	if err != nil {
 		logger.Error(ctx, err.Error())
-		return "", fmt.Errorf("erro cardápio: %w", err)
+		return "", err
 	}
 
 	var intencao *dto.IntencaoCliente
@@ -495,12 +496,12 @@ func (s *carrinhoService) handleConfirmacaoEndereco(ctx context.Context, cliente
 	if carrinho.EnderecoPendente != nil {
 		endereco, err := s.clienteService.AdicionarEndereco(ctx, clienteID, carrinho.EnderecoPendente)
 		if err != nil {
-			return "", fmt.Errorf("erro ao salvar endereço confirmado: %w", err)
+			return "", err
 		}
 		carrinho.EnderecoID = &endereco.ID
 	}
 	if carrinho.EnderecoID == nil {
-		return "", fmt.Errorf("endereço confirmado não encontrado")
+		return "", apperror.NewBadRequestError("endereço confirmado não encontrado")
 	}
 	carrinho.EnderecoPendente = nil
 	carrinho.EnderecoConfirmacaoID = nil
@@ -677,7 +678,7 @@ func (s *carrinhoService) continuarPagamento(ctx context.Context, clienteID, ten
 	carrinho.PagamentoDividido = false
 	if s.totalPagamentos(carrinho) >= s.CalcularTotal(carrinho)-0.01 {
 		if carrinho.EnderecoID == nil {
-			return "", fmt.Errorf("endereço não selecionado para finalizar o pedido")
+			return "", apperror.NewBadRequestError("endereço não selecionado para finalizar o pedido")
 		}
 		return s.finalizarComEndereco(ctx, clienteID, tenantID, carrinho, *carrinho.EnderecoID)
 	}
@@ -745,7 +746,7 @@ func parseValorFromText(texto string) (float64, error) {
 			return valor, nil
 		}
 	}
-	return 0, fmt.Errorf("nenhum valor monetário encontrado")
+	return 0, apperror.NewBadRequestError("nenhum valor monetário encontrado")
 }
 
 func (s *carrinhoService) mergeItem(carrinho *dto.Carrinho, item dto.ItemCarrinho) *dto.Carrinho {
@@ -786,7 +787,7 @@ func (s *carrinhoService) RemoverItem(ctx context.Context, clienteID, tenantID u
 			return s.saveCarrinho(ctx, carrinho)
 		}
 	}
-	return fmt.Errorf("item '%s' não encontrado", itemCarrinho.ProdutoItem.Nome)
+	return apperror.NewNotFoundError(fmt.Sprintf("item '%s' não encontrado", itemCarrinho.ProdutoItem.Nome))
 }
 
 func (s *carrinhoService) LimparCarrinho(ctx context.Context, clienteID, tenantID uint) error {
@@ -827,7 +828,7 @@ func (s *carrinhoService) FinalizarCarrinhoComEnderecoEPagamentos(ctx context.Co
 		return nil, err
 	}
 	if len(carrinho.Itens) == 0 {
-		return nil, fmt.Errorf("carrinho vazio")
+		return nil, apperror.NewBadRequestError("carrinho vazio")
 	}
 	pedidoExtraido := &dto.PedidoExtraido{}
 	for _, item := range carrinho.Itens {

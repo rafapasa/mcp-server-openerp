@@ -1,12 +1,10 @@
 package server
 
 import (
-	"strconv"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
-	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+	"github.com/rafapasa/mcp-server-openerp/internal/server/response"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 	"go.uber.org/zap"
 )
@@ -17,6 +15,7 @@ type APIHandlers struct {
 	pedidoService         service.PedidoServiceInterface
 	cardapioService       service.CardapioServiceInterface
 	formaPagamentoService service.FormaPagamentoServiceInterface
+	tenantService         service.TenantServiceInterface
 }
 
 func NewAPIHandlers(
@@ -25,331 +24,309 @@ func NewAPIHandlers(
 	pedidoService service.PedidoServiceInterface,
 	cardapioService service.CardapioServiceInterface,
 	formaPagamentoService service.FormaPagamentoServiceInterface,
+	tenantService service.TenantServiceInterface,
 ) *APIHandlers {
 	return &APIHandlers{
-		authService: authService, clienteService: clienteService,
-		pedidoService: pedidoService, cardapioService: cardapioService,
+		authService:           authService,
+		clienteService:        clienteService,
+		pedidoService:         pedidoService,
+		cardapioService:       cardapioService,
 		formaPagamentoService: formaPagamentoService,
+		tenantService:         tenantService,
 	}
 }
 
-// POST /api/v1/login
+// POST /api/v1/login — formato LoginResponseList sem envelope {data:}
 func (h *APIHandlers) LoginFiber(c *fiber.Ctx) error {
-	var loginRequest dto.LoginRequest
-	if err := c.BodyParser(&loginRequest); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	var req dto.LoginRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.ValidationError(c, "invalid body")
 	}
-	loginResponse, err := h.authService.Authenticate(c.Context(), loginRequest)
+	loginResponse, err := h.authService.Authenticate(c.Context(), req)
 	if err != nil {
-		return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
+		return response.FromError(c, err)
 	}
-	logger.Info(c.Context(), "Login efetuado com sucesso", zap.Any("loginResponse", loginResponse))
-	return c.JSON(loginResponse)
+	logger.Info(c.Context(), "Login efetuado", zap.Any("loginResponse", loginResponse))
+	return c.Status(fiber.StatusOK).JSON(loginResponse)
 }
 
 // GET /api/v1/dashboard
 func (h *APIHandlers) DashboardFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	tenantID, ok := response.GetTenantIDOrRespond(c)
+	if !ok {
+		return nil
 	}
 	stats, err := h.pedidoService.FindByTenant(c.Context(), tenantID)
 	if err != nil {
 		logger.GetLogger().Error("dashboard error", zap.Error(err))
-		return c.Status(500).JSON(fiber.Map{"error": "internal"})
+		return response.FromError(c, err)
 	}
-	return c.JSON(stats)
+	return response.OK(c, stats)
 }
 
-// GET /api/v1/pedidos
+// GET /api/v1/pedidos?page=1&limit=20
 func (h *APIHandlers) ListPedidosFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	tenantID, ok := response.GetTenantIDOrRespond(c)
+	if !ok {
+		return nil
 	}
-	pedidos, err := h.pedidoService.FindByTenant(c.Context(), tenantID)
+	pag := response.GetPaginatedRequest(c)
+	pedidos, total, err := h.pedidoService.FindByTenantPaginated(c.Context(), tenantID, pag.Page, pag.Limit)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return response.FromError(c, err)
 	}
-	return c.JSON(pedidos)
+	return response.Paginated(c, pedidos, total, pag.Page, pag.Limit)
 }
 
 // GET /api/v1/pedidos/:id
 func (h *APIHandlers) GetPedidoFiber(c *fiber.Ctx) error {
-	id, _ := strconv.Atoi(c.Params("id"))
-	pedido, err := h.pedidoService.FindByID(c.Context(), uint(id))
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "not found"})
+	id, ok := response.ParseIDParamOrRespond(c, "id")
+	if !ok {
+		return nil
 	}
-	return c.JSON(pedido)
+	pedido, err := h.pedidoService.FindByID(c.Context(), id)
+	if err != nil {
+		return response.FromError(c, err)
+	}
+	return response.OK(c, pedido)
 }
 
 // PATCH /api/v1/pedidos/:id/status
 func (h *APIHandlers) UpdatePedidoStatusFiber(c *fiber.Ctx) error {
-	id, _ := strconv.Atoi(c.Params("id"))
+	id, ok := response.ParseIDParamOrRespond(c, "id")
+	if !ok {
+		return nil
+	}
 	var req struct {
 		Status string `json:"status"`
 	}
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		return response.ValidationError(c, "invalid body")
 	}
-	if _, err := h.pedidoService.AtualizarStatusPedido(c.Context(), uint(id), req.Status); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	pedido, err := h.pedidoService.AtualizarStatusPedido(c.Context(), id, req.Status)
+	if err != nil {
+		return response.FromError(c, err)
 	}
-	return c.JSON(fiber.Map{"status": "updated"})
+	return response.OK(c, pedido)
 }
 
 // GET /api/v1/clientes
 func (h *APIHandlers) ListClientesFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	tenantID, ok := response.GetTenantIDOrRespond(c)
+	if !ok {
+		return nil
 	}
-	clientes, err := h.clienteService.FindByTenant(c.Context(), tenantID)
+	pag := response.GetPaginatedRequest(c)
+	clientes, total, err := h.clienteService.FindByTenantPaginated(c.Context(), tenantID, pag.Page, pag.Limit)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return response.FromError(c, err)
 	}
-	return c.JSON(clientes)
+	return response.Paginated(c, clientes, total, pag.Page, pag.Limit)
 }
 
-// GET /api/v1/clientes/:id
 func (h *APIHandlers) GetClienteFiber(c *fiber.Ctx) error {
-	id, _ := strconv.Atoi(c.Params("id"))
-	cliente, err := h.clienteService.FindByID(c.Context(), uint(id))
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "not found"})
+	id, ok := response.ParseIDParamOrRespond(c, "id")
+	if !ok {
+		return nil
 	}
-	return c.JSON(cliente)
+	cliente, err := h.clienteService.FindByID(c.Context(), id)
+	if err != nil {
+		return response.FromError(c, err)
+	}
+	return response.OK(c, cliente)
 }
 
-// GET /api/v1/clientes/:id/pedidos
 func (h *APIHandlers) GetClientePedidosFiber(c *fiber.Ctx) error {
-	id, _ := strconv.Atoi(c.Params("id"))
-	page, _ := strconv.Atoi(c.Query("page", "1"))
-	limit, _ := strconv.Atoi(c.Query("limit", "20"))
-	if limit <= 0 {
-		limit = 20
+	id, ok := response.ParseIDParamOrRespond(c, "id")
+	if !ok {
+		return nil
 	}
-	if page <= 0 {
-		page = 1
-	}
-	pedidos, total, err := h.pedidoService.ListByCliente(c.Context(), uint(id), page, limit)
+	pag := response.GetPaginatedRequest(c)
+	pedidos, total, err := h.pedidoService.ListByCliente(c.Context(), id, pag.Page, pag.Limit)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return response.FromError(c, err)
 	}
-	resp := dto.PedidoListResponseDTO{
-		Pedidos: pedidos, Total: total, Page: page, Limit: limit,
-		TotalPages: (total + int64(limit) - 1) / int64(limit),
-	}
-	return c.JSON(resp)
+	return response.Paginated(c, pedidos, total, pag.Page, pag.Limit)
 }
 
-// GET /api/v1/clientes/:id/enderecos
 func (h *APIHandlers) GetClienteEnderecosFiber(c *fiber.Ctx) error {
-	id, _ := strconv.Atoi(c.Params("id"))
-	enderecos, err := h.clienteService.ListarEnderecos(c.Context(), uint(id))
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	id, ok := response.ParseIDParamOrRespond(c, "id")
+	if !ok {
+		return nil
 	}
-	return c.JSON(enderecos)
+	enderecos, err := h.clienteService.ListarEnderecos(c.Context(), id)
+	if err != nil {
+		return response.FromError(c, err)
+	}
+	return response.OK(c, enderecos)
 }
 
 // GET /api/v1/produtos
 func (h *APIHandlers) ListProdutosFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	tenantID, ok := response.GetTenantIDOrRespond(c)
+	if !ok {
+		return nil
 	}
-	produtos, err := h.cardapioService.GetCardapio(c.Context(), tenantID)
+	pag := response.GetPaginatedRequest(c)
+	produtos, total, err := h.cardapioService.FindByTenantPaginated(c.Context(), tenantID, pag.Page, pag.Limit)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return response.FromError(c, err)
 	}
-	return c.JSON(produtos)
+	return response.Paginated(c, produtos, total, pag.Page, pag.Limit)
 }
 
-// GET /api/v1/produtos/:id
 func (h *APIHandlers) GetProdutoFiber(c *fiber.Ctx) error {
-	id, _ := strconv.Atoi(c.Params("id"))
-	produto, err := h.cardapioService.FindByID(c.Context(), uint(id))
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "not found"})
+	id, ok := response.ParseIDParamOrRespond(c, "id")
+	if !ok {
+		return nil
 	}
-	return c.JSON(produto)
+	produto, err := h.cardapioService.FindByID(c.Context(), id)
+	if err != nil {
+		return response.FromError(c, err)
+	}
+	return response.OK(c, produto)
 }
 
-// === NOVO dev-11: Produto CRUD com invalidação ===
-
-// POST /api/v1/produtos
-func (h *APIHandlers) CreateProdutoFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
-	}
-	var req models.Produto
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
-	}
-	req.TenantID = tenantID
-	if err := h.cardapioService.Create(c.Context(), &req); err != nil {
-		logger.Error(c.Context(), "erro criar produto", zap.Error(err))
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.Status(201).JSON(req)
-}
-
-// PUT /api/v1/produtos/:id - FIX dev-11 invalida cache
-func (h *APIHandlers) UpdateProdutoFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
-	}
-	id, _ := strconv.Atoi(c.Params("id"))
-	var req models.Produto
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
-	}
-	req.ID = uint(id)
-	req.TenantID = tenantID
-
-	// busca existente para garantir ownership
-	existing, err := h.cardapioService.FindByID(c.Context(), uint(id))
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "not found"})
-	}
-	if existing.TenantID != tenantID {
-		return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
-	}
-
-	// merge simples: mantém campos não enviados? Para simplificar, atualiza o model
-	produtoModel := models.Produto{
-		ID: req.ID, TenantID: tenantID, CategoriaID: req.CategoriaID,
-		Nome: req.Nome, Descricao: req.Descricao, Preco: req.Preco,
-		Ingredientes: req.Ingredientes, Disponivel: req.Disponivel,
-		TempoPreparo: req.TempoPreparo,
-	}
-	if err := h.cardapioService.Update(c.Context(), &produtoModel); err != nil {
-		logger.Error(c.Context(), "erro atualizar produto", zap.Error(err))
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"status": "updated", "id": id})
-}
-
-// DELETE /api/v1/produtos/:id
-func (h *APIHandlers) DeleteProdutoFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
-	}
-	id, _ := strconv.Atoi(c.Params("id"))
-	if err := h.cardapioService.Delete(c.Context(), uint(id), tenantID); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"status": "deleted"})
-}
-
-// PATCH /api/v1/produtos/:id/disponibilidade
-func (h *APIHandlers) UpdateDisponibilidadeFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
-	}
-	id, _ := strconv.Atoi(c.Params("id"))
-	var req struct {
-		Disponivel bool `json:"disponivel"`
-	}
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
-	}
-	if err := h.cardapioService.UpdateDisponibilidade(c.Context(), uint(id), tenantID, req.Disponivel); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"status": "updated"})
-}
-
+// Formas pagamento
 func (h *APIHandlers) ListFormasPagamentoFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	tenantID, ok := response.GetTenantIDOrRespond(c)
+	if !ok {
+		return nil
 	}
 	apenasAtivas := c.Query("ativas", "true") != "false"
 	formas, err := h.formaPagamentoService.Listar(c.Context(), tenantID, apenasAtivas)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return response.FromError(c, err)
 	}
-	return c.JSON(formas)
+	return response.OK(c, formas)
 }
 
 func (h *APIHandlers) GetFormaPagamentoFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	tenantID, ok := response.GetTenantIDOrRespond(c)
+	if !ok {
+		return nil
 	}
-	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "id inválido"})
+	id, ok := response.ParseIDParamOrRespond(c, "id")
+	if !ok {
+		return nil
 	}
-	forma, err := h.formaPagamentoService.Buscar(c.Context(), tenantID, uint(id))
+	forma, err := h.formaPagamentoService.Buscar(c.Context(), tenantID, id)
 	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": err.Error()})
+		return response.FromError(c, err)
 	}
-	return c.JSON(forma)
+	return response.OK(c, forma)
 }
 
 func (h *APIHandlers) CreateFormaPagamentoFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	tenantID, ok := response.GetTenantIDOrRespond(c)
+	if !ok {
+		return nil
 	}
 	var req dto.CriarFormaPagamentoRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		return response.ValidationError(c, "invalid body")
 	}
 	forma, err := h.formaPagamentoService.Criar(c.Context(), tenantID, req)
 	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		return response.FromError(c, err)
 	}
-	return c.Status(201).JSON(forma)
+	return response.Created(c, forma)
 }
 
 func (h *APIHandlers) UpdateFormaPagamentoFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	tenantID, ok := response.GetTenantIDOrRespond(c)
+	if !ok {
+		return nil
 	}
-	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "id inválido"})
+	id, ok := response.ParseIDParamOrRespond(c, "id")
+	if !ok {
+		return nil
 	}
 	var req dto.AtualizarFormaPagamentoRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		return response.ValidationError(c, "invalid body")
 	}
-	forma, err := h.formaPagamentoService.Atualizar(c.Context(), tenantID, uint(id), req)
+	forma, err := h.formaPagamentoService.Atualizar(c.Context(), tenantID, id, req)
 	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		return response.FromError(c, err)
 	}
-	return c.JSON(forma)
+	return response.OK(c, forma)
 }
 
 func (h *APIHandlers) DeleteFormaPagamentoFiber(c *fiber.Ctx) error {
-	tenantID, err := h.getTenantIdByHeaderFiber(c)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"erro": err.Error()})
+	tenantID, ok := response.GetTenantIDOrRespond(c)
+	if !ok {
+		return nil
 	}
-	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "id inválido"})
+	id, ok := response.ParseIDParamOrRespond(c, "id")
+	if !ok {
+		return nil
 	}
-	if err := h.formaPagamentoService.Inativar(c.Context(), tenantID, uint(id)); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	if err := h.formaPagamentoService.Inativar(c.Context(), tenantID, id); err != nil {
+		return response.FromError(c, err)
 	}
-	return c.JSON(fiber.Map{"status": "deactivated"})
+	return response.Deactivated(c)
 }
 
-func (h *APIHandlers) getTenantIdByHeaderFiber(c *fiber.Ctx) (uint, error) {
-	tenantID, err := strconv.Atoi(c.Get("X-Tenant-ID"))
+// TENANTS
+func (h *APIHandlers) ListTenantsFiber(c *fiber.Ctx) error {
+	tenants, err := h.tenantService.List(c.Context())
 	if err != nil {
-		return 0, err
+		return response.FromError(c, err)
 	}
-	return uint(tenantID), nil
+	return response.OK(c, tenants)
+}
+
+func (h *APIHandlers) GetTenantFiber(c *fiber.Ctx) error {
+	id, ok := response.ParseIDParamOrRespond(c, "id")
+	if !ok {
+		return nil
+	}
+	tenant, err := h.tenantService.GetByID(c.Context(), id)
+	if err != nil {
+		return response.FromError(c, err)
+	}
+	return response.OK(c, tenant)
+}
+
+func (h *APIHandlers) CreateTenantFiber(c *fiber.Ctx) error {
+	var req dto.CreateTenantDTO
+	if err := c.BodyParser(&req); err != nil {
+		return response.ValidationError(c, "invalid body: "+err.Error())
+	}
+	if req.Nome == "" {
+		return response.ValidationError(c, "nome é obrigatório")
+	}
+	created, err := h.tenantService.Create(c.Context(), req)
+	if err != nil {
+		return response.FromError(c, err)
+	}
+	return response.Created(c, created)
+}
+
+func (h *APIHandlers) UpdateTenantFiber(c *fiber.Ctx) error {
+	id, ok := response.ParseIDParamOrRespond(c, "id")
+	if !ok {
+		return nil
+	}
+	var req dto.UpdateTenantDTO
+	if err := c.BodyParser(&req); err != nil {
+		return response.ValidationError(c, "invalid body")
+	}
+	updated, err := h.tenantService.Update(c.Context(), id, req)
+	if err != nil {
+		return response.FromError(c, err)
+	}
+	return response.OK(c, updated)
+}
+
+func (h *APIHandlers) DeleteTenantFiber(c *fiber.Ctx) error {
+	id, ok := response.ParseIDParamOrRespond(c, "id")
+	if !ok {
+		return nil
+	}
+	if err := h.tenantService.Delete(c.Context(), id); err != nil {
+		return response.FromError(c, err)
+	}
+	return response.Deleted(c, id)
 }

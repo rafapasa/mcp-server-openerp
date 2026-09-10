@@ -2,9 +2,12 @@ package repository
 
 import (
 	"context"
+	"errors"
 
-	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"gorm.io/gorm"
+
+	"github.com/etoolstec/gokit/apperror"
+	"github.com/rafapasa/mcp-server-openerp/internal/models"
 )
 
 type FormaPagamentoRepository interface {
@@ -35,7 +38,10 @@ func NewPedidoPagamentoRepository(db *gorm.DB) PedidoPagamentoRepository {
 func (r *formaPagamentoRepository) FindByID(ctx context.Context, id uint) (*models.FormaPagamento, error) {
 	var forma models.FormaPagamento
 	if err := r.db.WithContext(ctx).First(&forma, id).Error; err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperror.NewNotFoundError("forma de pagamento não encontrada")
+		}
+		return nil, apperror.NewInternalError("falha ao buscar forma de pagamento", err)
 	}
 	return &forma, nil
 }
@@ -47,25 +53,37 @@ func (r *formaPagamentoRepository) FindByTenant(ctx context.Context, tenantID ui
 		query = query.Where("ativo = ?", true)
 	}
 	if err := query.Find(&formas).Error; err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.FormaPagamento{}, nil
+		}
+		return nil, apperror.NewInternalError("falha ao listar formas de pagamento", err)
 	}
 	return formas, nil
 }
 
 func (r *formaPagamentoRepository) Create(ctx context.Context, forma *models.FormaPagamento) error {
-	return r.db.WithContext(ctx).Create(forma).Error
+	if err := r.db.WithContext(ctx).Create(forma).Error; err != nil {
+		return apperror.NewInternalError("falha ao criar forma de pagamento", err)
+	}
+	return nil
 }
 
 func (r *formaPagamentoRepository) Update(ctx context.Context, forma *models.FormaPagamento) error {
-	return r.db.WithContext(ctx).Model(&models.FormaPagamento{}).
+	if err := r.db.WithContext(ctx).Model(&models.FormaPagamento{}).
 		Where("id = ? AND tenant_id = ?", forma.ID, forma.TenantID).
-		Updates(forma).Error
+		Updates(forma).Error; err != nil {
+		return apperror.NewInternalError("falha ao atualizar forma de pagamento", err)
+	}
+	return nil
 }
 
 func (r *formaPagamentoRepository) Delete(ctx context.Context, id, tenantID uint) error {
-	return r.db.WithContext(ctx).Model(&models.FormaPagamento{}).
+	if err := r.db.WithContext(ctx).Model(&models.FormaPagamento{}).
 		Where("id = ? AND tenant_id = ?", id, tenantID).
-		Update("ativo", false).Error
+		Update("ativo", false).Error; err != nil {
+		return apperror.NewInternalError("falha ao desativar forma de pagamento", err)
+	}
+	return nil
 }
 
 func (r *pedidoPagamentoRepository) FindByPedido(ctx context.Context, pedidoID uint) ([]models.PedidoPagamento, error) {
@@ -75,7 +93,10 @@ func (r *pedidoPagamentoRepository) FindByPedido(ctx context.Context, pedidoID u
 		Where("pedido_id = ?", pedidoID).
 		Order("id ASC").
 		Find(&pagamentos).Error; err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.PedidoPagamento{}, nil
+		}
+		return nil, apperror.NewInternalError("falha ao buscar pagamentos do pedido", err)
 	}
 	return pagamentos, nil
 }
@@ -84,11 +105,17 @@ func (r *pedidoPagamentoRepository) CreateMany(ctx context.Context, pagamentos [
 	if len(pagamentos) == 0 {
 		return nil
 	}
-	return r.db.WithContext(ctx).Create(&pagamentos).Error
+	if err := r.db.WithContext(ctx).Create(&pagamentos).Error; err != nil {
+		return apperror.NewInternalError("falha ao criar pagamentos", err)
+	}
+	return nil
 }
 
 func (r *pedidoPagamentoRepository) MarcarPendentesComoPagos(ctx context.Context, pedidoID uint) error {
-	return r.db.WithContext(ctx).Model(&models.PedidoPagamento{}).
+	if err := r.db.WithContext(ctx).Model(&models.PedidoPagamento{}).
 		Where("pedido_id = ? AND status = ?", pedidoID, models.StatusPagamentoPendente).
-		Update("status", models.StatusPagamentoPago).Error
+		Update("status", models.StatusPagamentoPago).Error; err != nil {
+		return apperror.NewInternalError("falha ao marcar pagamentos como pagos", err)
+	}
+	return nil
 }

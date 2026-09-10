@@ -1,6 +1,3 @@
-// internal/service/pedido_service.go - CORRIGIDO
-// Regra: só chama seu próprio repo (pedidoRepo) + cardapioService
-// Não chama clienteRepo nem enderecoRepo
 package service
 
 import (
@@ -9,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
@@ -37,7 +35,6 @@ func NewPedidoService(
 	}
 }
 
-// ProcessarPedido - assinatura original mantida para compatibilidade
 func (s *pedidoService) ProcessarPedido(
 	ctx context.Context,
 	tenantID, clienteID uint,
@@ -47,7 +44,6 @@ func (s *pedidoService) ProcessarPedido(
 	return s.ProcessarPedidoComEndereco(ctx, tenantID, clienteID, clienteNome, pedidoExtraido, nil)
 }
 
-// ProcessarPedidoComEndereco - NOVO, sem chamar outros repos
 func (s *pedidoService) ProcessarPedidoComEndereco(
 	ctx context.Context,
 	tenantID, clienteID uint,
@@ -81,7 +77,6 @@ func (s *pedidoService) ProcessarPedidoComEnderecoEPagamentos(
 		return nil, err
 	}
 
-	// Junta itens normais + bebidas se existirem no DTO
 	todosItens := append([]dto.ItemPedidoInput{}, pedidoExtraido.Itens...)
 	todosItens = append(todosItens, pedidoExtraido.Bebidas...)
 
@@ -90,9 +85,6 @@ func (s *pedidoService) ProcessarPedidoComEnderecoEPagamentos(
 
 	for _, item := range todosItens {
 		nomeBusca := item.ProdutoItem.Nome
-		if nomeBusca == "" {
-			nomeBusca = item.ProdutoItem.Nome
-		}
 
 		prodCardapio, err := s.cardapioService.ItemExisteNoCardapio(cardapio, nomeBusca)
 		if err != nil || prodCardapio == nil {
@@ -107,11 +99,10 @@ func (s *pedidoService) ProcessarPedidoComEnderecoEPagamentos(
 
 		if prodCardapio == nil {
 			logger.Warn(ctx, "Item não encontrado no cardápio", zap.String("item", nomeBusca))
-			return nil, fmt.Errorf("item '%s' não encontrado no cardápio", nomeBusca)
+			return nil, apperror.NewNotFoundError(fmt.Sprintf("item '%s' não encontrado no cardápio", nomeBusca))
 		}
 
 		preco := prodCardapio.Preco
-		// se já veio com preço do carrinho, respeita (promoção já calculada)
 		if item.PrecoUnitario != 0 {
 			preco = item.PrecoUnitario
 		}
@@ -124,7 +115,7 @@ func (s *pedidoService) ProcessarPedidoComEnderecoEPagamentos(
 	}
 
 	if len(itensComPreco) == 0 {
-		return nil, fmt.Errorf("nenhum item válido para pedido")
+		return nil, apperror.NewBadRequestError("nenhum item válido para pedido")
 	}
 	pagamentosModel, err := s.prepararPagamentos(ctx, tenantID, total, pagamentos)
 	if err != nil {
@@ -133,13 +124,13 @@ func (s *pedidoService) ProcessarPedidoComEnderecoEPagamentos(
 
 	itensJSON, err := json.Marshal(itensComPreco)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao serializar itens: %w", err)
+		return nil, apperror.NewInternalError("erro ao serializar itens", err)
 	}
 
 	pedido := &models.Pedido{
 		TenantID:          tenantID,
 		ClienteID:         &clienteID,
-		EnderecoEntregaID: enderecoEntregaID, // NOVO - pode ser nil (retirada) ou ID válido
+		EnderecoEntregaID: enderecoEntregaID,
 		ClienteNome:       clienteNome,
 		Itens:             itensJSON,
 		Total:             total,
@@ -151,19 +142,17 @@ func (s *pedidoService) ProcessarPedidoComEnderecoEPagamentos(
 
 	if err := s.pedidoRepo.Create(ctx, pedido); err != nil {
 		logger.Error(ctx, "Erro ao salvar pedido", zap.Error(err))
-		return nil, fmt.Errorf("erro ao salvar pedido: %w", err)
+		return nil, err
 	}
 	for i := range pagamentosModel {
 		pagamentosModel[i].PedidoID = pedido.ID
 	}
 	if len(pagamentosModel) > 0 {
 		if err := s.pagamentoRepo.CreateMany(ctx, pagamentosModel); err != nil {
-			return nil, fmt.Errorf("erro ao registrar pagamentos: %w", err)
+			return nil, err
 		}
 	}
 
-	// Não busca cliente nem endereço aqui - respeita separação de repos
-	// Quem precisar do endereço completo, busca via ClienteService no carrinho_service
 	pedidoConfirmado := &dto.PedidoConfirmado{
 		ID:            int(pedido.ID),
 		TenantID:      fmt.Sprint(tenantID),
@@ -174,7 +163,6 @@ func (s *pedidoService) ProcessarPedidoComEnderecoEPagamentos(
 		TempoEstimado: pedido.TempoEstimado,
 		Status:        pedido.Status,
 		CriadoEm:      pedido.CreatedAt.Format("02/01/2006 15:04:05"),
-		// EnderecoEntrega será preenchido pelo CarrinhoService via ClienteService se necessário
 	}
 
 	logger.Info(ctx, "Pedido criado com sucesso", zap.Uint("pedido_id", pedido.ID), zap.Float64("total", total), zap.Any("endereco_id", enderecoEntregaID))
@@ -278,7 +266,7 @@ func (s *pedidoService) AtualizarStatusPedido(ctx context.Context, id uint, stat
 	}
 	if status == models.StatusEntregue && s.pagamentoRepo != nil {
 		if err := s.pagamentoRepo.MarcarPendentesComoPagos(ctx, id); err != nil {
-			return nil, fmt.Errorf("erro ao atualizar pagamentos do pedido: %w", err)
+			return nil, err
 		}
 	}
 	result := s.converterParaDTO(pedido)
@@ -358,26 +346,26 @@ func (s *pedidoService) prepararPagamentos(ctx context.Context, tenantID uint, t
 		return nil, nil
 	}
 	if s.pagamentoRepo == nil || s.formaPagamentoRepo == nil {
-		return nil, fmt.Errorf("repositórios de pagamento não configurados")
+		return nil, apperror.NewInternalError("repositórios de pagamento não configurados", nil)
 	}
 	pagamentos := make([]models.PedidoPagamento, 0, len(inputs))
 	totalPagamentos := 0.0
 	for _, input := range inputs {
 		if input.Valor <= 0 {
-			return nil, fmt.Errorf("valor do pagamento deve ser maior que zero")
+			return nil, apperror.NewBadRequestError("valor do pagamento deve ser maior que zero")
 		}
 		forma, err := s.formaPagamentoRepo.FindByID(ctx, input.FormaPagamentoID)
 		if err != nil {
-			return nil, fmt.Errorf("forma de pagamento não encontrada: %w", err)
+			return nil, err
 		}
 		if forma.TenantID != tenantID || !forma.Ativo {
-			return nil, fmt.Errorf("forma de pagamento inválida para o tenant")
+			return nil, apperror.NewBadRequestError("forma de pagamento inválida para o tenant")
 		}
 		if forma.Tipo != models.TipoPagamentoDinheiro && input.TrocoPara != nil {
-			return nil, fmt.Errorf("troco só pode ser informado para dinheiro")
+			return nil, apperror.NewBadRequestError("troco só pode ser informado para dinheiro")
 		}
 		if input.TrocoPara != nil && *input.TrocoPara < input.Valor {
-			return nil, fmt.Errorf("troco para deve ser maior ou igual ao valor do pagamento")
+			return nil, apperror.NewBadRequestError("troco para deve ser maior ou igual ao valor do pagamento")
 		}
 		totalPagamentos += input.Valor
 		pagamentos = append(pagamentos, models.PedidoPagamento{
@@ -387,7 +375,7 @@ func (s *pedidoService) prepararPagamentos(ctx context.Context, tenantID uint, t
 		})
 	}
 	if totalPagamentos < total-0.01 || totalPagamentos > total+0.01 {
-		return nil, fmt.Errorf("a soma dos pagamentos deve corresponder ao total do pedido")
+		return nil, apperror.NewBadRequestError("a soma dos pagamentos deve corresponder ao total do pedido")
 	}
 	return pagamentos, nil
 }
@@ -421,7 +409,7 @@ func pagamentosModelDTO(pagamentos []models.PedidoPagamento) []dto.PedidoPagamen
 
 func (s *pedidoService) FindByTenant(ctx context.Context, tenantID uint) ([]dto.PedidoDTO, error) {
 	if tenantID == 0 {
-		return nil, fmt.Errorf("tenant_id não informado")
+		return nil, apperror.NewBadRequestError("tenant_id não informado")
 	}
 	pedidos, _, err := s.pedidoRepo.FindByTenant(ctx, tenantID, 100, 0)
 	if err != nil {
@@ -432,4 +420,17 @@ func (s *pedidoService) FindByTenant(ctx context.Context, tenantID uint) ([]dto.
 		result[i] = s.converterParaDTO(&p)
 	}
 	return result, nil
+}
+
+func (s *pedidoService) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.PedidoDTO, int64, error) {
+	offset := (page - 1) * limit
+	pedidos, total, err := s.pedidoRepo.FindByTenant(ctx, tenantID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]dto.PedidoDTO, len(pedidos))
+	for i, p := range pedidos {
+		result[i] = s.converterParaDTO(&p)
+	}
+	return result, total, nil
 }

@@ -5,22 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 )
-
-// Adicione este método na sua interface existente (service/interfaces.go)
-// type TenantServiceInterface interface {
-//   GetByID(ctx context.Context, id uint) (*dto.TenantDTO, error)
-//   GetByCNPJ(ctx context.Context, cnpj string) (*dto.TenantDTO, error)
-//   GetByTelefone(ctx context.Context, telefone string) (*dto.TenantDTO, error)
-//   GetByWhatsAppPhoneID(ctx context.Context, phoneID string) (*dto.TenantDTO, error) // NOVO
-//   List(ctx context.Context) ([]dto.TenantDTO, error)
-//   Create(ctx context.Context, input dto.CreateTenantDTO) (*dto.TenantDTO, error)
-//   GetPromptContext(ctx context.Context, tenantID uint) (string, string, error)
-// }
 
 type tenantService struct {
 	repo  repository.TenantRepository
@@ -55,14 +45,11 @@ func (s *tenantService) GetByTelefone(ctx context.Context, telefone string) (*dt
 	return toTenantDTO(m), nil
 }
 
-// NOVO: Método principal para multi-tenant - usa phone_number_id da Meta
 func (s *tenantService) GetByWhatsAppPhoneID(ctx context.Context, phoneID string) (*dto.TenantDTO, error) {
 	if phoneID == "" {
-		return nil, fmt.Errorf("phoneID vazio")
+		return nil, apperror.NewBadRequestError("phoneID vazio")
 	}
 	cacheKey := fmt.Sprintf("tenant:phone:%s", phoneID)
-
-	// Usa seu GetOrSet genérico já existente em database/redis.go
 	tenantDTO, err := database.GetOrSet(s.cache, ctx, cacheKey, 1*time.Hour, func() (*dto.TenantDTO, error) {
 		m, err := s.repo.FindByWhatsAppPhoneID(ctx, phoneID)
 		if err != nil {
@@ -76,14 +63,11 @@ func (s *tenantService) GetByWhatsAppPhoneID(ctx context.Context, phoneID string
 	return tenantDTO, nil
 }
 
-// GetByVerifyToken localiza o tenant pelo whatsapp_verify_token (validação de segurança do webhook).
-// Usa cache Redis para evitar consulta ao banco a cada GET /webhook da Meta.
 func (s *tenantService) GetByVerifyToken(ctx context.Context, token string) (*dto.TenantDTO, error) {
 	if token == "" {
-		return nil, fmt.Errorf("verify token vazio")
+		return nil, apperror.NewBadRequestError("verify token vazio")
 	}
 	cacheKey := fmt.Sprintf("tenant:verify:%s", token)
-
 	tenantDTO, err := database.GetOrSet(s.cache, ctx, cacheKey, 1*time.Hour, func() (*dto.TenantDTO, error) {
 		m, err := s.repo.FindByVerifyToken(ctx, token)
 		if err != nil {
@@ -114,6 +98,7 @@ func (s *tenantService) Create(ctx context.Context, input dto.CreateTenantDTO) (
 		Nome:                  input.Nome,
 		CNPJ:                  input.CNPJ,
 		Telefone:              input.Telefone,
+		Endereco:              input.Endereco,
 		Segmento:              input.Segmento,
 		WabaID:                input.WabaID,
 		WhatsappPhoneID:       input.WhatsappPhoneID,
@@ -126,11 +111,71 @@ func (s *tenantService) Create(ctx context.Context, input dto.CreateTenantDTO) (
 	return toTenantDTO(m), nil
 }
 
-// Método que tava perdido no webhook_handler.go
+func (s *tenantService) Update(ctx context.Context, id uint, input dto.UpdateTenantDTO) (*dto.TenantDTO, error) {
+	existing, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if input.Nome != nil {
+		existing.Nome = *input.Nome
+	}
+	if input.CNPJ != nil {
+		existing.CNPJ = *input.CNPJ
+	}
+	if input.Telefone != nil {
+		existing.Telefone = *input.Telefone
+	}
+	if input.Endereco != nil {
+		existing.Endereco = *input.Endereco
+	}
+	if input.Segmento != nil {
+		existing.Segmento = *input.Segmento
+	}
+	if input.WabaID != nil {
+		existing.WabaID = *input.WabaID
+	}
+	if input.WhatsappPhoneID != nil {
+		existing.WhatsappPhoneID = *input.WhatsappPhoneID
+	}
+	if input.WhatsappDisplayNumber != nil {
+		existing.WhatsappDisplayNumber = *input.WhatsappDisplayNumber
+	}
+	if input.Ativo != nil {
+		existing.Ativo = *input.Ativo
+	}
+
+	if err := s.repo.Update(ctx, existing); err != nil {
+		return nil, err
+	}
+
+	if s.cache != nil {
+		_ = s.cache.DeleteWithContext(ctx, fmt.Sprintf("tenant:phone:%s", existing.WhatsappPhoneID))
+		_ = s.cache.DeleteWithContext(ctx, fmt.Sprintf("tenant:verify:%s", existing.WhatsappVerifyToken))
+	}
+
+	return toTenantDTO(existing), nil
+}
+
+func (s *tenantService) Delete(ctx context.Context, id uint) error {
+	existing, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	if s.cache != nil {
+		_ = s.cache.DeleteWithContext(ctx, fmt.Sprintf("tenant:phone:%s", existing.WhatsappPhoneID))
+		_ = s.cache.DeleteWithContext(ctx, fmt.Sprintf("tenant:verify:%s", existing.WhatsappVerifyToken))
+	}
+	return nil
+}
+
 func (s *tenantService) GetPromptContext(ctx context.Context, tenantID uint) (string, string, error) {
 	m, err := s.repo.FindByID(ctx, tenantID)
 	if err != nil {
-		return "", "", fmt.Errorf("tenant %d não encontrado", tenantID)
+		return "", "", err
 	}
 	seg := m.Segmento
 	if seg == "" {

@@ -2,9 +2,11 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"gorm.io/gorm"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 )
 
@@ -56,7 +58,10 @@ func (r *enderecoRepository) WithTx(tx *gorm.DB) EnderecoRepositoryInterface {
 
 // Create cria um novo endereço
 func (r *enderecoRepository) Create(ctx context.Context, endereco *models.Endereco) error {
-	return r.db.WithContext(ctx).Create(endereco).Error
+	if err := r.db.WithContext(ctx).Create(endereco).Error; err != nil {
+		return apperror.NewInternalError("falha ao criar endereço", err)
+	}
+	return nil
 }
 
 // FindByID busca um endereço pelo ID
@@ -66,7 +71,10 @@ func (r *enderecoRepository) FindByID(ctx context.Context, id uint) (*models.End
 		Preload("Cliente").
 		First(&endereco, id).Error
 	if err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperror.NewNotFoundError("endereço não encontrado")
+		}
+		return nil, apperror.NewInternalError("falha ao buscar endereço", err)
 	}
 	return &endereco, nil
 }
@@ -78,7 +86,13 @@ func (r *enderecoRepository) FindByCliente(ctx context.Context, clienteID uint) 
 		Where("cliente_id = ?", clienteID).
 		Order("principal DESC, created_at DESC").
 		Find(&enderecos).Error
-	return enderecos, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Endereco{}, nil
+		}
+		return nil, apperror.NewInternalError("falha ao listar endereços do cliente", err)
+	}
+	return enderecos, nil
 }
 
 // FindByClienteAtivos busca apenas os endereços ativos de um cliente
@@ -88,23 +102,38 @@ func (r *enderecoRepository) FindByClienteAtivos(ctx context.Context, clienteID 
 		Where("cliente_id = ? AND deleted_at IS NULL", clienteID).
 		Order("principal DESC, created_at DESC").
 		Find(&enderecos).Error
-	return enderecos, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Endereco{}, nil
+		}
+		return nil, apperror.NewInternalError("falha ao listar endereços ativos", err)
+	}
+	return enderecos, nil
 }
 
 // Update atualiza um endereço
 // NOTA: Endereços são imutáveis! Use Delete + Create para "editar"
 func (r *enderecoRepository) Update(ctx context.Context, endereco *models.Endereco) error {
-	return r.db.WithContext(ctx).Save(endereco).Error
+	if err := r.db.WithContext(ctx).Save(endereco).Error; err != nil {
+		return apperror.NewInternalError("falha ao atualizar endereço", err)
+	}
+	return nil
 }
 
 // Delete realiza soft delete do endereço
 func (r *enderecoRepository) Delete(ctx context.Context, id uint) error {
-	return r.db.WithContext(ctx).Delete(&models.Endereco{}, id).Error
+	if err := r.db.WithContext(ctx).Delete(&models.Endereco{}, id).Error; err != nil {
+		return apperror.NewInternalError("falha ao deletar endereço", err)
+	}
+	return nil
 }
 
 // DeletePermanente remove permanentemente o endereço (cuidado!)
 func (r *enderecoRepository) DeletePermanente(ctx context.Context, id uint) error {
-	return r.db.WithContext(ctx).Unscoped().Delete(&models.Endereco{}, id).Error
+	if err := r.db.WithContext(ctx).Unscoped().Delete(&models.Endereco{}, id).Error; err != nil {
+		return apperror.NewInternalError("falha ao deletar endereço permanentemente", err)
+	}
+	return nil
 }
 
 // ============================================
@@ -118,7 +147,10 @@ func (r *enderecoRepository) FindPrincipal(ctx context.Context, clienteID uint) 
 		Where("cliente_id = ? AND principal = ? AND deleted_at IS NULL", clienteID, true).
 		First(&endereco).Error
 	if err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperror.NewNotFoundError("endereço principal não encontrado")
+		}
+		return nil, apperror.NewInternalError("falha ao buscar endereço principal", err)
 	}
 	return &endereco, nil
 }
@@ -130,7 +162,13 @@ func (r *enderecoRepository) FindByCEP(ctx context.Context, cep string) ([]model
 		Where("cep = ?", cep).
 		Preload("Cliente").
 		Find(&enderecos).Error
-	return enderecos, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Endereco{}, nil
+		}
+		return nil, apperror.NewInternalError("falha ao buscar endereços por CEP", err)
+	}
+	return enderecos, nil
 }
 
 // FindByClienteETipo busca endereços de um cliente por tipo
@@ -140,7 +178,13 @@ func (r *enderecoRepository) FindByClienteETipo(ctx context.Context, clienteID u
 		Where("cliente_id = ? AND tipo = ? AND deleted_at IS NULL", clienteID, tipo).
 		Order("principal DESC, created_at DESC").
 		Find(&enderecos).Error
-	return enderecos, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Endereco{}, nil
+		}
+		return nil, apperror.NewInternalError("falha ao buscar endereços por tipo", err)
+	}
+	return enderecos, nil
 }
 
 // ============================================
@@ -154,7 +198,10 @@ func (r *enderecoRepository) CountByCliente(ctx context.Context, clienteID uint)
 		Model(&models.Endereco{}).
 		Where("cliente_id = ?", clienteID).
 		Count(&count).Error
-	return count, err
+	if err != nil {
+		return 0, apperror.NewInternalError("falha ao contar endereços", err)
+	}
+	return count, nil
 }
 
 // CountAtivosByCliente conta os endereços ativos de um cliente
@@ -164,7 +211,10 @@ func (r *enderecoRepository) CountAtivosByCliente(ctx context.Context, clienteID
 		Model(&models.Endereco{}).
 		Where("cliente_id = ? AND deleted_at IS NULL", clienteID).
 		Count(&count).Error
-	return count, err
+	if err != nil {
+		return 0, apperror.NewInternalError("falha ao contar endereços ativos", err)
+	}
+	return count, nil
 }
 
 // ============================================
@@ -173,8 +223,11 @@ func (r *enderecoRepository) CountAtivosByCliente(ctx context.Context, clienteID
 
 // UnsetPrincipalByCliente desmarca o flag principal de todos os endereços ativos de um cliente
 func (r *enderecoRepository) UnsetPrincipalByCliente(ctx context.Context, clienteID uint) error {
-	return r.db.WithContext(ctx).
+	if err := r.db.WithContext(ctx).
 		Model(&models.Endereco{}).
 		Where("cliente_id = ? AND deleted_at IS NULL", clienteID).
-		Update("principal", false).Error
+		Update("principal", false).Error; err != nil {
+		return apperror.NewInternalError("falha ao desmarcar endereços principais", err)
+	}
+	return nil
 }

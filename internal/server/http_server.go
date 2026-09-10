@@ -116,6 +116,11 @@ func (s *HttpServer) buildFiber() *fiber.App {
 	protected.Post("/formas-pagamento", s.apiHandlers.CreateFormaPagamentoFiber)
 	protected.Put("/formas-pagamento/:id", s.apiHandlers.UpdateFormaPagamentoFiber)
 	protected.Delete("/formas-pagamento/:id", s.apiHandlers.DeleteFormaPagamentoFiber)
+	protected.Get("/tenants", s.apiHandlers.ListTenantsFiber)
+	protected.Get("/tenants/:id", s.apiHandlers.GetTenantFiber)
+	protected.Post("/tenants", s.apiHandlers.CreateTenantFiber)
+	protected.Put("/tenants/:id", s.apiHandlers.UpdateTenantFiber)
+	protected.Delete("/tenants/:id", s.apiHandlers.DeleteTenantFiber)
 
 	// 4. MCP SSE (se você expõe MCP via HTTP)
 	// Se seu MCPServer tem SSEHandler, descomenta:
