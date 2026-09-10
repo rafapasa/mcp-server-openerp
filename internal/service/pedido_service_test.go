@@ -21,20 +21,3 @@ func TestNormalizarStatusPedido(t *testing.T) {
 	assert.Equal(t, models.StatusSaiuParaEntrega, models.NormalizarStatusPedido("saiu para entrega"))
 	assert.Equal(t, models.StatusSaiuParaEntrega, models.NormalizarStatusPedido("saiu_para_entrega"))
 }
-
-func TestFormatarMensagemSaiuParaEntrega(t *testing.T) {
-	pedido := &models.Pedido{
-		ID:          5,
-		ClienteNome: "João",
-		EnderecoEntrega: &models.Endereco{
-			Logradouro: "Travessa Ana Albrecht",
-			Numero:     "68",
-			Bairro:     "Centro",
-		},
-	}
-	msg := formatarMensagemSaiuParaEntrega(pedido)
-	assert.Contains(t, msg, "João")
-	assert.Contains(t, msg, "#5")
-	assert.Contains(t, msg, "Travessa Ana Albrecht")
-	assert.Contains(t, msg, "68")
-}

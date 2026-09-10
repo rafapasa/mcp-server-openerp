@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/etoolstec/gokit/apperror"
@@ -306,39 +305,6 @@ func pedidoStatusValido(statusAtual, statusNovo string) bool {
 		}
 	}
 	return false
-}
-
-func formatarMensagemSaiuParaEntrega(pedido *models.Pedido) string {
-	if pedido == nil {
-		return ""
-	}
-	endereco := ""
-	if pedido.EnderecoEntrega != nil {
-		endereco = strings.TrimSpace(pedido.EnderecoEntrega.Logradouro)
-		if pedido.EnderecoEntrega.Numero != "" {
-			if endereco != "" {
-				endereco += ", " + pedido.EnderecoEntrega.Numero
-			} else {
-				endereco = pedido.EnderecoEntrega.Numero
-			}
-		}
-		if pedido.EnderecoEntrega.Bairro != "" {
-			if endereco != "" {
-				endereco += " - " + pedido.EnderecoEntrega.Bairro
-			} else {
-				endereco = pedido.EnderecoEntrega.Bairro
-			}
-		}
-	}
-	clienteNome := strings.TrimSpace(pedido.ClienteNome)
-	if clienteNome == "" {
-		clienteNome = "Cliente"
-	}
-	msg := fmt.Sprintf("🛵 %s, seu pedido #%d saiu para entrega! Chega em ~15 min.", clienteNome, pedido.ID)
-	if endereco != "" {
-		msg += fmt.Sprintf(" Endereço: %s", endereco)
-	}
-	return msg
 }
 
 func (s *pedidoService) Create(ctx context.Context, req *dto.CriarPedidoRequest) (*dto.PedidoDTO, error) {

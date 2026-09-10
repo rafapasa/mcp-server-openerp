@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -144,44 +143,12 @@ func (h *APIHandlers) notificarPedidoSaiuParaEntrega(ctx context.Context, pedido
 			return nil
 		}
 	}
-	msg := formatarMensagemSaiuParaEntregaDTO(pedido)
+	msg := dto.FormatarMensagemSaiuParaEntrega(pedido)
 	if err := h.whatsAppClient.SendMessageCtx(ctx, pedido.ClienteTelefone, msg); err != nil {
 		return err
 	}
 	logger.Info(ctx, "Notificação de pedido saiu para entrega enviada com sucesso", zap.Uint("pedido_id", pedido.ID), zap.String("telefone", pedido.ClienteTelefone))
 	return nil
-}
-
-func formatarMensagemSaiuParaEntregaDTO(pedido *dto.PedidoDTO) string {
-	if pedido == nil {
-		return ""
-	}
-	clienteNome := strings.TrimSpace(pedido.ClienteNome)
-	if clienteNome == "" {
-		clienteNome = "Cliente"
-	}
-	msg := fmt.Sprintf("🛵 %s, seu pedido #%d saiu para entrega! Chega em ~15 min.", clienteNome, pedido.ID)
-	if pedido.EnderecoEntrega != nil {
-		endereco := strings.TrimSpace(pedido.EnderecoEntrega.Logradouro)
-		if pedido.EnderecoEntrega.Numero != "" {
-			if endereco != "" {
-				endereco += ", " + pedido.EnderecoEntrega.Numero
-			} else {
-				endereco = pedido.EnderecoEntrega.Numero
-			}
-		}
-		if pedido.EnderecoEntrega.Bairro != "" {
-			if endereco != "" {
-				endereco += " - " + pedido.EnderecoEntrega.Bairro
-			} else {
-				endereco = pedido.EnderecoEntrega.Bairro
-			}
-		}
-		if endereco != "" {
-			msg += fmt.Sprintf(" Endereço: %s", endereco)
-		}
-	}
-	return msg
 }
 
 // GET /api/v1/clientes
