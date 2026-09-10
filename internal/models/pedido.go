@@ -25,7 +25,7 @@ type Pedido struct {
 	ClienteTelefone   string          `gorm:"size:20"`
 	Itens             json.RawMessage `gorm:"type:json;not null"`
 	Total             float64         `gorm:"type:decimal(10,2);not null"`
-	Status            string          `gorm:"type:enum('pendente','confirmado','preparando','entregue','cancelado');default:'pendente'"`
+	Status            string          `gorm:"type:enum('pendente','confirmado','em_preparo','saiu_para_entrega','entregue','cancelado');default:'pendente'"`
 	Observacoes       string          `gorm:"type:text"`
 	TempoEstimado     int             `gorm:"default:0"`
 	Origem            string          `gorm:"type:enum('whatsapp','dashboard','api');default:'whatsapp'"`

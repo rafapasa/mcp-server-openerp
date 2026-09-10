@@ -1,17 +1,36 @@
 package models
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 const (
-	StatusPendente   = "pendente"
-	StatusConfirmado = "confirmado"
-	StatusPreparando = "preparando"
-	StatusEntregue   = "entregue"
-	StatusCancelado  = "cancelado"
-	OrigemWhatsApp   = "whatsapp"
-	OrigemDashboard  = "dashboard"
-	OrigemAPI        = "api"
+	StatusPendente        = "pendente"
+	StatusConfirmado      = "confirmado"
+	StatusEmPreparo       = "em_preparo"
+	StatusSaiuParaEntrega = "saiu_para_entrega"
+	StatusPreparando      = "preparando"
+	StatusEntregue        = "entregue"
+	StatusCancelado       = "cancelado"
+	OrigemWhatsApp        = "whatsapp"
+	OrigemDashboard       = "dashboard"
+	OrigemAPI             = "api"
 )
+
+func NormalizarStatusPedido(status string) string {
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	switch normalized {
+	case "preparando", "em-preparo", "em_preparo", "em preparo":
+		return StatusEmPreparo
+	case "saiu para entrega", "saiu_para_entrega", "saiu-para-entrega":
+		return StatusSaiuParaEntrega
+	case "preparado", "pronto":
+		return StatusSaiuParaEntrega
+	default:
+		return normalized
+	}
+}
 
 type Status int
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/pressly/goose/v3"
@@ -59,6 +60,9 @@ func main() {
 			if err := ensureWhatsAppSchema(sqlDB); err != nil {
 				log.Fatalf("preparar schema do WhatsApp: %v", err)
 			}
+			if err := ensurePedidoStatusSchema(sqlDB); err != nil {
+				log.Fatalf("preparar schema de status do pedido: %v", err)
+			}
 			if err := goose.Up(sqlDB, dir); err != nil {
 				log.Fatalf("goose up failed: %v", err)
 			}
@@ -73,6 +77,9 @@ func main() {
 		// default: up
 		if err := ensureWhatsAppSchema(sqlDB); err != nil {
 			log.Fatalf("preparar schema do WhatsApp: %v", err)
+		}
+		if err := ensurePedidoStatusSchema(sqlDB); err != nil {
+			log.Fatalf("preparar schema de status do pedido: %v", err)
 		}
 		if err := goose.Up(sqlDB, dir); err != nil {
 			log.Fatalf("goose up failed: %v", err)
@@ -163,4 +170,65 @@ func ensureWhatsAppSchema(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+const (
+	pedidoStatusExpandedEnum  = "ENUM('pendente','confirmado','preparando','em_preparo','saiu_para_entrega','entregue','cancelado')"
+	pedidoStatusCanonicalEnum = "ENUM('pendente','confirmado','em_preparo','saiu_para_entrega','entregue','cancelado')"
+)
+
+// ensurePedidoStatusSchema amplia o ENUM de `pedidos.status` com os status do
+// fluxo de entrega (`em_preparo`, `saiu_para_entrega`) e remapeia registros
+// legados de `preparando` para `em_preparo`.
+func ensurePedidoStatusSchema(db *sql.DB) error {
+	var columnType, isNullable string
+	var columnDefault sql.NullString
+	err := db.QueryRow(
+		"SELECT COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'pedidos' AND column_name = 'status'",
+	).Scan(&columnType, &isNullable, &columnDefault)
+	if err == sql.ErrNoRows {
+		// Tabela `pedidos` ainda não existe: será criada já com o ENUM novo.
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("verificar coluna status de pedidos: %w", err)
+	}
+
+	for _, stmt := range pedidoStatusMigrationStatements(columnType, isNullable, columnDefault) {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("aplicar migração de status do pedido (%s): %w", stmt, err)
+		}
+	}
+	fmt.Println("✅ enum de status do pedido atualizado")
+	return nil
+}
+
+// pedidoStatusMigrationStatements devolve, em ordem, os comandos necessários
+// para levar `pedidos.status` do conjunto legado ao canônico, ou nil quando a
+// coluna já está no formato esperado (tornando a migração idempotente).
+//
+// A ordem importa: um MODIFY direto para o conjunto final truncaria as linhas
+// que ainda usam `preparando`, então o ENUM é ampliado, os dados são remapeados
+// e só então o ENUM é estreitado.
+func pedidoStatusMigrationStatements(columnType, isNullable string, columnDefault sql.NullString) []string {
+	lowerType := strings.ToLower(columnType)
+	if strings.Contains(lowerType, "'em_preparo'") &&
+		strings.Contains(lowerType, "'saiu_para_entrega'") &&
+		!strings.Contains(lowerType, "'preparando'") {
+		return nil
+	}
+
+	suffix := ""
+	if isNullable == "NO" {
+		suffix += " NOT NULL"
+	}
+	if columnDefault.Valid {
+		suffix += fmt.Sprintf(" DEFAULT '%s'", columnDefault.String)
+	}
+
+	return []string{
+		"ALTER TABLE `pedidos` MODIFY COLUMN `status` " + pedidoStatusExpandedEnum + suffix,
+		"UPDATE `pedidos` SET `status` = 'em_preparo' WHERE `status` = 'preparando'",
+		"ALTER TABLE `pedidos` MODIFY COLUMN `status` " + pedidoStatusCanonicalEnum + suffix,
+	}
 }
