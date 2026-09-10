@@ -260,11 +260,19 @@ func (s *pedidoService) ListByCliente(ctx context.Context, clienteID uint, page,
 }
 
 func (s *pedidoService) AtualizarStatusPedido(ctx context.Context, id uint, status string) (*dto.PedidoDTO, error) {
-	pedido, err := s.pedidoRepo.UpdateStatus(ctx, id, status)
+	normalizedStatus := models.NormalizarStatusPedido(status)
+	pedidoAtual, err := s.pedidoRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if status == models.StatusEntregue && s.pagamentoRepo != nil {
+	if !pedidoStatusValido(pedidoAtual.Status, normalizedStatus) {
+		return nil, apperror.NewBadRequestError(fmt.Sprintf("transição de status inválida: %s -> %s", pedidoAtual.Status, normalizedStatus))
+	}
+	pedido, err := s.pedidoRepo.UpdateStatus(ctx, id, normalizedStatus)
+	if err != nil {
+		return nil, err
+	}
+	if normalizedStatus == models.StatusEntregue && s.pagamentoRepo != nil {
 		if err := s.pagamentoRepo.MarcarPendentesComoPagos(ctx, id); err != nil {
 			return nil, err
 		}
@@ -272,6 +280,31 @@ func (s *pedidoService) AtualizarStatusPedido(ctx context.Context, id uint, stat
 	result := s.converterParaDTO(pedido)
 	result.Pagamentos = s.pagamentosDTO(ctx, id)
 	return &result, nil
+}
+
+func pedidoStatusValido(statusAtual, statusNovo string) bool {
+	statusAtual = models.NormalizarStatusPedido(statusAtual)
+	statusNovo = models.NormalizarStatusPedido(statusNovo)
+	if statusAtual == "" || statusNovo == "" {
+		return false
+	}
+	if statusAtual == statusNovo {
+		return true
+	}
+	transicoes := map[string][]string{
+		models.StatusPendente:        {models.StatusConfirmado, models.StatusCancelado},
+		models.StatusConfirmado:      {models.StatusEmPreparo, models.StatusCancelado},
+		models.StatusEmPreparo:       {models.StatusSaiuParaEntrega, models.StatusCancelado},
+		models.StatusSaiuParaEntrega: {models.StatusEntregue, models.StatusCancelado},
+		models.StatusEntregue:        {},
+		models.StatusCancelado:       {},
+	}
+	for _, statusValido := range transicoes[statusAtual] {
+		if statusValido == statusNovo {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *pedidoService) Create(ctx context.Context, req *dto.CriarPedidoRequest) (*dto.PedidoDTO, error) {

@@ -2,7 +2,11 @@
 // Junta os dois arquivos, mescla campos duplicados sem perder nada
 package dto
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // ============================================
 // ITENS - ENTRADA DA IA
@@ -60,6 +64,43 @@ type PedidoDTO struct {
 	CreatedAt         time.Time            `json:"created_at"`
 	UpdatedAt         time.Time            `json:"updated_at"`
 	Pagamentos        []PedidoPagamentoDTO `json:"pagamentos,omitempty"`
+}
+
+// FormatarMensagemSaiuParaEntrega monta a mensagem enviada ao cliente quando o
+// pedido entra em `saiu_para_entrega`. Fica no dto para ser compartilhada entre
+// o service e a borda HTTP sem criar dependência circular.
+func FormatarMensagemSaiuParaEntrega(pedido *PedidoDTO) string {
+	if pedido == nil {
+		return ""
+	}
+	clienteNome := strings.TrimSpace(pedido.ClienteNome)
+	if clienteNome == "" {
+		clienteNome = "Cliente"
+	}
+	msg := fmt.Sprintf("🛵 %s, seu pedido #%d saiu para entrega! Chega em ~15 min.", clienteNome, pedido.ID)
+	if pedido.EnderecoEntrega == nil {
+		return msg
+	}
+
+	endereco := strings.TrimSpace(pedido.EnderecoEntrega.Logradouro)
+	if pedido.EnderecoEntrega.Numero != "" {
+		if endereco != "" {
+			endereco += ", " + pedido.EnderecoEntrega.Numero
+		} else {
+			endereco = pedido.EnderecoEntrega.Numero
+		}
+	}
+	if pedido.EnderecoEntrega.Bairro != "" {
+		if endereco != "" {
+			endereco += " - " + pedido.EnderecoEntrega.Bairro
+		} else {
+			endereco = pedido.EnderecoEntrega.Bairro
+		}
+	}
+	if endereco != "" {
+		msg += fmt.Sprintf(" Endereço: %s", endereco)
+	}
+	return msg
 }
 
 // ItemPedidoDTO - MERGE: tinha versão com ProdutoID e versão sem

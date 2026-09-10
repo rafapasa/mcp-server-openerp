@@ -1,11 +1,18 @@
 package server
 
 import (
+	"context"
+	"fmt"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/server/response"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
+	"github.com/rafapasa/mcp-server-openerp/internal/webhook"
 	"go.uber.org/zap"
 )
 
@@ -16,6 +23,8 @@ type APIHandlers struct {
 	cardapioService       service.CardapioServiceInterface
 	formaPagamentoService service.FormaPagamentoServiceInterface
 	tenantService         service.TenantServiceInterface
+	cache                 database.RedisInterface
+	whatsAppClient        *webhook.WhatsAppClient
 }
 
 func NewAPIHandlers(
@@ -25,6 +34,8 @@ func NewAPIHandlers(
 	cardapioService service.CardapioServiceInterface,
 	formaPagamentoService service.FormaPagamentoServiceInterface,
 	tenantService service.TenantServiceInterface,
+	cache database.RedisInterface,
+	whatsAppClient *webhook.WhatsAppClient,
 ) *APIHandlers {
 	return &APIHandlers{
 		authService:           authService,
@@ -33,6 +44,8 @@ func NewAPIHandlers(
 		cardapioService:       cardapioService,
 		formaPagamentoService: formaPagamentoService,
 		tenantService:         tenantService,
+		cache:                 cache,
+		whatsAppClient:        whatsAppClient,
 	}
 }
 
@@ -107,7 +120,35 @@ func (h *APIHandlers) UpdatePedidoStatusFiber(c *fiber.Ctx) error {
 	if err != nil {
 		return response.FromError(c, err)
 	}
+	if models.NormalizarStatusPedido(req.Status) == models.StatusSaiuParaEntrega {
+		if err := h.notificarPedidoSaiuParaEntrega(c.Context(), pedido); err != nil {
+			logger.Warn(c.Context(), "Erro ao enviar notificação de pedido saiu para entrega", zap.Error(err), zap.Uint("pedido_id", pedido.ID))
+		}
+	}
 	return response.OK(c, pedido)
+}
+
+func (h *APIHandlers) notificarPedidoSaiuParaEntrega(ctx context.Context, pedido *dto.PedidoDTO) error {
+	if pedido == nil || h.whatsAppClient == nil || pedido.ClienteTelefone == "" {
+		return nil
+	}
+	if h.cache != nil {
+		key := fmt.Sprintf("notificacao:saiu:%d", pedido.ID)
+		set, err := h.cache.SetNXWithContext(ctx, key, "1", 24*time.Hour)
+		if err != nil {
+			return err
+		}
+		if !set {
+			logger.Info(ctx, "Notificação de entrega já enviada; ignorando duplicata", zap.Uint("pedido_id", pedido.ID))
+			return nil
+		}
+	}
+	msg := dto.FormatarMensagemSaiuParaEntrega(pedido)
+	if err := h.whatsAppClient.SendMessageCtx(ctx, pedido.ClienteTelefone, msg); err != nil {
+		return err
+	}
+	logger.Info(ctx, "Notificação de pedido saiu para entrega enviada com sucesso", zap.Uint("pedido_id", pedido.ID), zap.String("telefone", pedido.ClienteTelefone))
+	return nil
 }
 
 // GET /api/v1/clientes

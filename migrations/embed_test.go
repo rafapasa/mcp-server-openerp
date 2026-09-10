@@ -30,7 +30,7 @@ func TestFSEmbedContemMigracoesGoose(t *testing.T) {
 			t.Errorf("migração %q contém SQL sem -- +goose StatementBegin", entry.Name())
 		}
 	}
-	if migrationCount != 6 {
-		t.Fatalf("quantidade inesperada de migrations: got %d, want 6", migrationCount)
+	if migrationCount != 7 {
+		t.Fatalf("quantidade inesperada de migrations: got %d, want 7", migrationCount)
 	}
 }
