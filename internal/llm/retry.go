@@ -2,10 +2,10 @@ package llm
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"go.uber.org/zap"
 )
@@ -79,7 +79,10 @@ func RetryWithBackoff[T any](
 		}
 	}
 
-	return zero, fmt.Errorf("falhou após %d tentativas: %w", cfg.MaxAttempts, lastErr)
+	if apperror.IsAppError(lastErr) {
+		return zero, lastErr
+	}
+	return zero, apperror.NewInternalError("falhou após retries LLM", lastErr)
 }
 
 func shouldRetry(err error) bool {

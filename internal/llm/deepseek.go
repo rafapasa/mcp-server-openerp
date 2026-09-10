@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 )
@@ -37,9 +37,9 @@ func (l *DeepSeekLLM) GetModel() string    { return l.model }
 
 func (l *DeepSeekLLM) GenerateResponse(ctx context.Context, prompt string) (string, error) {
 	if l.apiKey == "" {
-		return "", fmt.Errorf("DEEPSEEK_API_KEY não configurada")
+		return "", apperror.NewInternalError("DEEPSEEK_API_KEY não configurada", nil)
 	}
-	url := fmt.Sprintf("%s/chat/completions", l.baseURL)
+	url := l.baseURL + "/chat/completions"
 	bodyReq := map[string]interface{}{
 		"model":       l.model,
 		"messages":    []map[string]string{{"role": "user", "content": prompt}},
@@ -47,17 +47,20 @@ func (l *DeepSeekLLM) GenerateResponse(ctx context.Context, prompt string) (stri
 		"stream":      false,
 	}
 	jb, _ := json.Marshal(bodyReq)
-	req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jb))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jb))
+	if err != nil {
+		return "", mapLLMNetErr("deepseek", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", l.apiKey))
+	req.Header.Set("Authorization", "Bearer "+l.apiKey)
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
-		return "", err
+		return "", mapLLMNetErr("deepseek", err)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("deepseek %d: %s", resp.StatusCode, string(b))
+		return "", mapLLMHTTPStatus("deepseek", resp.StatusCode, string(b))
 	}
 	var r struct {
 		Choices []struct {
@@ -66,17 +69,19 @@ func (l *DeepSeekLLM) GenerateResponse(ctx context.Context, prompt string) (stri
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	json.Unmarshal(b, &r)
+	if err := json.Unmarshal(b, &r); err != nil {
+		return "", apperror.NewInternalError("deepseek parse response", err)
+	}
 	if len(r.Choices) == 0 {
-		return "", fmt.Errorf("sem resposta deepseek")
+		return "", apperror.NewInternalError("sem resposta deepseek", nil)
 	}
 	return r.Choices[0].Message.Content, nil
 }
 
 func (l *DeepSeekLLM) TranscribeAudio(ctx context.Context, audio []byte, prompt string) (string, error) {
-	return "", fmt.Errorf("deepseek não transcreve audio")
+	return "", apperror.NewBadRequestError("deepseek não transcreve audio")
 }
 
 func (l *DeepSeekLLM) DescribeImage(ctx context.Context, image []byte, prompt string) (string, error) {
-	return "", fmt.Errorf("deepseek não descreve imagem")
+	return "", apperror.NewBadRequestError("deepseek não descreve imagem")
 }

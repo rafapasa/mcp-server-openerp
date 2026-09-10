@@ -144,7 +144,7 @@ func TestClienteService_Create(t *testing.T) {
 
 		resultado, err := svc.Create(testCtx(), &dto.CriarClienteRequest{TenantID: 1, Telefone: "5547999999999", Nome: "João"})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "erro ao criar cliente")
+		assert.Contains(t, err.Error(), "erro no banco")
 		assert.Nil(t, resultado)
 	})
 }
@@ -240,7 +240,7 @@ func TestClienteService_AdicionarEndereco(t *testing.T) {
 
 		resultado, err := svc.AdicionarEndereco(testCtx(), 1, reqValido)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "cliente não encontrado")
+		assert.Contains(t, err.Error(), "record not found")
 		assert.Nil(t, resultado)
 	})
 
@@ -305,7 +305,7 @@ func TestClienteService_AdicionarEndereco(t *testing.T) {
 
 		resultado, err := svc.AdicionarEndereco(testCtx(), 1, &req)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "desmarcar endereços principais")
+		assert.Contains(t, err.Error(), "erro no banco")
 		assert.Nil(t, resultado)
 	})
 
@@ -316,7 +316,7 @@ func TestClienteService_AdicionarEndereco(t *testing.T) {
 
 		resultado, err := svc.AdicionarEndereco(testCtx(), 1, reqValido)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "erro ao criar endereço")
+		assert.Contains(t, err.Error(), "erro no banco")
 		assert.Nil(t, resultado)
 	})
 }
@@ -344,7 +344,7 @@ func TestClienteService_ListarEnderecos(t *testing.T) {
 
 		_, err := svc.ListarEnderecos(testCtx(), 5)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "erro ao listar endereços")
+		assert.Contains(t, err.Error(), "erro no banco")
 	})
 }
 
@@ -415,7 +415,7 @@ func TestClienteService_AtualizarStatus(t *testing.T) {
 
 		err := svc.AtualizarStatus(testCtx(), 9, "inativo", "motivo")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "cliente não encontrado")
+		assert.Contains(t, err.Error(), "record not found")
 	})
 
 	t.Run("sucesso: aplica status, motivo e data", func(t *testing.T) {
@@ -462,7 +462,7 @@ func TestClienteService_FindByID(t *testing.T) {
 
 		resultado, err := svc.FindByID(testCtx(), 99)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "cliente não encontrado")
+		assert.Contains(t, err.Error(), "record not found")
 		assert.Nil(t, resultado)
 	})
 
@@ -472,7 +472,7 @@ func TestClienteService_FindByID(t *testing.T) {
 
 		_, err := svc.FindByID(testCtx(), 99)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "erro ao buscar cliente")
+		assert.Contains(t, err.Error(), "banco fora")
 	})
 
 	t.Run("sucesso: converte para DTO", func(t *testing.T) {
@@ -487,12 +487,14 @@ func TestClienteService_FindByID(t *testing.T) {
 }
 
 func TestClienteService_FindByTelefone(t *testing.T) {
-	t.Run("não encontrado: retorna nil, nil", func(t *testing.T) {
+	t.Run("não encontrado: propaga erro do repositório", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
+		// Com a remoção do isNotFound, o service passa a propagar o erro do repo
 		clienteRepo.EXPECT().FindByTelefone(testCtx(), "5547999999999", uint(1)).Return(nil, gorm.ErrRecordNotFound)
 
 		resultado, err := svc.FindByTelefone(testCtx(), "5547999999999", 1)
-		require.NoError(t, err)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "record not found")
 		assert.Nil(t, resultado)
 	})
 
@@ -586,7 +588,7 @@ func TestClienteService_DefinirEnderecoPrincipal(t *testing.T) {
 
 		err := svc.DefinirEnderecoPrincipal(testCtx(), 1, 10)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "endereço não encontrado")
+		assert.Contains(t, err.Error(), "record not found")
 	})
 
 	t.Run("erro: endereço de outro cliente", func(t *testing.T) {

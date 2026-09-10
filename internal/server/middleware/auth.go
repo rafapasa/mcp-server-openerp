@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/rafapasa/mcp-server-openerp/internal/server/response"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 )
 
@@ -11,12 +12,12 @@ func AuthMiddlewareFiber(authService service.AuthServiceInterface) fiber.Handler
 	return func(c *fiber.Ctx) error {
 		auth := c.Get("Authorization")
 		if !strings.HasPrefix(auth, "Bearer ") {
-			return c.Status(401).JSON(fiber.Map{"error": "token required"})
+			return response.Unauthorized(c, "token required")
 		}
 		token := strings.TrimPrefix(auth, "Bearer ")
 		claims, err := authService.ValidateToken(token)
 		if err != nil {
-			return c.Status(401).JSON(fiber.Map{"error": "token invalid"})
+			return response.FromError(c, err)
 		}
 		c.Locals("userID", claims.UserID)
 		c.Locals("tenantID", claims.TenantID)

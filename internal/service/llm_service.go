@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
@@ -37,14 +38,10 @@ func (s *llmService) HasValidConfig() bool {
 }
 
 func (s *llmService) IsOnline(ctx context.Context) (bool, error) {
-	if !s.HasValidConfig() {
-		return false, fmt.Errorf("llm provider sem configuração válida")
+	if s.provider == nil {
+		return false, apperror.NewInternalError("llm provider não configurado", nil)
 	}
-	_, err := s.provider.GenerateResponse(ctx, "Responda apenas com a palavra: ok")
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+	return s.provider.IsOnline(ctx)
 }
 
 func (s *llmService) GetProviderInfo() (textProvider, audioProvider, visionProvider string) {
@@ -55,25 +52,18 @@ func (s *llmService) GetProviderInfo() (textProvider, audioProvider, visionProvi
 	return p, p, p
 }
 
-// ObterTextoBase - NOVO MÉTODO NECESSÁRIO PARA CATÁLOGO GRANDE
-// Reaproveita exatamente os métodos públicos já existentes no provider
-// Resolve audio/imagem -> texto, igual ao que ResolveItemsByMenu já faz internamente
 func (s *llmService) ObterTextoBase(ctx context.Context, tenantID uint, input dto.MessageInput) (string, error) {
-	// tenantID é mantido na assinatura para compatibilidade futura (log / multitenant)
-	// mas não é usado no provider atual - mesma assinatura de ResolveItemsByMenu
 	_ = tenantID
 	switch input.Source {
 	case models.SourceAudio:
 		if len(input.Audio) == 0 {
-			return "", fmt.Errorf("áudio vazio")
+			return "", apperror.NewBadRequestError("áudio vazio")
 		}
-		// usa método público existente do provider
 		return s.provider.TranscribeAudio(ctx, input.Audio, llm.PromptTranscribeSimple)
 	case models.SourceImage:
 		if len(input.Image) == 0 {
-			return "", fmt.Errorf("imagem vazia")
+			return "", apperror.NewBadRequestError("imagem vazia")
 		}
-		// usa método público existente, input.Text como caption opcional
 		return s.provider.DescribeImage(ctx, input.Image, input.Text)
 	default:
 		return input.Text, nil
@@ -97,11 +87,15 @@ func (s *llmService) ResolveItemsByMenu(
 		var err error
 		cardapio, err = s.cardapioService.GetCardapio(ctx, tenantID)
 		if err != nil {
-			return nil, fmt.Errorf("erro ao buscar cardápio: %w", err)
+			return nil, err
 		}
 	}
 
-	return s.provider.ResolveItemsByMenu(ctx, input, cardapio, s.contextoLoja(ctx, tenantID))
+	result, err := s.provider.ResolveItemsByMenu(ctx, input, cardapio, s.contextoLoja(ctx, tenantID))
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (s *llmService) ClassificarEExtrairKeywords(
@@ -120,11 +114,13 @@ func (s *llmService) ClassificarEExtrairKeywords(
 		limpo = textoHigienizado
 	}
 
-	return s.provider.ClassificarEExtrairKeywords(ctx, limpo, contextoCarrinho, s.contextoLoja(ctx, tenantID))
+	result, err := s.provider.ClassificarEExtrairKeywords(ctx, limpo, contextoCarrinho, s.contextoLoja(ctx, tenantID))
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
-// contextoLoja monta o contexto multi-tenant (nome + segmento) para os prompts do LLM.
-// Em falha, degrada para valores neutros em vez de quebrar a conversa.
 func (s *llmService) contextoLoja(ctx context.Context, tenantID uint) string {
 	nome := ""
 	segmento := "geral"
@@ -166,9 +162,13 @@ func (s *llmService) ResolverItensByKeyWords(
 		var err error
 		cardapioReduzido, err = s.cardapioService.ReduzirPorKeywords(ctx, tenantID, keywords)
 		if err != nil {
-			return nil, fmt.Errorf("erro ao reduzir cardápio: %w", err)
+			return nil, err
 		}
 	}
 
-	return s.provider.ResolverItensByKeyWords(ctx, keywords, cardapioReduzido)
+	result, err := s.provider.ResolverItensByKeyWords(ctx, keywords, cardapioReduzido)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }

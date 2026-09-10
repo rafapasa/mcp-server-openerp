@@ -2,8 +2,10 @@ package llm
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
@@ -40,4 +42,39 @@ func extractJSON(s string) string {
 		return js
 	}
 	return s
+}
+
+// mapLLMHTTPStatus mapeia status HTTP de providers externos para AppError.
+// 429/503 → código preservado; demais 4xx → 400; 5xx → 500.
+func mapLLMHTTPStatus(provider string, status int, body string) error {
+	msg := fmt.Sprintf("%s status %d: %s", provider, status, truncate(body, 200))
+	switch {
+	case status == http.StatusTooManyRequests:
+		return &apperror.AppError{Code: 429, Message: msg}
+	case status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout:
+		return &apperror.AppError{Code: 503, Message: msg}
+	case status >= 500:
+		return apperror.NewInternalError(msg, nil)
+	case status >= 400:
+		return apperror.NewBadRequestError(msg)
+	default:
+		return apperror.NewInternalError(msg, nil)
+	}
+}
+
+func mapLLMNetErr(provider string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if apperror.IsAppError(err) {
+		return err
+	}
+	return apperror.NewInternalError(provider+" request failed", err)
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }

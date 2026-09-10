@@ -37,6 +37,10 @@ func NewMockClienteServiceInterface(ctrl *gomock.Controller) *MockClienteService
 	return mock
 }
 
+func (m *MockClienteServiceInterface) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ClienteDTO, int64, error) {
+	return nil, 0, nil
+}
+
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockClienteServiceInterface) EXPECT() *MockClienteServiceInterfaceMockRecorder {
 	return m.recorder

@@ -41,6 +41,7 @@ type PedidoServiceInterface interface {
 	ListByCliente(ctx context.Context, clienteID uint, page, limit int) ([]dto.PedidoDTO, int64, error)
 	AtualizarStatusPedido(ctx context.Context, id uint, status string) (*dto.PedidoDTO, error)
 	Create(ctx context.Context, req *dto.CriarPedidoRequest) (*dto.PedidoDTO, error)
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.PedidoDTO, int64, error)
 }
 
 type FormaPagamentoServiceInterface interface {
@@ -78,6 +79,7 @@ type ClienteServiceInterface interface {
 	ConverterParaDTO(cliente *models.Cliente) *dto.ClienteDTO
 	ListWithFilters(ctx context.Context, tenantID uint, nome, telefone string, page, limit int) ([]dto.ClienteDTO, int64, error)
 	CountByTenant(ctx context.Context, tenantID uint) (int64, error)
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ClienteDTO, int64, error)
 }
 
 type AuthServiceInterface interface {
@@ -115,6 +117,7 @@ type CardapioServiceInterface interface {
 	Update(ctx context.Context, produto *models.Produto) error
 	Delete(ctx context.Context, id uint, tenantID uint) error
 	UpdateDisponibilidade(ctx context.Context, id uint, tenantID uint, disponivel bool) error
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ProdutoDTO, int64, error)
 }
 
 type LLMServiceInterface interface {

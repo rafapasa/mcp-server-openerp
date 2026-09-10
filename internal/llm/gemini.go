@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 )
@@ -38,7 +39,7 @@ func (l *GeminiLLM) GetModel() string    { return l.model }
 
 func (l *GeminiLLM) GenerateResponse(ctx context.Context, prompt string) (string, error) {
 	if l.apiKey == "" {
-		return "", fmt.Errorf("GEMINI_API_KEY não configurada")
+		return "", apperror.NewInternalError("GEMINI_API_KEY não configurada", nil)
 	}
 	url := fmt.Sprintf("%s/%s:generateContent?key=%s", l.baseURL, l.model, l.apiKey)
 	bodyReq := map[string]interface{}{
@@ -54,12 +55,12 @@ func (l *GeminiLLM) GenerateResponse(ctx context.Context, prompt string) (string
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
-		return "", err
+		return "", mapLLMNetErr("gemini", err)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("gemini %d: %s", resp.StatusCode, string(b))
+		return "", mapLLMHTTPStatus("gemini", resp.StatusCode, string(b))
 	}
 	var r struct {
 		Candidates []struct {
@@ -72,14 +73,14 @@ func (l *GeminiLLM) GenerateResponse(ctx context.Context, prompt string) (string
 	}
 	json.Unmarshal(b, &r)
 	if len(r.Candidates) == 0 || len(r.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("sem resposta gemini")
+		return "", apperror.NewInternalError("sem resposta gemini", nil)
 	}
 	return r.Candidates[0].Content.Parts[0].Text, nil
 }
 
 func (l *GeminiLLM) TranscribeAudio(ctx context.Context, audio []byte, prompt string) (string, error) {
 	if len(audio) == 0 {
-		return "", fmt.Errorf("audio vazio")
+		return "", apperror.NewBadRequestError("audio vazio")
 	}
 	if prompt == "" {
 		prompt = PromptTranscribeSimple
@@ -100,12 +101,12 @@ func (l *GeminiLLM) TranscribeAudio(ctx context.Context, audio []byte, prompt st
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
 	if err != nil {
-		return "", err
+		return "", mapLLMNetErr("gemini", err)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("gemini audio %d %s", resp.StatusCode, string(b))
+		return "", mapLLMHTTPStatus("gemini audio", resp.StatusCode, string(b))
 	}
 	var r struct {
 		Candidates []struct {
@@ -118,7 +119,7 @@ func (l *GeminiLLM) TranscribeAudio(ctx context.Context, audio []byte, prompt st
 	}
 	json.Unmarshal(b, &r)
 	if len(r.Candidates) == 0 {
-		return "", fmt.Errorf("sem resposta audio gemini")
+		return "", apperror.NewInternalError("sem resposta audio gemini", nil)
 	}
 	return r.Candidates[0].Content.Parts[0].Text, nil
 }
@@ -144,12 +145,12 @@ func (l *GeminiLLM) DescribeImage(ctx context.Context, image []byte, prompt stri
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := (&http.Client{Timeout: 45 * time.Second}).Do(req)
 	if err != nil {
-		return "", err
+		return "", mapLLMNetErr("gemini", err)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("gemini vision %d %s", resp.StatusCode, string(b))
+		return "", mapLLMHTTPStatus("gemini vision", resp.StatusCode, string(b))
 	}
 	var r struct {
 		Candidates []struct {
@@ -162,7 +163,7 @@ func (l *GeminiLLM) DescribeImage(ctx context.Context, image []byte, prompt stri
 	}
 	json.Unmarshal(b, &r)
 	if len(r.Candidates) == 0 {
-		return "", fmt.Errorf("sem resposta vision")
+		return "", apperror.NewInternalError("sem resposta vision", nil)
 	}
 	return r.Candidates[0].Content.Parts[0].Text, nil
 }

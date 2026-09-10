@@ -2,10 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
-	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"gorm.io/gorm"
+
+	"github.com/etoolstec/gokit/apperror"
+	"github.com/rafapasa/mcp-server-openerp/internal/models"
 )
 
 // PedidoRepository defines the contract for accessing and persisting pedidos.
@@ -43,7 +46,7 @@ func (r *pedidoRepository) FindByTenant(ctx context.Context, tenantID uint, limi
 
 	// Conta total
 	if err := query.Model(&models.Pedido{}).Count(&total).Error; err != nil {
-		return nil, 0, err
+		return nil, 0, apperror.NewInternalError("falha ao contar pedidos", err)
 	}
 
 	// Busca com paginação
@@ -52,9 +55,14 @@ func (r *pedidoRepository) FindByTenant(ctx context.Context, tenantID uint, limi
 		Limit(limit).
 		Offset(offset).
 		Find(&pedidos).Error; err != nil {
-		return nil, 0, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Pedido{}, total, nil
+		}
+		return nil, 0, apperror.NewInternalError("falha ao buscar pedidos", err)
 	}
-
+	if pedidos == nil {
+		pedidos = []models.Pedido{}
+	}
 	return pedidos, total, nil
 }
 
@@ -64,7 +72,10 @@ func (r *pedidoRepository) FindByTenantStatus(ctx context.Context, tenantID uint
 		Where("tenant_id = ? AND status = ?", tenantID, status).
 		Order("created_at DESC").
 		Find(&pedidos).Error; err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Pedido{}, nil
+		}
+		return nil, apperror.NewInternalError("falha ao buscar pedidos por status", err)
 	}
 	return pedidos, nil
 }
@@ -75,17 +86,26 @@ func (r *pedidoRepository) FindByTenantPeriodo(ctx context.Context, tenantID uin
 		Where("tenant_id = ? AND created_at BETWEEN ? AND ?", tenantID, inicio, fim).
 		Order("created_at DESC").
 		Find(&pedidos).Error; err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Pedido{}, nil
+		}
+		return nil, apperror.NewInternalError("falha ao buscar pedidos por período", err)
 	}
 	return pedidos, nil
 }
 
 func (r *pedidoRepository) Create(ctx context.Context, pedido *models.Pedido) error {
-	return r.db.WithContext(ctx).Create(pedido).Error
+	if err := r.db.WithContext(ctx).Create(pedido).Error; err != nil {
+		return apperror.NewInternalError("falha ao criar pedido", err)
+	}
+	return nil
 }
 
 func (r *pedidoRepository) Update(ctx context.Context, pedido *models.Pedido) error {
-	return r.db.WithContext(ctx).Save(pedido).Error
+	if err := r.db.WithContext(ctx).Save(pedido).Error; err != nil {
+		return apperror.NewInternalError("falha ao atualizar pedido", err)
+	}
+	return nil
 }
 
 func (r *pedidoRepository) CountByTenantStatus(ctx context.Context, tenantID uint, status string) (int64, error) {
@@ -97,13 +117,10 @@ func (r *pedidoRepository) CountByTenantStatus(ctx context.Context, tenantID uin
 	}
 
 	if err := query.Count(&count).Error; err != nil {
-		return 0, err
+		return 0, apperror.NewInternalError("falha ao contar pedidos por status", err)
 	}
 	return count, nil
 }
-
-// internal/repository/pedido_repo.go
-// Adicione estes métodos ao PedidoRepository
 
 // ============================================
 // DASHBOARD - MÉTRICAS
@@ -116,7 +133,10 @@ func (r *pedidoRepository) CountByPeriodo(ctx context.Context, tenantID uint, in
 		Model(&models.Pedido{}).
 		Where("tenant_id = ? AND created_at BETWEEN ? AND ?", tenantID, inicio, fim).
 		Count(&count).Error
-	return count, err
+	if err != nil {
+		return 0, apperror.NewInternalError("falha ao contar pedidos por período", err)
+	}
+	return count, nil
 }
 
 // CountByStatus conta pedidos por status
@@ -126,7 +146,10 @@ func (r *pedidoRepository) CountByStatus(ctx context.Context, tenantID uint, sta
 		Model(&models.Pedido{}).
 		Where("tenant_id = ? AND status = ?", tenantID, status).
 		Count(&count).Error
-	return count, err
+	if err != nil {
+		return 0, apperror.NewInternalError("falha ao contar pedidos por status", err)
+	}
+	return count, nil
 }
 
 // CountGroupByStatus conta pedidos agrupados por status
@@ -144,7 +167,7 @@ func (r *pedidoRepository) CountGroupByStatus(ctx context.Context, tenantID uint
 		Group("status").
 		Scan(&results).Error
 	if err != nil {
-		return nil, err
+		return nil, apperror.NewInternalError("falha ao contar pedidos agrupados", err)
 	}
 
 	resultMap := make(map[string]int64)
@@ -163,7 +186,10 @@ func (r *pedidoRepository) SumTotalByPeriodo(ctx context.Context, tenantID uint,
 		Where("tenant_id = ? AND created_at BETWEEN ? AND ? AND status IN (?)",
 			tenantID, inicio, fim, []string{"confirmado", "entregue"}).
 		Scan(&total).Error
-	return total, err
+	if err != nil {
+		return 0, apperror.NewInternalError("falha ao somar total por período", err)
+	}
+	return total, nil
 }
 
 // ============================================
@@ -191,7 +217,7 @@ func (r *pedidoRepository) FindWithFilters(ctx context.Context, tenantID uint, c
 	}
 
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
+		return nil, 0, apperror.NewInternalError("falha ao contar pedidos filtrados", err)
 	}
 
 	err := query.
@@ -202,7 +228,16 @@ func (r *pedidoRepository) FindWithFilters(ctx context.Context, tenantID uint, c
 		Offset(offset).
 		Find(&pedidos).Error
 
-	return pedidos, total, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Pedido{}, total, nil
+		}
+		return nil, 0, apperror.NewInternalError("falha ao buscar pedidos filtrados", err)
+	}
+	if pedidos == nil {
+		pedidos = []models.Pedido{}
+	}
+	return pedidos, total, nil
 }
 
 // FindByCliente busca pedidos de um cliente
@@ -213,7 +248,7 @@ func (r *pedidoRepository) FindByCliente(ctx context.Context, clienteID uint, li
 	query := r.db.WithContext(ctx).Model(&models.Pedido{}).Where("cliente_id = ?", clienteID)
 
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
+		return nil, 0, apperror.NewInternalError("falha ao contar pedidos do cliente", err)
 	}
 
 	err := query.
@@ -224,7 +259,16 @@ func (r *pedidoRepository) FindByCliente(ctx context.Context, clienteID uint, li
 		Offset(offset).
 		Find(&pedidos).Error
 
-	return pedidos, total, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Pedido{}, total, nil
+		}
+		return nil, 0, apperror.NewInternalError("falha ao buscar pedidos do cliente", err)
+	}
+	if pedidos == nil {
+		pedidos = []models.Pedido{}
+	}
+	return pedidos, total, nil
 }
 
 // FindByID busca um pedido por ID com relacionamentos
@@ -235,7 +279,10 @@ func (r *pedidoRepository) FindByID(ctx context.Context, id uint) (*models.Pedid
 		Preload("Pagamentos.FormaPagamento").
 		First(&pedido, id).Error
 	if err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperror.NewNotFoundError("pedido não encontrado")
+		}
+		return nil, apperror.NewInternalError("falha ao buscar pedido", err)
 	}
 	return &pedido, nil
 }
@@ -248,14 +295,7 @@ func (r *pedidoRepository) UpdateStatus(ctx context.Context, id uint, status str
 		Update("status", status).
 		Error
 	if err != nil {
-		return nil, err
+		return nil, apperror.NewInternalError("falha ao atualizar status do pedido", err)
 	}
 	return r.FindByID(ctx, id)
 }
-
-// internal/repository/pedido_repo.go
-// Adicione estes métodos ao PedidoRepository
-
-// ============================================
-// DASHBOARD - MÉTRICAS
-// ============================================

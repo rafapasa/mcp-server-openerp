@@ -73,7 +73,7 @@ func TestAuthServiceAuthenticate(t *testing.T) {
 			Email: "etoolstec@etoolstec.com.br", Password: "admin123", TenantID: 1,
 		})
 
-		require.EqualError(t, err, "credenciais inválidas")
+		require.EqualError(t, err, "credenciais inválidas, usuário não encontrado")
 	})
 
 	t.Run("rejeita token adulterado", func(t *testing.T) {

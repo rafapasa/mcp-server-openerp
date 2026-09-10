@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
@@ -46,7 +47,7 @@ func (s *tenantService) GetByTelefone(ctx context.Context, telefone string) (*dt
 
 func (s *tenantService) GetByWhatsAppPhoneID(ctx context.Context, phoneID string) (*dto.TenantDTO, error) {
 	if phoneID == "" {
-		return nil, fmt.Errorf("phoneID vazio")
+		return nil, apperror.NewBadRequestError("phoneID vazio")
 	}
 	cacheKey := fmt.Sprintf("tenant:phone:%s", phoneID)
 	tenantDTO, err := database.GetOrSet(s.cache, ctx, cacheKey, 1*time.Hour, func() (*dto.TenantDTO, error) {
@@ -64,7 +65,7 @@ func (s *tenantService) GetByWhatsAppPhoneID(ctx context.Context, phoneID string
 
 func (s *tenantService) GetByVerifyToken(ctx context.Context, token string) (*dto.TenantDTO, error) {
 	if token == "" {
-		return nil, fmt.Errorf("verify token vazio")
+		return nil, apperror.NewBadRequestError("verify token vazio")
 	}
 	cacheKey := fmt.Sprintf("tenant:verify:%s", token)
 	tenantDTO, err := database.GetOrSet(s.cache, ctx, cacheKey, 1*time.Hour, func() (*dto.TenantDTO, error) {
@@ -93,7 +94,6 @@ func (s *tenantService) List(ctx context.Context) ([]dto.TenantDTO, error) {
 }
 
 func (s *tenantService) Create(ctx context.Context, input dto.CreateTenantDTO) (*dto.TenantDTO, error) {
-	// Respeita model: só campos que existem no models.Tenant
 	m := &models.Tenant{
 		Nome:                  input.Nome,
 		CNPJ:                  input.CNPJ,
@@ -114,10 +114,9 @@ func (s *tenantService) Create(ctx context.Context, input dto.CreateTenantDTO) (
 func (s *tenantService) Update(ctx context.Context, id uint, input dto.UpdateTenantDTO) (*dto.TenantDTO, error) {
 	existing, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("tenant %d não encontrado: %w", id, err)
+		return nil, err
 	}
 
-	// Update parcial: só campos não-nil, todos existem no model
 	if input.Nome != nil {
 		existing.Nome = *input.Nome
 	}
@@ -150,7 +149,6 @@ func (s *tenantService) Update(ctx context.Context, id uint, input dto.UpdateTen
 		return nil, err
 	}
 
-	// Invalida cache se existir
 	if s.cache != nil {
 		_ = s.cache.DeleteWithContext(ctx, fmt.Sprintf("tenant:phone:%s", existing.WhatsappPhoneID))
 		_ = s.cache.DeleteWithContext(ctx, fmt.Sprintf("tenant:verify:%s", existing.WhatsappVerifyToken))
@@ -162,7 +160,7 @@ func (s *tenantService) Update(ctx context.Context, id uint, input dto.UpdateTen
 func (s *tenantService) Delete(ctx context.Context, id uint) error {
 	existing, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("tenant %d não encontrado: %w", id, err)
+		return err
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err
@@ -177,7 +175,7 @@ func (s *tenantService) Delete(ctx context.Context, id uint) error {
 func (s *tenantService) GetPromptContext(ctx context.Context, tenantID uint) (string, string, error) {
 	m, err := s.repo.FindByID(ctx, tenantID)
 	if err != nil {
-		return "", "", fmt.Errorf("tenant %d não encontrado", tenantID)
+		return "", "", err
 	}
 	seg := m.Segmento
 	if seg == "" {

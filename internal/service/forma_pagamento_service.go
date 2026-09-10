@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
@@ -28,7 +28,7 @@ func NewFormaPagamentoService(repo repository.FormaPagamentoRepository) FormaPag
 func (s *formaPagamentoService) Listar(ctx context.Context, tenantID uint, apenasAtivas bool) ([]dto.FormaPagamentoDTO, error) {
 	formas, err := s.repo.FindByTenant(ctx, tenantID, apenasAtivas)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao listar formas de pagamento: %w", err)
+		return nil, err
 	}
 	result := make([]dto.FormaPagamentoDTO, len(formas))
 	for i := range formas {
@@ -40,10 +40,10 @@ func (s *formaPagamentoService) Listar(ctx context.Context, tenantID uint, apena
 func (s *formaPagamentoService) Buscar(ctx context.Context, tenantID, id uint) (*dto.FormaPagamentoDTO, error) {
 	forma, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("forma de pagamento não encontrada: %w", err)
+		return nil, err
 	}
 	if forma.TenantID != tenantID {
-		return nil, fmt.Errorf("forma de pagamento não pertence ao tenant")
+		return nil, apperror.NewForbiddenError("forma de pagamento não pertence ao tenant")
 	}
 	result := formaPagamentoDTO(forma)
 	return &result, nil
@@ -56,7 +56,7 @@ func (s *formaPagamentoService) Criar(ctx context.Context, tenantID uint, req dt
 	}
 	forma := &models.FormaPagamento{TenantID: tenantID, Nome: nome, Tipo: tipo, Ativo: true}
 	if err := s.repo.Create(ctx, forma); err != nil {
-		return nil, fmt.Errorf("erro ao criar forma de pagamento: %w", err)
+		return nil, err
 	}
 	result := formaPagamentoDTO(forma)
 	return &result, nil
@@ -65,10 +65,10 @@ func (s *formaPagamentoService) Criar(ctx context.Context, tenantID uint, req dt
 func (s *formaPagamentoService) Atualizar(ctx context.Context, tenantID, id uint, req dto.AtualizarFormaPagamentoRequest) (*dto.FormaPagamentoDTO, error) {
 	forma, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("forma de pagamento não encontrada: %w", err)
+		return nil, err
 	}
 	if forma.TenantID != tenantID {
-		return nil, fmt.Errorf("forma de pagamento não pertence ao tenant")
+		return nil, apperror.NewForbiddenError("forma de pagamento não pertence ao tenant")
 	}
 	nome, tipo, err := validarFormaPagamento(req.Nome, req.Tipo)
 	if err != nil {
@@ -80,7 +80,7 @@ func (s *formaPagamentoService) Atualizar(ctx context.Context, tenantID, id uint
 		forma.Ativo = *req.Ativo
 	}
 	if err := s.repo.Update(ctx, forma); err != nil {
-		return nil, fmt.Errorf("erro ao atualizar forma de pagamento: %w", err)
+		return nil, err
 	}
 	result := formaPagamentoDTO(forma)
 	return &result, nil
@@ -89,13 +89,13 @@ func (s *formaPagamentoService) Atualizar(ctx context.Context, tenantID, id uint
 func (s *formaPagamentoService) Inativar(ctx context.Context, tenantID, id uint) error {
 	forma, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("forma de pagamento não encontrada: %w", err)
+		return err
 	}
 	if forma.TenantID != tenantID {
-		return fmt.Errorf("forma de pagamento não pertence ao tenant")
+		return apperror.NewForbiddenError("forma de pagamento não pertence ao tenant")
 	}
 	if err := s.repo.Delete(ctx, id, tenantID); err != nil {
-		return fmt.Errorf("erro ao inativar forma de pagamento: %w", err)
+		return err
 	}
 	return nil
 }
@@ -104,10 +104,10 @@ func validarFormaPagamento(nome, tipo string) (string, string, error) {
 	nome = strings.TrimSpace(nome)
 	tipo = strings.TrimSpace(strings.ToLower(tipo))
 	if nome == "" || len([]rune(nome)) > 100 {
-		return "", "", fmt.Errorf("nome da forma de pagamento deve ter entre 1 e 100 caracteres")
+		return "", "", apperror.NewBadRequestError("nome da forma de pagamento deve ter entre 1 e 100 caracteres")
 	}
 	if _, ok := tiposFormaPagamento[tipo]; !ok {
-		return "", "", fmt.Errorf("tipo de forma de pagamento inválido")
+		return "", "", apperror.NewBadRequestError("tipo de forma de pagamento inválido")
 	}
 	return nome, tipo, nil
 }
