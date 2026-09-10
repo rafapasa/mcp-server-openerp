@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/etoolstec/gokit/apperror"
@@ -260,11 +261,19 @@ func (s *pedidoService) ListByCliente(ctx context.Context, clienteID uint, page,
 }
 
 func (s *pedidoService) AtualizarStatusPedido(ctx context.Context, id uint, status string) (*dto.PedidoDTO, error) {
-	pedido, err := s.pedidoRepo.UpdateStatus(ctx, id, status)
+	normalizedStatus := models.NormalizarStatusPedido(status)
+	pedidoAtual, err := s.pedidoRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if status == models.StatusEntregue && s.pagamentoRepo != nil {
+	if !pedidoStatusValido(pedidoAtual.Status, normalizedStatus) {
+		return nil, apperror.NewBadRequestError(fmt.Sprintf("transição de status inválida: %s -> %s", pedidoAtual.Status, normalizedStatus))
+	}
+	pedido, err := s.pedidoRepo.UpdateStatus(ctx, id, normalizedStatus)
+	if err != nil {
+		return nil, err
+	}
+	if normalizedStatus == models.StatusEntregue && s.pagamentoRepo != nil {
 		if err := s.pagamentoRepo.MarcarPendentesComoPagos(ctx, id); err != nil {
 			return nil, err
 		}
@@ -272,6 +281,64 @@ func (s *pedidoService) AtualizarStatusPedido(ctx context.Context, id uint, stat
 	result := s.converterParaDTO(pedido)
 	result.Pagamentos = s.pagamentosDTO(ctx, id)
 	return &result, nil
+}
+
+func pedidoStatusValido(statusAtual, statusNovo string) bool {
+	statusAtual = models.NormalizarStatusPedido(statusAtual)
+	statusNovo = models.NormalizarStatusPedido(statusNovo)
+	if statusAtual == "" || statusNovo == "" {
+		return false
+	}
+	if statusAtual == statusNovo {
+		return true
+	}
+	transicoes := map[string][]string{
+		models.StatusPendente:        {models.StatusConfirmado, models.StatusCancelado},
+		models.StatusConfirmado:      {models.StatusEmPreparo, models.StatusCancelado},
+		models.StatusEmPreparo:       {models.StatusSaiuParaEntrega, models.StatusCancelado},
+		models.StatusSaiuParaEntrega: {models.StatusEntregue, models.StatusCancelado},
+		models.StatusEntregue:        {},
+		models.StatusCancelado:       {},
+	}
+	for _, statusValido := range transicoes[statusAtual] {
+		if statusValido == statusNovo {
+			return true
+		}
+	}
+	return false
+}
+
+func formatarMensagemSaiuParaEntrega(pedido *models.Pedido) string {
+	if pedido == nil {
+		return ""
+	}
+	endereco := ""
+	if pedido.EnderecoEntrega != nil {
+		endereco = strings.TrimSpace(pedido.EnderecoEntrega.Logradouro)
+		if pedido.EnderecoEntrega.Numero != "" {
+			if endereco != "" {
+				endereco += ", " + pedido.EnderecoEntrega.Numero
+			} else {
+				endereco = pedido.EnderecoEntrega.Numero
+			}
+		}
+		if pedido.EnderecoEntrega.Bairro != "" {
+			if endereco != "" {
+				endereco += " - " + pedido.EnderecoEntrega.Bairro
+			} else {
+				endereco = pedido.EnderecoEntrega.Bairro
+			}
+		}
+	}
+	clienteNome := strings.TrimSpace(pedido.ClienteNome)
+	if clienteNome == "" {
+		clienteNome = "Cliente"
+	}
+	msg := fmt.Sprintf("🛵 %s, seu pedido #%d saiu para entrega! Chega em ~15 min.", clienteNome, pedido.ID)
+	if endereco != "" {
+		msg += fmt.Sprintf(" Endereço: %s", endereco)
+	}
+	return msg
 }
 
 func (s *pedidoService) Create(ctx context.Context, req *dto.CriarPedidoRequest) (*dto.PedidoDTO, error) {
