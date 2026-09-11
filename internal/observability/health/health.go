@@ -1,296 +1,81 @@
-// internal/observability/health/health.go
 package health
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+	"github.com/gofiber/fiber/v2"
 )
 
-// Status representa o status de um componente
-type Status string
+type CheckFunc func(ctx context.Context) error
 
-const (
-	// StatusUp componente está funcionando
-	StatusUp Status = "up"
-	// StatusDown componente está com problema
-	StatusDown Status = "down"
-	// StatusDegraded componente está com performance degradada
-	StatusDegraded Status = "degraded"
-)
-
-// CheckResult representa o resultado de uma verificação
-type CheckResult struct {
-	Status    Status        `json:"status"`
-	Message   string        `json:"message,omitempty"`
-	Latency   time.Duration `json:"latency_ms"`
-	Details   interface{}   `json:"details,omitempty"`
-	CheckedAt time.Time     `json:"checked_at"`
+type Check struct {
+	Name     string
+	Check    CheckFunc
+	Critical bool // true = derruba /ready
 }
 
-// ComponentCheck é uma função que verifica um componente
-type ComponentCheck func(ctx context.Context) CheckResult
-
-// HealthChecker gerencia os health checks
 type HealthChecker struct {
-	mu         sync.RWMutex
-	checks     map[string]ComponentCheck
-	results    map[string]CheckResult
-	lastUpdate time.Time
+	timeout time.Duration
+	checks  []Check
 }
 
-// NewHealthChecker cria um novo checker
-func NewHealthChecker() *HealthChecker {
-	return &HealthChecker{
-		checks:  make(map[string]ComponentCheck),
-		results: make(map[string]CheckResult),
+func NewHealthChecker(timeout time.Duration, checks ...Check) *HealthChecker {
+	if timeout <= 0 {
+		timeout = 2 * time.Second
 	}
+	return &HealthChecker{timeout: timeout, checks: checks}
 }
 
-// Register registra uma verificação para um componente
-func (h *HealthChecker) Register(name string, check ComponentCheck) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.checks[name] = check
+type checkResult struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
 }
 
-// CheckAll executa todas as verificações
-func (h *HealthChecker) CheckAll(ctx context.Context) map[string]CheckResult {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	for name, check := range h.checks {
-		h.results[name] = check(ctx)
-	}
-	h.lastUpdate = time.Now()
-
-	return h.results
-}
-
-// GetResults retorna os resultados atuais
-func (h *HealthChecker) GetResults() map[string]CheckResult {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.results
-}
-
-// GetStatus retorna o status geral
-func (h *HealthChecker) GetStatus() Status {
-	results := h.GetResults()
-	if len(results) == 0 {
-		return StatusDown
-	}
-
-	for _, result := range results {
-		if result.Status == StatusDown {
-			return StatusDown
-		}
-	}
-
-	for _, result := range results {
-		if result.Status == StatusDegraded {
-			return StatusDegraded
-		}
-	}
-
-	return StatusUp
-}
-
-// HealthResponse representa a resposta do health check
-type HealthResponse struct {
-	Status    Status                 `json:"status"`
-	Timestamp time.Time              `json:"timestamp"`
-	Uptime    string                 `json:"uptime"`
-	Checks    map[string]CheckResult `json:"checks"`
-	Version   string                 `json:"version"`
-	Service   string                 `json:"service"`
-}
-
-// NewDefaultHealthChecker cria um checker com verificações padrão
-func NewDefaultHealthChecker(db *gorm.DB, redis *redis.Client) *HealthChecker {
-	hc := NewHealthChecker()
-
-	// Verificação do banco de dados
-	hc.Register("database", func(ctx context.Context) CheckResult {
-		start := time.Now()
-
-		sqlDB, err := db.DB()
-		if err != nil {
-			return CheckResult{
-				Status:    StatusDown,
-				Message:   fmt.Sprintf("Erro ao obter DB: %v", err),
-				Latency:   time.Since(start),
-				CheckedAt: time.Now(),
-			}
-		}
-
-		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		defer cancel()
-
-		if err := sqlDB.PingContext(ctx); err != nil {
-			return CheckResult{
-				Status:    StatusDown,
-				Message:   fmt.Sprintf("Erro ao pingar DB: %v", err),
-				Latency:   time.Since(start),
-				CheckedAt: time.Now(),
-			}
-		}
-
-		// Verifica stats do pool
-		stats := sqlDB.Stats()
-		details := map[string]interface{}{
-			"max_open_connections": stats.MaxOpenConnections,
-			"open_connections":     stats.OpenConnections,
-			"in_use":               stats.InUse,
-			"idle":                 stats.Idle,
-		}
-
-		status := StatusUp
-		if stats.OpenConnections > stats.MaxOpenConnections/2 {
-			status = StatusDegraded
-		}
-
-		return CheckResult{
-			Status:    status,
-			Message:   "Database OK",
-			Latency:   time.Since(start),
-			Details:   details,
-			CheckedAt: time.Now(),
-		}
+func (h *HealthChecker) LiveFiber(c *fiber.Ctx) error {
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status": "ok",
 	})
-
-	// Verificação do Redis
-	hc.Register("redis", func(ctx context.Context) CheckResult {
-		start := time.Now()
-
-		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		defer cancel()
-
-		if err := redis.Ping(ctx).Err(); err != nil {
-			return CheckResult{
-				Status:    StatusDown,
-				Message:   fmt.Sprintf("Erro ao pingar Redis: %v", err),
-				Latency:   time.Since(start),
-				CheckedAt: time.Now(),
-			}
-		}
-
-		return CheckResult{
-			Status:    StatusUp,
-			Message:   "Redis OK",
-			Latency:   time.Since(start),
-			CheckedAt: time.Now(),
-		}
-	})
-
-	return hc
 }
 
-// ============================================
-// HANDLERS HTTP
-// ============================================
+func (h *HealthChecker) ReadyFiber(c *fiber.Ctx) error {
+	ctx, cancel := context.WithTimeout(c.Context(), h.timeout)
+	defer cancel()
 
-// HealthHandler retorna o status de saúde
-func HealthHandler(hc *HealthChecker) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+	results := make([]checkResult, len(h.checks))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	ready := true
 
-		// Executa verificações
-		results := hc.CheckAll(ctx)
-		status := hc.GetStatus()
-
-		response := HealthResponse{
-			Status:    status,
-			Timestamp: time.Now(),
-			Uptime:    time.Since(startTime).String(),
-			Checks:    results,
-			Version:   "1.0.0",
-			Service:   "mcp-server",
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		if status == StatusDown {
-			w.WriteHeader(http.StatusServiceUnavailable)
-		}
-
-		json.NewEncoder(w).Encode(response)
-	}
-}
-
-// ReadinessHandler retorna se o serviço está pronto para receber tráfego
-func ReadinessHandler(hc *HealthChecker) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		results := hc.GetResults()
-
-		// Verifica se todos os componentes essenciais estão up
-		essential := []string{"database", "redis"}
-		for _, name := range essential {
-			if result, ok := results[name]; ok {
-				if result.Status == StatusDown {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusServiceUnavailable)
-					json.NewEncoder(w).Encode(map[string]string{
-						"status": "not ready",
-						"reason": name + " is down",
-					})
-					return
+	for i, chk := range h.checks {
+		wg.Add(1)
+		go func(i int, chk Check) {
+			defer wg.Done()
+			r := checkResult{Name: chk.Name, Status: "ok"}
+			if err := chk.Check(ctx); err != nil {
+				r.Status = "fail"
+				r.Error = err.Error()
+				if chk.Critical {
+					mu.Lock()
+					ready = false
+					mu.Unlock()
 				}
-			} else {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusServiceUnavailable)
-				json.NewEncoder(w).Encode(map[string]string{
-					"status": "not ready",
-					"reason": name + " not checked yet",
-				})
-				return
 			}
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{
-			"status": "ready",
-		})
+			results[i] = r
+		}(i, chk)
 	}
-}
+	wg.Wait()
 
-// StatusHandler retorna um status detalhado (para diagnóstico)
-func StatusHandler(hc *HealthChecker) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-
-		// Força uma verificação completa
-		results := hc.CheckAll(ctx)
-		status := hc.GetStatus()
-
-		response := HealthResponse{
-			Status:    status,
-			Timestamp: time.Now(),
-			Uptime:    time.Since(startTime).String(),
-			Checks:    results,
-			Version:   "1.0.0",
-			Service:   "mcp-server",
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-
-		if status == StatusDown {
-			w.WriteHeader(http.StatusServiceUnavailable)
-		} else {
-			w.WriteHeader(http.StatusOK)
-		}
-
-		json.NewEncoder(w).Encode(response)
+	status := fiber.StatusOK
+	state := "ready"
+	if !ready {
+		status = fiber.StatusServiceUnavailable
+		state = "not_ready"
 	}
+	return c.Status(status).JSON(fiber.Map{
+		"status": state,
+		"checks": results,
+	})
 }
-
-// startTime é o tempo de início do serviço
-var startTime = time.Now()

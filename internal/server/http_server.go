@@ -87,9 +87,9 @@ func (s *HttpServer) buildFiber() *fiber.App {
 	app.Use(middleware.RateLimitFiber(rateLimiter))
 
 	// 1. HEALTH & METRICS
-	app.Get("/health", adaptor.HTTPHandlerFunc(health.HealthHandler(s.healthCheck)))
-	app.Get("/ready", adaptor.HTTPHandlerFunc(health.ReadinessHandler(s.healthCheck)))
-	app.Get("/status", adaptor.HTTPHandlerFunc(health.StatusHandler(s.healthCheck)))
+	app.Get("/health", s.healthCheck.LiveFiber)
+	app.Get("/ready", s.healthCheck.ReadyFiber)
+	// app.Get("/status", adaptor.HTTPHandlerFunc(health.StatusHandler(s.healthCheck)))
 	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
 	// 2. WEBHOOK WHATSAPP - 100% Fiber
