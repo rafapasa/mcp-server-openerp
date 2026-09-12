@@ -8,7 +8,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.15
 	github.com/google/wire v0.7.0
 	github.com/hbollon/go-edlib v1.7.0
-	github.com/mark3labs/mcp-go v0.57.0
+	github.com/mark3labs/mcp-go v1.0.0
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/go-redis/v9 v9.22.0
