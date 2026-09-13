@@ -8,6 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
+	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -102,4 +103,30 @@ func (s *authService) ValidateToken(tokenString string) (*Claims, error) {
 		return claims, nil
 	}
 	return nil, apperror.NewUnauthorizedError("token inválido")
+}
+
+// FindByTenantPaginated lista os usuários de um tenant de forma paginada.
+func (s *authService) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.UserDTO, int64, error) {
+	if tenantID == 0 {
+		return nil, 0, apperror.NewBadRequestError("tenant_id não informado")
+	}
+	users, total, err := s.userRepo.FindByTenantPaginated(ctx, tenantID, page, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]dto.UserDTO, len(users))
+	for i, u := range users {
+		result[i] = toUserDTO(&u)
+	}
+	return result, total, nil
+}
+
+func toUserDTO(u *models.User) dto.UserDTO {
+	return dto.UserDTO{
+		ID:       u.ID,
+		TenantID: u.TenantID,
+		Nome:     u.Nome,
+		Email:    u.Email,
+		Role:     u.Role,
+	}
 }

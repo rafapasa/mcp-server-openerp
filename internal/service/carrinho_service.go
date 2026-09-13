@@ -517,7 +517,7 @@ func (s *carrinhoService) buscarCEP(ctx context.Context, cep string) (*viacep.En
 }
 
 func (s *carrinhoService) finalizarComEndereco(ctx context.Context, clienteID, tenantID uint, carrinho *dto.Carrinho, enderecoID uint) (string, error) {
-	clienteDTO, _ := s.clienteService.FindByID(ctx, clienteID)
+	clienteDTO, _ := s.clienteService.GetByID(ctx, clienteID)
 	nomeCliente := ""
 	if clienteDTO != nil {
 		nomeCliente = clienteDTO.Nome
@@ -862,6 +862,13 @@ func (s *carrinhoService) BuscarProdutos(ctx context.Context, tenantID, termo st
 
 func (s *carrinhoService) BuscarProdutosLote(ctx context.Context, tenantID string, nomes []string) (map[string]dto.ProdutoItem, error) {
 	return s.produtoRepo.BuscarProdutosLote(ctx, tenantID, nomes)
+}
+
+// FindByTenantPaginated lista produtos de um tenant de forma paginada.
+// O carrinho não possui entidade própria persistida; a listagem paginada de
+// produtos é delegada ao cardapioService, mantendo o contrato da interface.
+func (s *carrinhoService) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ProdutoDTO, int64, error) {
+	return s.cardapioService.FindByTenantPaginated(ctx, tenantID, page, limit)
 }
 
 func (s *carrinhoService) FormatResumoCarrinhoByCliente(ctx context.Context, clienteID, tenantID uint) (string, error) {

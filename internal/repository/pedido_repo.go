@@ -15,6 +15,7 @@ import (
 type PedidoRepository interface {
 	FindByID(ctx context.Context, id uint) (*models.Pedido, error)
 	FindByTenant(ctx context.Context, tenantID uint, limit, offset int) ([]models.Pedido, int64, error)
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]models.Pedido, int64, error)
 	FindByTenantStatus(ctx context.Context, tenantID uint, status string) ([]models.Pedido, error)
 	FindByTenantPeriodo(ctx context.Context, tenantID uint, inicio, fim time.Time) ([]models.Pedido, error)
 	FindByCliente(ctx context.Context, clienteID uint, limit, offset int) ([]models.Pedido, int64, error)
@@ -64,6 +65,18 @@ func (r *pedidoRepository) FindByTenant(ctx context.Context, tenantID uint, limi
 		pedidos = []models.Pedido{}
 	}
 	return pedidos, total, nil
+}
+
+// FindByTenantPaginated busca pedidos de um tenant com paginação baseada em page/limit.
+func (r *pedidoRepository) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]models.Pedido, int64, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+	return r.FindByTenant(ctx, tenantID, limit, offset)
 }
 
 func (r *pedidoRepository) FindByTenantStatus(ctx context.Context, tenantID uint, status string) ([]models.Pedido, error) {

@@ -65,6 +65,13 @@ type AtualizarClienteRequest struct {
 	Email            string `json:"email,omitempty"`
 	InscricaoFederal string `json:"inscricao_federal,omitempty"`
 	Observacoes      string `json:"observacoes,omitempty"`
+
+	// Campos internos do service (não expostos via API), preenchidos por
+	// AtualizarStatus/AtualizarUltimoPedido e persistidos via repo.Update.
+	Status          string     `json:"-"`
+	StatusReason    string     `json:"-"`
+	StatusUpdatedAt *time.Time `json:"-"`
+	UltimoPedidoAt  *time.Time `json:"-"`
 }
 
 // CriarEnderecoRequest representa a requisição para criar um endereço

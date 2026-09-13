@@ -190,6 +190,22 @@ func (mr *MockEnderecoRepositoryInterfaceMockRecorder) FindByID(ctx, id any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockEnderecoRepositoryInterface)(nil).FindByID), ctx, id)
 }
 
+// FindByTenantPaginated mocks base method.
+func (m *MockEnderecoRepositoryInterface) FindByTenantPaginated(ctx context.Context, tenantID uint, page, limit int) ([]models.Endereco, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindByTenantPaginated", ctx, tenantID, page, limit)
+	ret0, _ := ret[0].([]models.Endereco)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// FindByTenantPaginated indicates an expected call of FindByTenantPaginated.
+func (mr *MockEnderecoRepositoryInterfaceMockRecorder) FindByTenantPaginated(ctx, tenantID, page, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByTenantPaginated", reflect.TypeOf((*MockEnderecoRepositoryInterface)(nil).FindByTenantPaginated), ctx, tenantID, page, limit)
+}
+
 // FindPrincipal mocks base method.
 func (m *MockEnderecoRepositoryInterface) FindPrincipal(ctx context.Context, clienteID uint) (*models.Endereco, error) {
 	m.ctrl.T.Helper()

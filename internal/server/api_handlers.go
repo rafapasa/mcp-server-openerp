@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/etoolstec/gokit/filter"
+	"github.com/etoolstec/gokit/response"
 	"github.com/gofiber/fiber/v2"
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
-	"github.com/rafapasa/mcp-server-openerp/internal/server/response"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
 	"github.com/rafapasa/mcp-server-openerp/internal/webhook"
 	"go.uber.org/zap"
@@ -57,7 +58,7 @@ func (h *APIHandlers) LoginFiber(c *fiber.Ctx) error {
 	}
 	loginResponse, err := h.authService.Authenticate(c.Context(), req)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	logger.Info(c.Context(), "Login efetuado", zap.Any("loginResponse", loginResponse))
 	return c.Status(fiber.StatusOK).JSON(loginResponse)
@@ -72,7 +73,7 @@ func (h *APIHandlers) DashboardFiber(c *fiber.Ctx) error {
 	stats, err := h.pedidoService.FindByTenant(c.Context(), tenantID)
 	if err != nil {
 		logger.GetLogger().Error("dashboard error", zap.Error(err))
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.OK(c, stats)
 }
@@ -86,7 +87,7 @@ func (h *APIHandlers) ListPedidosFiber(c *fiber.Ctx) error {
 	pag := response.GetPaginatedRequest(c)
 	pedidos, total, err := h.pedidoService.FindByTenantPaginated(c.Context(), tenantID, pag.Page, pag.Limit)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.Paginated(c, pedidos, total, pag.Page, pag.Limit)
 }
@@ -99,7 +100,7 @@ func (h *APIHandlers) GetPedidoFiber(c *fiber.Ctx) error {
 	}
 	pedido, err := h.pedidoService.FindByID(c.Context(), id)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.OK(c, pedido)
 }
@@ -118,7 +119,7 @@ func (h *APIHandlers) UpdatePedidoStatusFiber(c *fiber.Ctx) error {
 	}
 	pedido, err := h.pedidoService.AtualizarStatusPedido(c.Context(), id, req.Status)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	if models.NormalizarStatusPedido(req.Status) == models.StatusSaiuParaEntrega {
 		if err := h.notificarPedidoSaiuParaEntrega(c.Context(), pedido); err != nil {
@@ -158,9 +159,11 @@ func (h *APIHandlers) ListClientesFiber(c *fiber.Ctx) error {
 		return nil
 	}
 	pag := response.GetPaginatedRequest(c)
-	clientes, total, err := h.clienteService.FindByTenantPaginated(c.Context(), tenantID, pag.Page, pag.Limit)
+	filters := filter.QueryParamsToFiltersFiber(c)
+	filters["tenant_id"] = tenantID
+	clientes, total, err := h.clienteService.List(c.Context(), pag.Limit, pag.Offset(), filters)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.Paginated(c, clientes, total, pag.Page, pag.Limit)
 }
@@ -170,9 +173,9 @@ func (h *APIHandlers) GetClienteFiber(c *fiber.Ctx) error {
 	if !ok {
 		return nil
 	}
-	cliente, err := h.clienteService.FindByID(c.Context(), id)
+	cliente, err := h.clienteService.GetByID(c.Context(), id)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.OK(c, cliente)
 }
@@ -185,7 +188,7 @@ func (h *APIHandlers) GetClientePedidosFiber(c *fiber.Ctx) error {
 	pag := response.GetPaginatedRequest(c)
 	pedidos, total, err := h.pedidoService.ListByCliente(c.Context(), id, pag.Page, pag.Limit)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.Paginated(c, pedidos, total, pag.Page, pag.Limit)
 }
@@ -197,7 +200,7 @@ func (h *APIHandlers) GetClienteEnderecosFiber(c *fiber.Ctx) error {
 	}
 	enderecos, err := h.clienteService.ListarEnderecos(c.Context(), id)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.OK(c, enderecos)
 }
@@ -211,7 +214,7 @@ func (h *APIHandlers) ListProdutosFiber(c *fiber.Ctx) error {
 	pag := response.GetPaginatedRequest(c)
 	produtos, total, err := h.cardapioService.FindByTenantPaginated(c.Context(), tenantID, pag.Page, pag.Limit)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.Paginated(c, produtos, total, pag.Page, pag.Limit)
 }
@@ -223,7 +226,7 @@ func (h *APIHandlers) GetProdutoFiber(c *fiber.Ctx) error {
 	}
 	produto, err := h.cardapioService.FindByID(c.Context(), id)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.OK(c, produto)
 }
@@ -237,7 +240,7 @@ func (h *APIHandlers) ListFormasPagamentoFiber(c *fiber.Ctx) error {
 	apenasAtivas := c.Query("ativas", "true") != "false"
 	formas, err := h.formaPagamentoService.Listar(c.Context(), tenantID, apenasAtivas)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.OK(c, formas)
 }
@@ -253,7 +256,7 @@ func (h *APIHandlers) GetFormaPagamentoFiber(c *fiber.Ctx) error {
 	}
 	forma, err := h.formaPagamentoService.Buscar(c.Context(), tenantID, id)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.OK(c, forma)
 }
@@ -269,7 +272,7 @@ func (h *APIHandlers) CreateFormaPagamentoFiber(c *fiber.Ctx) error {
 	}
 	forma, err := h.formaPagamentoService.Criar(c.Context(), tenantID, req)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.Created(c, forma)
 }
@@ -289,7 +292,7 @@ func (h *APIHandlers) UpdateFormaPagamentoFiber(c *fiber.Ctx) error {
 	}
 	forma, err := h.formaPagamentoService.Atualizar(c.Context(), tenantID, id, req)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.OK(c, forma)
 }
@@ -304,18 +307,20 @@ func (h *APIHandlers) DeleteFormaPagamentoFiber(c *fiber.Ctx) error {
 		return nil
 	}
 	if err := h.formaPagamentoService.Inativar(c.Context(), tenantID, id); err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.Deactivated(c)
 }
 
 // TENANTS
 func (h *APIHandlers) ListTenantsFiber(c *fiber.Ctx) error {
-	tenants, err := h.tenantService.List(c.Context())
+	filters := filter.QueryParamsToFiltersFiber(c)
+	pag := response.GetPaginatedRequest(c)
+	tenants, total, err := h.tenantService.List(c.Context(), pag.Limit, pag.Offset(), filters)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
-	return response.OK(c, tenants)
+	return response.Paginated(c, tenants, total, pag.Page, pag.Limit)
 }
 
 func (h *APIHandlers) GetTenantFiber(c *fiber.Ctx) error {
@@ -325,7 +330,7 @@ func (h *APIHandlers) GetTenantFiber(c *fiber.Ctx) error {
 	}
 	tenant, err := h.tenantService.GetByID(c.Context(), id)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.OK(c, tenant)
 }
@@ -340,7 +345,7 @@ func (h *APIHandlers) CreateTenantFiber(c *fiber.Ctx) error {
 	}
 	created, err := h.tenantService.Create(c.Context(), req)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.Created(c, created)
 }
@@ -356,7 +361,7 @@ func (h *APIHandlers) UpdateTenantFiber(c *fiber.Ctx) error {
 	}
 	updated, err := h.tenantService.Update(c.Context(), id, req)
 	if err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.OK(c, updated)
 }
@@ -367,7 +372,7 @@ func (h *APIHandlers) DeleteTenantFiber(c *fiber.Ctx) error {
 		return nil
 	}
 	if err := h.tenantService.Delete(c.Context(), id); err != nil {
-		return response.FromError(c, err)
+		return response.AppError(c, err)
 	}
 	return response.Deleted(c, id)
 }

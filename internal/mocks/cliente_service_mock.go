@@ -37,10 +37,6 @@ func NewMockClienteServiceInterface(ctrl *gomock.Controller) *MockClienteService
 	return mock
 }
 
-func (m *MockClienteServiceInterface) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ClienteDTO, int64, error) {
-	return nil, 0, nil
-}
-
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockClienteServiceInterface) EXPECT() *MockClienteServiceInterfaceMockRecorder {
 	return m.recorder
@@ -235,36 +231,6 @@ func (mr *MockClienteServiceInterfaceMockRecorder) Delete(ctx, id any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockClienteServiceInterface)(nil).Delete), ctx, id)
 }
 
-// FindByID mocks base method.
-func (m *MockClienteServiceInterface) FindByID(ctx context.Context, id uint) (*dto.ClienteDTO, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindByID", ctx, id)
-	ret0, _ := ret[0].(*dto.ClienteDTO)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// FindByID indicates an expected call of FindByID.
-func (mr *MockClienteServiceInterfaceMockRecorder) FindByID(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockClienteServiceInterface)(nil).FindByID), ctx, id)
-}
-
-// FindByTelefone mocks base method.
-func (m *MockClienteServiceInterface) FindByTelefone(ctx context.Context, telefone string, tenantID uint) (*dto.ClienteDTO, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindByTelefone", ctx, telefone, tenantID)
-	ret0, _ := ret[0].(*dto.ClienteDTO)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// FindByTelefone indicates an expected call of FindByTelefone.
-func (mr *MockClienteServiceInterfaceMockRecorder) FindByTelefone(ctx, telefone, tenantID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByTelefone", reflect.TypeOf((*MockClienteServiceInterface)(nil).FindByTelefone), ctx, telefone, tenantID)
-}
-
 // FindByTenant mocks base method.
 func (m *MockClienteServiceInterface) FindByTenant(ctx context.Context, tenantID uint) ([]dto.ClienteDTO, error) {
 	m.ctrl.T.Helper()
@@ -278,6 +244,82 @@ func (m *MockClienteServiceInterface) FindByTenant(ctx context.Context, tenantID
 func (mr *MockClienteServiceInterfaceMockRecorder) FindByTenant(ctx, tenantID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByTenant", reflect.TypeOf((*MockClienteServiceInterface)(nil).FindByTenant), ctx, tenantID)
+}
+
+// FindByTenantPaginated mocks base method.
+func (m *MockClienteServiceInterface) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ClienteDTO, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindByTenantPaginated", ctx, tenantID, page, limit)
+	ret0, _ := ret[0].([]dto.ClienteDTO)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// FindByTenantPaginated indicates an expected call of FindByTenantPaginated.
+func (mr *MockClienteServiceInterfaceMockRecorder) FindByTenantPaginated(ctx, tenantID, page, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByTenantPaginated", reflect.TypeOf((*MockClienteServiceInterface)(nil).FindByTenantPaginated), ctx, tenantID, page, limit)
+}
+
+// GetByEmail mocks base method.
+func (m *MockClienteServiceInterface) GetByEmail(ctx context.Context, tenantid uint, email string) (*dto.ClienteDTO, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByEmail", ctx, tenantid, email)
+	ret0, _ := ret[0].(*dto.ClienteDTO)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByEmail indicates an expected call of GetByEmail.
+func (mr *MockClienteServiceInterfaceMockRecorder) GetByEmail(ctx, email any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByEmail", reflect.TypeOf((*MockClienteServiceInterface)(nil).GetByEmail), ctx, email)
+}
+
+// GetByID mocks base method.
+func (m *MockClienteServiceInterface) GetByID(ctx context.Context, id uint) (*dto.ClienteDTO, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByID", ctx, id)
+	ret0, _ := ret[0].(*dto.ClienteDTO)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByID indicates an expected call of GetByID.
+func (mr *MockClienteServiceInterfaceMockRecorder) GetByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockClienteServiceInterface)(nil).GetByID), ctx, id)
+}
+
+// GetByInscricaoFederal mocks base method.
+func (m *MockClienteServiceInterface) GetByInscricaoFederal(ctx context.Context, tenantid uint, inscricaoFederal string) (*dto.ClienteDTO, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByInscricaoFederal", ctx, tenantid, inscricaoFederal)
+	ret0, _ := ret[0].(*dto.ClienteDTO)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByInscricaoFederal indicates an expected call of GetByInscricaoFederal.
+func (mr *MockClienteServiceInterfaceMockRecorder) GetByInscricaoFederal(ctx, inscricaoFederal any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByInscricaoFederal", reflect.TypeOf((*MockClienteServiceInterface)(nil).GetByInscricaoFederal), ctx, inscricaoFederal)
+}
+
+// GetByTelefone mocks base method.
+func (m *MockClienteServiceInterface) GetByTelefone(ctx context.Context, tenantid uint, telefone string) (*dto.ClienteDTO, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByTelefone", ctx, tenantid, telefone)
+	ret0, _ := ret[0].(*dto.ClienteDTO)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByTelefone indicates an expected call of GetByTelefone.
+func (mr *MockClienteServiceInterfaceMockRecorder) GetByTelefone(ctx, telefone any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByTelefone", reflect.TypeOf((*MockClienteServiceInterface)(nil).GetByTelefone), ctx, telefone)
 }
 
 // GetStatus mocks base method.
@@ -324,20 +366,20 @@ func (mr *MockClienteServiceInterfaceMockRecorder) IsAtivo(ctx, clienteID any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsAtivo", reflect.TypeOf((*MockClienteServiceInterface)(nil).IsAtivo), ctx, clienteID)
 }
 
-// ListWithFilters mocks base method.
-func (m *MockClienteServiceInterface) ListWithFilters(ctx context.Context, tenantID uint, nome, telefone string, page, limit int) ([]dto.ClienteDTO, int64, error) {
+// List mocks base method.
+func (m *MockClienteServiceInterface) List(ctx context.Context, limit, offset int, filters map[string]interface{}) ([]dto.ClienteDTO, int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListWithFilters", ctx, tenantID, nome, telefone, page, limit)
+	ret := m.ctrl.Call(m, "List", ctx, limit, offset, filters)
 	ret0, _ := ret[0].([]dto.ClienteDTO)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
 
-// ListWithFilters indicates an expected call of ListWithFilters.
-func (mr *MockClienteServiceInterfaceMockRecorder) ListWithFilters(ctx, tenantID, nome, telefone, page, limit any) *gomock.Call {
+// List indicates an expected call of List.
+func (mr *MockClienteServiceInterfaceMockRecorder) List(ctx, limit, offset, filters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListWithFilters", reflect.TypeOf((*MockClienteServiceInterface)(nil).ListWithFilters), ctx, tenantID, nome, telefone, page, limit)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockClienteServiceInterface)(nil).List), ctx, limit, offset, filters)
 }
 
 // ListarEnderecos mocks base method.

@@ -25,6 +25,7 @@ type EnderecoRepositoryInterface interface {
 	FindPrincipal(ctx context.Context, clienteID uint) (*models.Endereco, error)
 	FindByCEP(ctx context.Context, cep string) ([]models.Endereco, error)
 	FindByClienteETipo(ctx context.Context, clienteID uint, tipo string) ([]models.Endereco, error)
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]models.Endereco, int64, error)
 
 	// Contagem
 	CountByCliente(ctx context.Context, clienteID uint) (int64, error)
@@ -185,6 +186,46 @@ func (r *enderecoRepository) FindByClienteETipo(ctx context.Context, clienteID u
 		return nil, apperror.NewInternalError("falha ao buscar endereços por tipo", err)
 	}
 	return enderecos, nil
+}
+
+// FindByTenantPaginated busca endereços de um tenant (via join com clientes) com paginação
+func (r *enderecoRepository) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]models.Endereco, int64, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	var total int64
+	if err := r.db.WithContext(ctx).
+		Model(&models.Endereco{}).
+		Joins("JOIN clientes ON clientes.id = enderecos.cliente_id").
+		Where("clientes.tenant_id = ?", tenantID).
+		Count(&total).Error; err != nil {
+		return nil, 0, apperror.NewInternalError("falha ao contar endereços do tenant", err)
+	}
+
+	var enderecos []models.Endereco
+	err := r.db.WithContext(ctx).
+		Model(&models.Endereco{}).
+		Joins("JOIN clientes ON clientes.id = enderecos.cliente_id").
+		Where("clientes.tenant_id = ?", tenantID).
+		Order("enderecos.created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&enderecos).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.Endereco{}, total, nil
+		}
+		return nil, 0, apperror.NewInternalError("falha ao buscar endereços do tenant", err)
+	}
+	if enderecos == nil {
+		enderecos = []models.Endereco{}
+	}
+	return enderecos, total, nil
 }
 
 // ============================================

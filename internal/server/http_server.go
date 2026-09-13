@@ -37,7 +37,6 @@ func NewHttpServer(
 	mcpServer *MCPServer,
 	apiHandlers *APIHandlers,
 	webhookHandler *webhook.WebhookHandler,
-	healthCheck *health.HealthChecker,
 ) *HttpServer {
 	// Wire não chama SetCache automaticamente, injeta manual aqui
 
@@ -45,7 +44,6 @@ func NewHttpServer(
 		mcpServer:      mcpServer,
 		apiHandlers:    apiHandlers,
 		webhookHandler: webhookHandler,
-		healthCheck:    healthCheck,
 		cfg:            cfg,
 	}
 }

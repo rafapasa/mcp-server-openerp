@@ -10,10 +10,12 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"github.com/etoolstec/gokit/apperror"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/mocks"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,9 +68,9 @@ func TestClienteService_Create(t *testing.T) {
 		assert.Nil(t, resultado)
 	})
 
-	t.Run("FindByTelefone com erro não-notfound: propaga e não cria", func(t *testing.T) {
+	t.Run("GetByTelefone com erro não-notfound: propaga e não cria", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), telefoneValido, tenantID).Return(nil, errors.New("banco fora"))
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), tenantID, telefoneValido).Return(nil, errors.New("banco fora"))
 
 		resultado, err := svc.Create(testCtx(), &dto.CriarClienteRequest{TenantID: tenantID, Telefone: telefoneValido, Nome: "João"})
 		require.Error(t, err)
@@ -79,7 +81,7 @@ func TestClienteService_Create(t *testing.T) {
 	t.Run("cliente já existe ativo: retorna existente sem criar", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
 		existente := &models.Cliente{ID: 7, TenantID: 1, Telefone: "5547999999999", Nome: "João", Status: models.StatusClienteAtivo}
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), "5547999999999", uint(1)).Return(existente, nil)
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), uint(1), "5547999999999").Return(existente, nil)
 
 		resultado, err := svc.Create(testCtx(), &dto.CriarClienteRequest{TenantID: 1, Telefone: "5547999999999", Nome: "João"})
 		require.NoError(t, err)
@@ -93,12 +95,17 @@ func TestClienteService_Create(t *testing.T) {
 		reativado := &models.Cliente{ID: 7, TenantID: 1, Telefone: "5547999999999", Nome: "João", Status: models.StatusClienteAtivo}
 
 		// 1ª busca (dentro de Create) retorna inativo
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), "5547999999999", uint(1)).Return(inativo, nil)
-		// ReativarCliente -> AtualizarStatus -> FindByID + Update
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(7)).Return(inativo, nil)
-		clienteRepo.EXPECT().Update(testCtx(), gomock.Any()).Return(nil)
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), uint(1), "5547999999999").Return(inativo, nil)
+		// ReativarCliente -> AtualizarStatus -> repo.Update com DTO interno
+		clienteRepo.EXPECT().Update(testCtx(), uint(7), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, id uint, req dto.AtualizarClienteRequest) (*models.Cliente, error) {
+				assert.Equal(t, models.StatusClienteAtivo, req.Status)
+				assert.Equal(t, "Reativado após validação", req.StatusReason)
+				assert.NotNil(t, req.StatusUpdatedAt)
+				return reativado, nil
+			})
 		// 2ª busca após reativar retorna o cliente atualizado
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), "5547999999999", uint(1)).Return(reativado, nil)
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), uint(1), "5547999999999").Return(reativado, nil)
 
 		resultado, err := svc.Create(testCtx(), &dto.CriarClienteRequest{TenantID: 1, Telefone: "5547999999999", Nome: "João"})
 		require.NoError(t, err)
@@ -108,30 +115,32 @@ func TestClienteService_Create(t *testing.T) {
 
 	t.Run("cliente novo: cria com NomePerfil = Nome e status ativo", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), "5547999999999", uint(1)).Return(nil, nil)
-		clienteRepo.EXPECT().Create(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *models.Cliente) error {
-			assert.Equal(t, uint(1), c.TenantID)
-			assert.Equal(t, "5547999999999", c.Telefone)
-			assert.Equal(t, "João", c.Nome)
-			assert.Equal(t, "João", c.NomePerfil)
-			assert.Equal(t, models.StatusClienteAtivo, c.Status)
-			c.ID = 42
-			return nil
-		})
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), uint(1), "5547999999999").Return(nil, nil)
+		clienteRepo.EXPECT().Create(testCtx(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, req dto.CriarClienteRequest) (*models.Cliente, error) {
+				assert.Equal(t, uint(1), req.TenantID)
+				assert.Equal(t, "5547999999999", req.Telefone)
+				assert.Equal(t, "João", req.Nome)
+				assert.Equal(t, "João", req.NomePerfil)
+				novo := &models.Cliente{ID: 42, TenantID: 1, Telefone: "5547999999999", Nome: "João", NomePerfil: "João", Status: models.StatusClienteAtivo}
+				return novo, nil
+			})
 
 		resultado, err := svc.Create(testCtx(), &dto.CriarClienteRequest{TenantID: 1, Telefone: "5547999999999", Nome: "João"})
 		require.NoError(t, err)
 		assert.Equal(t, uint(42), resultado.ID)
+		assert.Equal(t, models.StatusClienteAtivo, resultado.Status)
 	})
 
 	t.Run("nome vazio: usa NomePerfil como Nome", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), "5547999999999", uint(1)).Return(nil, nil)
-		clienteRepo.EXPECT().Create(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *models.Cliente) error {
-			assert.Equal(t, "Perfil WhatsApp", c.Nome)
-			assert.Equal(t, "Perfil WhatsApp", c.NomePerfil)
-			return nil
-		})
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), uint(1), "5547999999999").Return(nil, nil)
+		clienteRepo.EXPECT().Create(testCtx(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, req dto.CriarClienteRequest) (*models.Cliente, error) {
+				assert.Equal(t, "Perfil WhatsApp", req.Nome)
+				assert.Equal(t, "Perfil WhatsApp", req.NomePerfil)
+				return &models.Cliente{ID: 43, Nome: "Perfil WhatsApp", NomePerfil: "Perfil WhatsApp"}, nil
+			})
 
 		_, err := svc.Create(testCtx(), &dto.CriarClienteRequest{TenantID: 1, Telefone: "5547999999999", Nome: "", NomePerfil: "Perfil WhatsApp"})
 		require.NoError(t, err)
@@ -139,8 +148,8 @@ func TestClienteService_Create(t *testing.T) {
 
 	t.Run("erro: repo.Create falha", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), "5547999999999", uint(1)).Return(nil, nil)
-		clienteRepo.EXPECT().Create(testCtx(), gomock.Any()).Return(errors.New("erro no banco"))
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), uint(1), "5547999999999").Return(nil, nil)
+		clienteRepo.EXPECT().Create(testCtx(), gomock.Any()).Return(nil, errors.New("erro no banco"))
 
 		resultado, err := svc.Create(testCtx(), &dto.CriarClienteRequest{TenantID: 1, Telefone: "5547999999999", Nome: "João"})
 		require.Error(t, err)
@@ -156,15 +165,15 @@ func TestClienteService_BuscarOuCriarPorTelefone(t *testing.T) {
 	t.Run("não existe: cria via Create", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
 		// 1ª busca: dentro do BuscarOuCriarPorTelefone
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), telefone, tenantID).Return(nil, nil)
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), tenantID, telefone).Return(nil, nil)
 		// 2ª busca: nova consulta dentro do Create delegado
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), telefone, tenantID).Return(nil, nil)
-		clienteRepo.EXPECT().Create(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *models.Cliente) error {
-			assert.Equal(t, "Perfil", c.Nome)
-			assert.Equal(t, "Perfil", c.NomePerfil)
-			c.ID = 1
-			return nil
-		})
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), tenantID, telefone).Return(nil, nil)
+		clienteRepo.EXPECT().Create(testCtx(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, req dto.CriarClienteRequest) (*models.Cliente, error) {
+				assert.Equal(t, "Perfil", req.Nome)
+				assert.Equal(t, "Perfil", req.NomePerfil)
+				return &models.Cliente{ID: 1, Nome: "Perfil", NomePerfil: "Perfil"}, nil
+			})
 
 		resultado, err := svc.BuscarOuCriarPorTelefone(testCtx(), tenantID, telefone, "Perfil")
 		require.NoError(t, err)
@@ -174,7 +183,7 @@ func TestClienteService_BuscarOuCriarPorTelefone(t *testing.T) {
 	t.Run("existe ativo com mesmo nome: retorna sem atualizar", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
 		existente := &models.Cliente{ID: 3, TenantID: tenantID, Telefone: telefone, Nome: "João", NomePerfil: "João", Status: models.StatusClienteAtivo}
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), telefone, tenantID).Return(existente, nil)
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), tenantID, telefone).Return(existente, nil)
 
 		resultado, err := svc.BuscarOuCriarPorTelefone(testCtx(), tenantID, telefone, "João")
 		require.NoError(t, err)
@@ -185,11 +194,12 @@ func TestClienteService_BuscarOuCriarPorTelefone(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
 		// "Maria" vs "João" -> Jaro-Winkler ~0.53 (< 0.80), entra no branch de atualização
 		existente := &models.Cliente{ID: 3, TenantID: tenantID, Telefone: telefone, Nome: "Maria", NomePerfil: "Maria", Status: "ativo"}
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), telefone, tenantID).Return(existente, nil)
-		clienteRepo.EXPECT().Update(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *models.Cliente) error {
-			assert.Equal(t, "João", c.NomePerfil)
-			return nil
-		})
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), tenantID, telefone).Return(existente, nil)
+		clienteRepo.EXPECT().Update(testCtx(), existente.ID, gomock.Any()).DoAndReturn(
+			func(ctx context.Context, id uint, req dto.AtualizarClienteRequest) (*models.Cliente, error) {
+				assert.Equal(t, "João", req.NomePerfil)
+				return existente, nil
+			})
 
 		resultado, err := svc.BuscarOuCriarPorTelefone(testCtx(), tenantID, telefone, "João")
 		require.NoError(t, err)
@@ -199,22 +209,26 @@ func TestClienteService_BuscarOuCriarPorTelefone(t *testing.T) {
 	t.Run("existe inativo: reativa", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
 		inativo := &models.Cliente{ID: 3, TenantID: tenantID, Telefone: telefone, Nome: "João", NomePerfil: "João", Status: models.StatusClienteInativo}
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), telefone, tenantID).Return(inativo, nil)
-		// ReativarCliente -> AtualizarStatus -> FindByID + Update
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(3)).Return(inativo, nil)
-		clienteRepo.EXPECT().Update(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *models.Cliente) error {
-			assert.Equal(t, models.StatusClienteAtivo, c.Status)
-			return nil
-		})
+		reativado := &models.Cliente{ID: 3, TenantID: tenantID, Telefone: telefone, Nome: "João", NomePerfil: "João", Status: models.StatusClienteAtivo}
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), tenantID, telefone).Return(inativo, nil)
+		// ReativarCliente -> AtualizarStatus -> repo.Update com DTO interno
+		clienteRepo.EXPECT().Update(testCtx(), uint(3), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, id uint, req dto.AtualizarClienteRequest) (*models.Cliente, error) {
+				assert.Equal(t, models.StatusClienteAtivo, req.Status)
+				assert.Equal(t, "Reativado após validação", req.StatusReason)
+				return inativo, nil
+			})
+		// Após reativar, o service recarrega o cliente para responder com o status novo
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), tenantID, telefone).Return(reativado, nil)
 
 		resultado, err := svc.BuscarOuCriarPorTelefone(testCtx(), tenantID, telefone, "João")
 		require.NoError(t, err)
 		assert.Equal(t, models.StatusClienteAtivo, resultado.Status)
 	})
 
-	t.Run("erro: FindByTelefone retorna erro inesperado", func(t *testing.T) {
+	t.Run("erro: GetByTelefone retorna erro inesperado", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), telefone, tenantID).Return(nil, errors.New("banco fora"))
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), tenantID, telefone).Return(nil, errors.New("banco fora"))
 
 		resultado, err := svc.BuscarOuCriarPorTelefone(testCtx(), tenantID, telefone, "Perfil")
 		require.Error(t, err)
@@ -236,7 +250,7 @@ func TestClienteService_AdicionarEndereco(t *testing.T) {
 
 	t.Run("erro: cliente não encontrado", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(nil, gorm.ErrRecordNotFound)
+		clienteRepo.EXPECT().GetByID(testCtx(), uint(1)).Return(nil, gorm.ErrRecordNotFound)
 
 		resultado, err := svc.AdicionarEndereco(testCtx(), 1, reqValido)
 		require.Error(t, err)
@@ -246,7 +260,7 @@ func TestClienteService_AdicionarEndereco(t *testing.T) {
 
 	t.Run("erro: logradouro vazio", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
+		clienteRepo.EXPECT().GetByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
 
 		_, err := svc.AdicionarEndereco(testCtx(), 1, &dto.CriarEnderecoRequest{Numero: "123"})
 		require.Error(t, err)
@@ -255,7 +269,7 @@ func TestClienteService_AdicionarEndereco(t *testing.T) {
 
 	t.Run("erro: número vazio", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
+		clienteRepo.EXPECT().GetByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
 
 		_, err := svc.AdicionarEndereco(testCtx(), 1, &dto.CriarEnderecoRequest{Logradouro: "Rua Teste"})
 		require.Error(t, err)
@@ -264,7 +278,7 @@ func TestClienteService_AdicionarEndereco(t *testing.T) {
 
 	t.Run("sucesso: endereço normal (principal=false) não chama Update", func(t *testing.T) {
 		svc, clienteRepo, enderecoRepo := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
+		clienteRepo.EXPECT().GetByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
 		enderecoRepo.EXPECT().Create(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, e *models.Endereco) error {
 			assert.Equal(t, uint(1), e.ClienteID)
 			assert.Equal(t, "Rua Teste", e.Logradouro)
@@ -281,7 +295,7 @@ func TestClienteService_AdicionarEndereco(t *testing.T) {
 
 	t.Run("sucesso: principal=true desmarca anteriores via UnsetPrincipalByCliente", func(t *testing.T) {
 		svc, clienteRepo, enderecoRepo := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
+		clienteRepo.EXPECT().GetByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
 		req := *reqValido
 		req.Principal = true
 
@@ -297,7 +311,7 @@ func TestClienteService_AdicionarEndereco(t *testing.T) {
 
 	t.Run("erro: UnsetPrincipalByCliente falha e impede a criação", func(t *testing.T) {
 		svc, clienteRepo, enderecoRepo := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
+		clienteRepo.EXPECT().GetByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
 		req := *reqValido
 		req.Principal = true
 
@@ -311,7 +325,7 @@ func TestClienteService_AdicionarEndereco(t *testing.T) {
 
 	t.Run("erro: repo.Create falha", func(t *testing.T) {
 		svc, clienteRepo, enderecoRepo := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
+		clienteRepo.EXPECT().GetByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
 		enderecoRepo.EXPECT().Create(testCtx(), gomock.Any()).Return(errors.New("erro no banco"))
 
 		resultado, err := svc.AdicionarEndereco(testCtx(), 1, reqValido)
@@ -411,7 +425,7 @@ func TestClienteService_compararNomes(t *testing.T) {
 func TestClienteService_AtualizarStatus(t *testing.T) {
 	t.Run("erro: cliente não encontrado", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(9)).Return(nil, gorm.ErrRecordNotFound)
+		clienteRepo.EXPECT().Update(testCtx(), uint(9), gomock.Any()).Return(nil, gorm.ErrRecordNotFound)
 
 		err := svc.AtualizarStatus(testCtx(), 9, "inativo", "motivo")
 		require.Error(t, err)
@@ -420,14 +434,13 @@ func TestClienteService_AtualizarStatus(t *testing.T) {
 
 	t.Run("sucesso: aplica status, motivo e data", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		cliente := &models.Cliente{ID: 9, Status: models.StatusClienteAtivo}
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(9)).Return(cliente, nil)
-		clienteRepo.EXPECT().Update(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *models.Cliente) error {
-			assert.Equal(t, models.StatusClienteInativo, c.Status)
-			assert.Equal(t, "motivo", c.StatusReason)
-			assert.NotNil(t, c.StatusUpdatedAt)
-			return nil
-		})
+		clienteRepo.EXPECT().Update(testCtx(), uint(9), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, id uint, req dto.AtualizarClienteRequest) (*models.Cliente, error) {
+				assert.Equal(t, models.StatusClienteInativo, req.Status)
+				assert.Equal(t, "motivo", req.StatusReason)
+				assert.NotNil(t, req.StatusUpdatedAt)
+				return &models.Cliente{ID: 9, Status: models.StatusClienteInativo, StatusReason: "motivo"}, nil
+			})
 
 		require.NoError(t, svc.AtualizarStatus(testCtx(), 9, models.StatusClienteInativo, "motivo"))
 	})
@@ -435,32 +448,34 @@ func TestClienteService_AtualizarStatus(t *testing.T) {
 
 func TestClienteService_ReativarCliente(t *testing.T) {
 	svc, clienteRepo, _ := novoClienteServiceMock(t)
-	cliente := &models.Cliente{ID: 4, Status: models.StatusClienteInativo}
-	clienteRepo.EXPECT().FindByID(testCtx(), uint(4)).Return(cliente, nil)
-	clienteRepo.EXPECT().Update(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *models.Cliente) error {
-		assert.Equal(t, models.StatusClienteAtivo, c.Status)
-		assert.Equal(t, "Reativado após validação", c.StatusReason)
-		return nil
-	})
+	clienteRepo.EXPECT().Update(testCtx(), uint(4), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, id uint, req dto.AtualizarClienteRequest) (*models.Cliente, error) {
+			assert.Equal(t, models.StatusClienteAtivo, req.Status)
+			assert.Equal(t, "Reativado após validação", req.StatusReason)
+			return &models.Cliente{ID: 4, Status: models.StatusClienteAtivo}, nil
+		})
 
 	require.NoError(t, svc.ReativarCliente(testCtx(), 4))
 }
 
 func TestClienteService_InativarCliente(t *testing.T) {
 	svc, clienteRepo, _ := novoClienteServiceMock(t)
-	cliente := &models.Cliente{ID: 4, Status: models.StatusClienteAtivo}
-	clienteRepo.EXPECT().FindByID(testCtx(), uint(4)).Return(cliente, nil)
-	clienteRepo.EXPECT().Update(testCtx(), gomock.Any()).Return(nil)
+	clienteRepo.EXPECT().Update(testCtx(), uint(4), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, id uint, req dto.AtualizarClienteRequest) (*models.Cliente, error) {
+			assert.Equal(t, models.StatusClienteInativo, req.Status)
+			assert.Equal(t, "mudança de dono", req.StatusReason)
+			return &models.Cliente{ID: 4, Status: models.StatusClienteInativo}, nil
+		})
 
 	require.NoError(t, svc.InativarCliente(testCtx(), 4, "mudança de dono"))
 }
 
-func TestClienteService_FindByID(t *testing.T) {
+func TestClienteService_GetByID(t *testing.T) {
 	t.Run("erro: não encontrado", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(99)).Return(nil, gorm.ErrRecordNotFound)
+		clienteRepo.EXPECT().GetByID(testCtx(), uint(99)).Return(nil, gorm.ErrRecordNotFound)
 
-		resultado, err := svc.FindByID(testCtx(), 99)
+		resultado, err := svc.GetByID(testCtx(), 99)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "record not found")
 		assert.Nil(t, resultado)
@@ -468,31 +483,31 @@ func TestClienteService_FindByID(t *testing.T) {
 
 	t.Run("erro: repositório falha", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(99)).Return(nil, errors.New("banco fora"))
+		clienteRepo.EXPECT().GetByID(testCtx(), uint(99)).Return(nil, errors.New("banco fora"))
 
-		_, err := svc.FindByID(testCtx(), 99)
+		_, err := svc.GetByID(testCtx(), 99)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "banco fora")
 	})
 
 	t.Run("sucesso: converte para DTO", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(2)).Return(&models.Cliente{ID: 2, TenantID: 1, Telefone: "5547999999999", Nome: "Maria", Status: models.StatusClienteAtivo}, nil)
+		clienteRepo.EXPECT().GetByID(testCtx(), uint(2)).Return(&models.Cliente{ID: 2, TenantID: 1, Telefone: "5547999999999", Nome: "Maria", Status: models.StatusClienteAtivo}, nil)
 
-		resultado, err := svc.FindByID(testCtx(), 2)
+		resultado, err := svc.GetByID(testCtx(), 2)
 		require.NoError(t, err)
 		assert.Equal(t, uint(2), resultado.ID)
 		assert.Equal(t, "Maria", resultado.Nome)
 	})
 }
 
-func TestClienteService_FindByTelefone(t *testing.T) {
+func TestClienteService_GetByTelefone(t *testing.T) {
 	t.Run("não encontrado: propaga erro do repositório", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
 		// Com a remoção do isNotFound, o service passa a propagar o erro do repo
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), "5547999999999", uint(1)).Return(nil, gorm.ErrRecordNotFound)
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), uint(1), "5547999999999").Return(nil, gorm.ErrRecordNotFound)
 
-		resultado, err := svc.FindByTelefone(testCtx(), "5547999999999", 1)
+		resultado, err := svc.GetByTelefone(testCtx(), uint(1), "5547999999999")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "record not found")
 		assert.Nil(t, resultado)
@@ -500,18 +515,18 @@ func TestClienteService_FindByTelefone(t *testing.T) {
 
 	t.Run("erro inesperado: propaga", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), "5547999999999", uint(1)).Return(nil, errors.New("banco fora"))
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), uint(1), "5547999999999").Return(nil, errors.New("banco fora"))
 
-		_, err := svc.FindByTelefone(testCtx(), "5547999999999", 1)
+		_, err := svc.GetByTelefone(testCtx(), uint(1), "5547999999999")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "banco fora")
 	})
 
 	t.Run("sucesso: converte para DTO", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByTelefone(testCtx(), "5547999999999", uint(1)).Return(&models.Cliente{ID: 2, TenantID: 1, Telefone: "5547999999999", Nome: "Maria", Status: models.StatusClienteAtivo}, nil)
+		clienteRepo.EXPECT().GetByTelefone(testCtx(), uint(1), "5547999999999").Return(&models.Cliente{ID: 2, TenantID: 1, Telefone: "5547999999999", Nome: "Maria", Status: models.StatusClienteAtivo}, nil)
 
-		resultado, err := svc.FindByTelefone(testCtx(), "5547999999999", 1)
+		resultado, err := svc.GetByTelefone(testCtx(), uint(1), "5547999999999")
 		require.NoError(t, err)
 		assert.Equal(t, uint(2), resultado.ID)
 	})
@@ -520,21 +535,21 @@ func TestClienteService_FindByTelefone(t *testing.T) {
 func TestClienteService_Update(t *testing.T) {
 	t.Run("erro: cliente não encontrado", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(nil, gorm.ErrRecordNotFound)
+		clienteRepo.EXPECT().Update(testCtx(), uint(1), gomock.Any()).Return(nil, gorm.ErrRecordNotFound)
 
 		_, err := svc.Update(testCtx(), 1, &dto.AtualizarClienteRequest{Nome: "Novo"})
 		require.Error(t, err)
+		assert.Contains(t, err.Error(), "record not found")
 	})
 
 	t.Run("sucesso: atualiza nome e email", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		cliente := &models.Cliente{ID: 1, Nome: "Antigo", Email: "antigo@teste.com"}
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(cliente, nil)
-		clienteRepo.EXPECT().Update(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *models.Cliente) error {
-			assert.Equal(t, "Novo", c.Nome)
-			assert.Equal(t, "novo@teste.com", c.Email)
-			return nil
-		})
+		clienteRepo.EXPECT().Update(testCtx(), uint(1), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, id uint, req dto.AtualizarClienteRequest) (*models.Cliente, error) {
+				assert.Equal(t, "Novo", req.Nome)
+				assert.Equal(t, "novo@teste.com", req.Email)
+				return &models.Cliente{ID: 1, Nome: "Novo", Email: "novo@teste.com"}, nil
+			})
 
 		resultado, err := svc.Update(testCtx(), 1, &dto.AtualizarClienteRequest{Nome: "Novo", Email: "novo@teste.com"})
 		require.NoError(t, err)
@@ -542,8 +557,7 @@ func TestClienteService_Update(t *testing.T) {
 	})
 
 	t.Run("erro: documento inválido não persiste", func(t *testing.T) {
-		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
+		svc, _, _ := novoClienteServiceMock(t)
 
 		_, err := svc.Update(testCtx(), 1, &dto.AtualizarClienteRequest{InscricaoFederal: "123"})
 		require.Error(t, err)
@@ -552,29 +566,51 @@ func TestClienteService_Update(t *testing.T) {
 
 	t.Run("sucesso: documento válido é persistido", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		cliente := &models.Cliente{ID: 1}
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(cliente, nil)
-		clienteRepo.EXPECT().Update(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *models.Cliente) error {
-			assert.Equal(t, "529.982.247-25", c.InscricaoFederal)
-			return nil
-		})
+		clienteRepo.EXPECT().Update(testCtx(), uint(1), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, id uint, req dto.AtualizarClienteRequest) (*models.Cliente, error) {
+				assert.Equal(t, "529.982.247-25", req.InscricaoFederal)
+				return &models.Cliente{ID: 1, InscricaoFederal: "529.982.247-25"}, nil
+			})
 
 		_, err := svc.Update(testCtx(), 1, &dto.AtualizarClienteRequest{InscricaoFederal: "529.982.247-25"})
 		require.NoError(t, err)
 	})
 
 	t.Run("sucesso: observações vão para o endereço principal", func(t *testing.T) {
-		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		cliente := &models.Cliente{
-			ID:        1,
-			Enderecos: []models.Endereco{{ID: 5, Principal: true, Logradouro: "Rua A"}},
-		}
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(cliente, nil)
-		clienteRepo.EXPECT().Update(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *models.Cliente) error {
-			require.Len(t, c.Enderecos, 1)
-			assert.Equal(t, "entregar no portão", c.Enderecos[0].Observacoes)
+		svc, clienteRepo, enderecoRepo := novoClienteServiceMock(t)
+		enderecoRepo.EXPECT().FindByClienteAtivos(testCtx(), uint(1)).Return(
+			[]models.Endereco{{ID: 5, ClienteID: 1, Principal: true}, {ID: 6, ClienteID: 1}},
+			nil)
+		enderecoRepo.EXPECT().Update(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, e *models.Endereco) error {
+			assert.Equal(t, uint(5), e.ID)
+			assert.Equal(t, "entregar no portão", e.Observacoes)
 			return nil
 		})
+		clienteRepo.EXPECT().Update(testCtx(), uint(1), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, id uint, req dto.AtualizarClienteRequest) (*models.Cliente, error) {
+				assert.Equal(t, "entregar no portão", req.Observacoes)
+				return &models.Cliente{ID: 1}, nil
+			})
+
+		_, err := svc.Update(testCtx(), 1, &dto.AtualizarClienteRequest{Observacoes: "entregar no portão"})
+		require.NoError(t, err)
+	})
+
+	t.Run("erro: falha ao aplicar observações no endereço principal aborta o update", func(t *testing.T) {
+		svc, _, enderecoRepo := novoClienteServiceMock(t)
+		enderecoRepo.EXPECT().FindByClienteAtivos(testCtx(), uint(1)).Return(
+			[]models.Endereco{{ID: 5, ClienteID: 1, Principal: true}}, nil)
+		enderecoRepo.EXPECT().Update(testCtx(), gomock.Any()).Return(errors.New("erro no banco"))
+
+		_, err := svc.Update(testCtx(), 1, &dto.AtualizarClienteRequest{Observacoes: "entregar no portão"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "erro no banco")
+	})
+
+	t.Run("sem endereço principal: continua o update do cliente sem erro", func(t *testing.T) {
+		svc, clienteRepo, enderecoRepo := novoClienteServiceMock(t)
+		enderecoRepo.EXPECT().FindByClienteAtivos(testCtx(), uint(1)).Return(nil, nil)
+		clienteRepo.EXPECT().Update(testCtx(), uint(1), gomock.Any()).Return(&models.Cliente{ID: 1}, nil)
 
 		_, err := svc.Update(testCtx(), 1, &dto.AtualizarClienteRequest{Observacoes: "entregar no portão"})
 		require.NoError(t, err)
@@ -618,15 +654,14 @@ func TestClienteService_DefinirEnderecoPrincipal(t *testing.T) {
 func TestClienteService_AtualizarDocumento(t *testing.T) {
 	t.Run("erro: cliente não encontrado", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(nil, gorm.ErrRecordNotFound)
+		clienteRepo.EXPECT().Update(testCtx(), uint(1), gomock.Any()).Return(nil, gorm.ErrRecordNotFound)
 
 		err := svc.AtualizarDocumento(testCtx(), 1, "529.982.247-25")
 		require.Error(t, err)
 	})
 
 	t.Run("erro: documento inválido não persiste", func(t *testing.T) {
-		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(&models.Cliente{ID: 1}, nil)
+		svc, _, _ := novoClienteServiceMock(t)
 
 		err := svc.AtualizarDocumento(testCtx(), 1, "123")
 		require.Error(t, err)
@@ -634,12 +669,11 @@ func TestClienteService_AtualizarDocumento(t *testing.T) {
 
 	t.Run("sucesso: documento válido é persistido", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		cliente := &models.Cliente{ID: 1}
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(cliente, nil)
-		clienteRepo.EXPECT().Update(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *models.Cliente) error {
-			assert.Equal(t, "529.982.247-25", c.InscricaoFederal)
-			return nil
-		})
+		clienteRepo.EXPECT().Update(testCtx(), uint(1), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, id uint, req dto.AtualizarClienteRequest) (*models.Cliente, error) {
+				assert.Equal(t, "529.982.247-25", req.InscricaoFederal)
+				return &models.Cliente{ID: 1, InscricaoFederal: "529.982.247-25"}, nil
+			})
 
 		require.NoError(t, svc.AtualizarDocumento(testCtx(), 1, "529.982.247-25"))
 	})
@@ -648,7 +682,7 @@ func TestClienteService_AtualizarDocumento(t *testing.T) {
 func TestClienteService_AtualizarUltimoPedido(t *testing.T) {
 	t.Run("erro: cliente não encontrado", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(nil, gorm.ErrRecordNotFound)
+		clienteRepo.EXPECT().Update(testCtx(), uint(1), gomock.Any()).Return(nil, gorm.ErrRecordNotFound)
 
 		err := svc.AtualizarUltimoPedido(testCtx(), 1)
 		require.Error(t, err)
@@ -656,12 +690,11 @@ func TestClienteService_AtualizarUltimoPedido(t *testing.T) {
 
 	t.Run("sucesso: atualiza data do último pedido", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		cliente := &models.Cliente{ID: 1}
-		clienteRepo.EXPECT().FindByID(testCtx(), uint(1)).Return(cliente, nil)
-		clienteRepo.EXPECT().Update(testCtx(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *models.Cliente) error {
-			assert.NotNil(t, c.UltimoPedidoAt)
-			return nil
-		})
+		clienteRepo.EXPECT().Update(testCtx(), uint(1), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, id uint, req dto.AtualizarClienteRequest) (*models.Cliente, error) {
+				assert.NotNil(t, req.UltimoPedidoAt)
+				return &models.Cliente{ID: 1}, nil
+			})
 
 		require.NoError(t, svc.AtualizarUltimoPedido(testCtx(), 1))
 	})
@@ -673,7 +706,7 @@ func TestClienteService_FindByTenant(t *testing.T) {
 		{ID: 1, TenantID: 1, Nome: "João", Status: models.StatusClienteAtivo},
 		{ID: 2, TenantID: 1, Nome: "Maria", Status: models.StatusClienteAtivo},
 	}
-	clienteRepo.EXPECT().FindByTenant(testCtx(), "1").Return(clientes, nil)
+	clienteRepo.EXPECT().FindWithFilters(testCtx(), 0, 0, map[string]interface{}{"tenant_id": uint(1)}).Return(clientes, int64(2), nil)
 
 	resultado, err := svc.FindByTenant(testCtx(), 1)
 	require.NoError(t, err)
@@ -684,7 +717,8 @@ func TestClienteService_FindByTenant(t *testing.T) {
 
 func TestClienteService_CountByTenant(t *testing.T) {
 	svc, clienteRepo, _ := novoClienteServiceMock(t)
-	clienteRepo.EXPECT().CountByTenant(testCtx(), "1").Return(int64(5), nil)
+	filters := map[string]interface{}{"tenant_id": uint(1)}
+	clienteRepo.EXPECT().FindWithFilters(testCtx(), 0, 0, filters).Return(nil, int64(5), nil)
 
 	total, err := svc.CountByTenant(testCtx(), 1)
 	require.NoError(t, err)
@@ -695,9 +729,10 @@ func TestClienteService_ListWithFilters(t *testing.T) {
 	t.Run("sucesso: aplica filtro e paginação", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
 		clientes := []models.Cliente{{ID: 1, TenantID: 1, Nome: "João", Status: models.StatusClienteAtivo}}
-		clienteRepo.EXPECT().FindWithFilters(testCtx(), uint(1), "joão", "", 10, 0).Return(clientes, int64(1), nil)
+		filters := map[string]interface{}{"tenant_id": 1, "niome": "joão"}
+		clienteRepo.EXPECT().FindWithFilters(testCtx(), 10, 0, filters).Return(clientes, int64(1), nil)
 
-		resultado, total, err := svc.ListWithFilters(testCtx(), 1, "joão", "", 1, 10)
+		resultado, total, err := svc.List(testCtx(), 10, 0, filters)
 		require.NoError(t, err)
 		require.Len(t, resultado, 1)
 		assert.Equal(t, int64(1), total)
@@ -705,9 +740,9 @@ func TestClienteService_ListWithFilters(t *testing.T) {
 
 	t.Run("erro: propaga do repositório", func(t *testing.T) {
 		svc, clienteRepo, _ := novoClienteServiceMock(t)
-		clienteRepo.EXPECT().FindWithFilters(testCtx(), uint(1), "", "", 10, 0).Return(nil, int64(0), errors.New("banco fora"))
-
-		_, _, err := svc.ListWithFilters(testCtx(), 1, "", "", 1, 10)
+		filters := map[string]interface{}{"campoerrado_id": 1}
+		clienteRepo.EXPECT().FindWithFilters(testCtx(), 1, 1, filters).Return(nil, int64(0), apperror.NewInternalError("banco fora", errors.New("banco fora")))
+		_, _, err := svc.List(testCtx(), 1, 1, filters)
 		require.Error(t, err)
 	})
 }

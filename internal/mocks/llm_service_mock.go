@@ -57,6 +57,22 @@ func (mr *MockLLMServiceInterfaceMockRecorder) ClassificarEExtrairKeywords(ctx, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClassificarEExtrairKeywords", reflect.TypeOf((*MockLLMServiceInterface)(nil).ClassificarEExtrairKeywords), ctx, tenantID, textoHigienizado, contextoCarrinho)
 }
 
+// FindByTenantPaginated mocks base method.
+func (m *MockLLMServiceInterface) FindByTenantPaginated(ctx context.Context, tenantID uint, page, limit int) ([]dto.ProdutoDTO, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindByTenantPaginated", ctx, tenantID, page, limit)
+	ret0, _ := ret[0].([]dto.ProdutoDTO)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// FindByTenantPaginated indicates an expected call of FindByTenantPaginated.
+func (mr *MockLLMServiceInterfaceMockRecorder) FindByTenantPaginated(ctx, tenantID, page, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByTenantPaginated", reflect.TypeOf((*MockLLMServiceInterface)(nil).FindByTenantPaginated), ctx, tenantID, page, limit)
+}
+
 // GetProviderInfo mocks base method.
 func (m *MockLLMServiceInterface) GetProviderInfo() (string, string, string) {
 	m.ctrl.T.Helper()

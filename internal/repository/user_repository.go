@@ -13,6 +13,7 @@ import (
 type UserRepositoryInterface interface {
 	FindByEmail(ctx context.Context, tenantID uint, email string) (*[]models.User, error)
 	FindByID(ctx context.Context, id uint) (*models.User, error)
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]models.User, int64, error)
 	Create(ctx context.Context, user *models.User) error
 }
 
@@ -51,6 +52,42 @@ func (r *userRepository) FindByID(ctx context.Context, id uint) (*models.User, e
 		return nil, apperror.NewInternalError("falha ao buscar usuário", err)
 	}
 	return &u, nil
+}
+
+func (r *userRepository) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]models.User, int64, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	var total int64
+	if err := r.db.WithContext(ctx).
+		Model(&models.User{}).
+		Where("tenant_id = ?", tenantID).
+		Count(&total).Error; err != nil {
+		return nil, 0, apperror.NewInternalError("falha ao contar usuários", err)
+	}
+
+	var users []models.User
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Order("id ASC").
+		Limit(limit).
+		Offset(offset).
+		Find(&users).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.User{}, total, nil
+		}
+		return nil, 0, apperror.NewInternalError("falha ao buscar usuários", err)
+	}
+	if users == nil {
+		users = []models.User{}
+	}
+	return users, total, nil
 }
 
 func (r *userRepository) Create(ctx context.Context, user *models.User) error {

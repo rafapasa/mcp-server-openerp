@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/mysql"
@@ -81,13 +82,13 @@ func TestEnderecoRepository_Create(t *testing.T) {
 	ctx := context.Background()
 
 	// Cria um cliente
-	cliente := &models.Cliente{
+	dtoCriacliente := dto.CriarClienteRequest{
 		TenantID: 1,
 		Telefone: "5511999999999",
 		Nome:     "João Silva",
-		Status:   "ativo",
+		// Status:   "ativo",
 	}
-	err := clienteRepo.Create(ctx, cliente)
+	modelCliente, err := clienteRepo.Create(ctx, dtoCriacliente)
 	if err != nil {
 		fmt.Printf("Erro: %v", err)
 	}
@@ -95,7 +96,7 @@ func TestEnderecoRepository_Create(t *testing.T) {
 
 	// Cria um endereço
 	endereco := &models.Endereco{
-		ClienteID:  cliente.ID,
+		ClienteID:  modelCliente.ID,
 		Logradouro: "Rua das Flores",
 		Numero:     "123",
 		Bairro:     "Jardim Paulista",

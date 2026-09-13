@@ -24,6 +24,10 @@ func (r *authUserRepositoryStub) FindByID(context.Context, uint) (*models.User, 
 	return nil, nil
 }
 
+func (r *authUserRepositoryStub) FindByTenantPaginated(context.Context, uint, int, int) ([]models.User, int64, error) {
+	return r.users, int64(len(r.users)), r.err
+}
+
 func (r *authUserRepositoryStub) Create(context.Context, *models.User) error {
 	return nil
 }
@@ -81,6 +85,41 @@ func TestAuthServiceAuthenticate(t *testing.T) {
 
 		_, err := svc.ValidateToken("token.adulterado")
 
+		require.Error(t, err)
+	})
+}
+
+func TestAuthServiceFindByTenantPaginated(t *testing.T) {
+	t.Run("erro: tenant_id não informado", func(t *testing.T) {
+		svc := NewAuthService(&authUserRepositoryStub{}, &config.Config{JWTSecret: "test-secret"})
+
+		users, total, err := svc.FindByTenantPaginated(context.Background(), 0, 1, 10)
+		require.Error(t, err)
+		require.Nil(t, users)
+		require.Zero(t, total)
+	})
+
+	t.Run("sucesso: converte usuários para DTO", func(t *testing.T) {
+		repo := &authUserRepositoryStub{users: []models.User{
+			{ID: 1, TenantID: 1, Nome: "Admin", Email: "admin@teste.com", Role: "admin"},
+			{ID: 2, TenantID: 1, Nome: "Operador", Email: "op@teste.com", Role: "user"},
+		}}
+		svc := NewAuthService(repo, &config.Config{JWTSecret: "test-secret"})
+
+		users, total, err := svc.FindByTenantPaginated(context.Background(), 1, 1, 10)
+		require.NoError(t, err)
+		require.Len(t, users, 2)
+		require.Equal(t, int64(2), total)
+		require.Equal(t, uint(1), users[0].ID)
+		require.Equal(t, "Admin", users[0].Nome)
+		require.Equal(t, "admin", users[0].Role)
+	})
+
+	t.Run("erro: propaga do repositório", func(t *testing.T) {
+		repo := &authUserRepositoryStub{err: context.DeadlineExceeded}
+		svc := NewAuthService(repo, &config.Config{JWTSecret: "test-secret"})
+
+		_, _, err := svc.FindByTenantPaginated(context.Background(), 1, 1, 10)
 		require.Error(t, err)
 	})
 }

@@ -9,7 +9,6 @@ package di
 import (
 	"github.com/rafapasa/mcp-server-openerp/internal/config"
 	"github.com/rafapasa/mcp-server-openerp/internal/llm"
-	"github.com/rafapasa/mcp-server-openerp/internal/observability/health"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 	"github.com/rafapasa/mcp-server-openerp/internal/server"
 	"github.com/rafapasa/mcp-server-openerp/internal/service"
@@ -35,7 +34,6 @@ func InitializeApp() (*server.HttpServer, error) {
 	pedidoRepository := repository.NewPedidoRepository(db)
 	pedidoPagamentoRepository := repository.NewPedidoPagamentoRepository(db)
 	formaPagamentoRepository := repository.NewFormaPagamentoRepository(db)
-	whatsAppClient := webhook.NewWhatsAppClient()
 	pedidoServiceInterface := service.NewPedidoService(pedidoRepository, pedidoPagamentoRepository, formaPagamentoRepository, cardapioServiceInterface)
 	unifiedLLM := llm.NewUnifiedLLM(configConfig)
 	tenantServiceInterface := service.NewTenantService(tenantRepository, redisInterface)
@@ -49,11 +47,11 @@ func InitializeApp() (*server.HttpServer, error) {
 	mcpServer := server.NewMCPServer(configConfig, cardapioServiceInterface, pedidoServiceInterface, carrinhoServiceInterface, unifiedLLM)
 	userRepositoryInterface := repository.NewUserRepository(db)
 	authServiceInterface := service.NewAuthService(userRepositoryInterface, configConfig)
+	whatsAppClient := webhook.NewWhatsAppClient()
 	apiHandlers := server.NewAPIHandlers(authServiceInterface, clienteServiceInterface, pedidoServiceInterface, cardapioServiceInterface, formaPagamentoServiceInterface, tenantServiceInterface, redisInterface, whatsAppClient)
 	processor := webhook.NewProcessor(whatsAppClient, tenantServiceInterface, clienteServiceInterface, carrinhoServiceInterface, redisInterface)
 	webhookHandler := webhook.NewWebhookHandler(configConfig, processor, tenantServiceInterface)
-	healthChecker := health.NewHealthChecker()
-	httpServer := server.NewHttpServer(configConfig, mcpServer, apiHandlers, webhookHandler, healthChecker)
+	httpServer := server.NewHttpServer(configConfig, mcpServer, apiHandlers, webhookHandler)
 	return httpServer, nil
 }
 

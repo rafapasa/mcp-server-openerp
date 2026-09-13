@@ -24,33 +24,46 @@ func (f *fakeTenantRepo) Delete(ctx context.Context, id uint) error {
 	return nil
 }
 
-func (f *fakeTenantRepo) FindByID(ctx context.Context, id uint) (*models.Tenant, error) {
+func (f *fakeTenantRepo) GetByID(ctx context.Context, id uint) (*models.Tenant, error) {
 	if f.byID == nil {
 		return nil, gorm.ErrRecordNotFound
 	}
 	return f.byID, nil
 }
 
-func (f *fakeTenantRepo) FindByCNPJ(ctx context.Context, cnpj string) (*models.Tenant, error) {
+func (f *fakeTenantRepo) GetByCNPJ(ctx context.Context, cnpj string) (*models.Tenant, error) {
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (f *fakeTenantRepo) FindByTelefone(ctx context.Context, telefone string) (*models.Tenant, error) {
+func (f *fakeTenantRepo) GetByTelefone(ctx context.Context, telefone string) (*models.Tenant, error) {
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (f *fakeTenantRepo) FindByWhatsAppPhoneID(ctx context.Context, phoneID string) (*models.Tenant, error) {
+func (f *fakeTenantRepo) GetByWhatsAppPhoneID(ctx context.Context, phoneID string) (*models.Tenant, error) {
 	if f.byPhoneID == nil || f.byPhoneID.WhatsappPhoneID != phoneID {
 		return nil, gorm.ErrRecordNotFound
 	}
 	return f.byPhoneID, nil
 }
 
-func (f *fakeTenantRepo) FindByVerifyToken(ctx context.Context, token string) (*models.Tenant, error) {
+func (f *fakeTenantRepo) GetByVerifyToken(ctx context.Context, token string) (*models.Tenant, error) {
 	if f.byVerifyToken == nil || f.byVerifyToken.WhatsappVerifyToken != token {
 		return nil, gorm.ErrRecordNotFound
 	}
 	return f.byVerifyToken, nil
+}
+func (f *fakeTenantRepo) FindWithFilters(ctx context.Context, limit, offset int, filters map[string]interface{}) ([]models.Tenant, int64, error) {
+	if f.byID == nil {
+		return []models.Tenant{}, 0, nil
+	}
+	return []models.Tenant{*f.byID}, 1, nil
+}
+
+func (f *fakeTenantRepo) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]models.Tenant, int64, error) {
+	if f.byID == nil {
+		return []models.Tenant{}, 0, nil
+	}
+	return []models.Tenant{*f.byID}, 1, nil
 }
 
 func (f *fakeTenantRepo) Create(ctx context.Context, tenant *models.Tenant) error {

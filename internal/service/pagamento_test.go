@@ -19,6 +19,12 @@ func (f *pagamentoFormaRepoFake) FindByID(context.Context, uint) (*models.FormaP
 func (f *pagamentoFormaRepoFake) FindByTenant(context.Context, uint, bool) ([]models.FormaPagamento, error) {
 	return nil, nil
 }
+func (f *pagamentoFormaRepoFake) FindByTenantPaginated(context.Context, uint, int, int) ([]models.FormaPagamento, int64, error) {
+	if f.forma == nil {
+		return nil, 0, nil
+	}
+	return []models.FormaPagamento{*f.forma}, 1, nil
+}
 func (f *pagamentoFormaRepoFake) Create(context.Context, *models.FormaPagamento) error { return nil }
 func (f *pagamentoFormaRepoFake) Update(context.Context, *models.FormaPagamento) error { return nil }
 func (f *pagamentoFormaRepoFake) Delete(context.Context, uint, uint) error             { return nil }
@@ -40,6 +46,31 @@ func TestValidarFormaPagamento(t *testing.T) {
 	require.Error(t, err)
 	_, _, err = validarFormaPagamento("Dinheiro", "boleto")
 	require.Error(t, err)
+}
+
+func TestFormaPagamentoServiceFindByTenantPaginated(t *testing.T) {
+	t.Run("sucesso: converte formas para DTO", func(t *testing.T) {
+		repo := &pagamentoFormaRepoFake{forma: &models.FormaPagamento{
+			ID: 1, TenantID: 10, Nome: "Pix", Tipo: models.TipoPagamentoPix, Ativo: true,
+		}}
+		svc := NewFormaPagamentoService(repo)
+
+		formas, total, err := svc.FindByTenantPaginated(context.Background(), 10, 1, 10)
+		require.NoError(t, err)
+		require.Len(t, formas, 1)
+		require.Equal(t, int64(1), total)
+		require.Equal(t, uint(1), formas[0].ID)
+		require.Equal(t, "Pix", formas[0].Nome)
+	})
+
+	t.Run("sucesso: lista vazia", func(t *testing.T) {
+		svc := NewFormaPagamentoService(&pagamentoFormaRepoFake{})
+
+		formas, total, err := svc.FindByTenantPaginated(context.Background(), 10, 1, 10)
+		require.NoError(t, err)
+		require.Empty(t, formas)
+		require.Zero(t, total)
+	})
 }
 
 func TestPedidoServicePrepararPagamentos(t *testing.T) {

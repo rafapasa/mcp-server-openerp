@@ -13,6 +13,7 @@ import (
 type FormaPagamentoRepository interface {
 	FindByID(ctx context.Context, id uint) (*models.FormaPagamento, error)
 	FindByTenant(ctx context.Context, tenantID uint, apenasAtivas bool) ([]models.FormaPagamento, error)
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]models.FormaPagamento, int64, error)
 	Create(ctx context.Context, forma *models.FormaPagamento) error
 	Update(ctx context.Context, forma *models.FormaPagamento) error
 	Delete(ctx context.Context, id, tenantID uint) error
@@ -59,6 +60,42 @@ func (r *formaPagamentoRepository) FindByTenant(ctx context.Context, tenantID ui
 		return nil, apperror.NewInternalError("falha ao listar formas de pagamento", err)
 	}
 	return formas, nil
+}
+
+func (r *formaPagamentoRepository) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]models.FormaPagamento, int64, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	var total int64
+	if err := r.db.WithContext(ctx).
+		Model(&models.FormaPagamento{}).
+		Where("tenant_id = ?", tenantID).
+		Count(&total).Error; err != nil {
+		return nil, 0, apperror.NewInternalError("falha ao contar formas de pagamento", err)
+	}
+
+	var formas []models.FormaPagamento
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Order("nome ASC").
+		Limit(limit).
+		Offset(offset).
+		Find(&formas).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []models.FormaPagamento{}, total, nil
+		}
+		return nil, 0, apperror.NewInternalError("falha ao listar formas de pagamento", err)
+	}
+	if formas == nil {
+		formas = []models.FormaPagamento{}
+	}
+	return formas, total, nil
 }
 
 func (r *formaPagamentoRepository) Create(ctx context.Context, forma *models.FormaPagamento) error {

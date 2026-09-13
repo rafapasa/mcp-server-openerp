@@ -23,6 +23,7 @@ type CarrinhoServiceInterface interface {
 	FormatResumoCarrinhoByCliente(ctx context.Context, clienteID, tenantID uint) (string, error)
 	FormatarPedidoConfirmado(pedido *dto.PedidoConfirmado) string
 	ProcessarMensagem(ctx context.Context, clienteID, tenantID uint, input dto.MessageInput) (string, error)
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ProdutoDTO, int64, error)
 }
 
 type PedidoServiceInterface interface {
@@ -50,15 +51,23 @@ type FormaPagamentoServiceInterface interface {
 	Criar(ctx context.Context, tenantID uint, req dto.CriarFormaPagamentoRequest) (*dto.FormaPagamentoDTO, error)
 	Atualizar(ctx context.Context, tenantID, id uint, req dto.AtualizarFormaPagamentoRequest) (*dto.FormaPagamentoDTO, error)
 	Inativar(ctx context.Context, tenantID, id uint) error
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.FormaPagamentoDTO, int64, error)
 }
 
 type ClienteServiceInterface interface {
+	// Fluxo handler->repo
+	List(ctx context.Context, limit, offset int, filters map[string]interface{}) ([]dto.ClienteDTO, int64, error)
+	GetByID(ctx context.Context, id uint) (*dto.ClienteDTO, error)
+	GetByTelefone(ctx context.Context, tenantId uint, telefone string) (*dto.ClienteDTO, error)
+	GetByInscricaoFederal(ctx context.Context, tenantId uint, inscricaoFederal string) (*dto.ClienteDTO, error)
+	GetByEmail(ctx context.Context, tenantId uint, email string) (*dto.ClienteDTO, error)
 	Create(ctx context.Context, req *dto.CriarClienteRequest) (*dto.ClienteDTO, error)
-	FindByID(ctx context.Context, id uint) (*dto.ClienteDTO, error)
-	FindByTelefone(ctx context.Context, telefone string, tenantID uint) (*dto.ClienteDTO, error)
-	FindByTenant(ctx context.Context, tenantID uint) ([]dto.ClienteDTO, error)
 	Update(ctx context.Context, id uint, req *dto.AtualizarClienteRequest) (*dto.ClienteDTO, error)
 	Delete(ctx context.Context, id uint) error
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ClienteDTO, int64, error)
+
+	// Métodos de negócio existentes
+	FindByTenant(ctx context.Context, tenantID uint) ([]dto.ClienteDTO, error)
 	BuscarOuCriarPorTelefone(ctx context.Context, tenantID uint, telefone, nomePerfil string) (*dto.ClienteDTO, error)
 	BuscarPorNome(ctx context.Context, tenantID uint, nome string) ([]dto.ClienteDTO, error)
 	BuscarPorStatus(ctx context.Context, tenantID uint, status string) ([]dto.ClienteDTO, error)
@@ -77,27 +86,28 @@ type ClienteServiceInterface interface {
 	IsAtivo(ctx context.Context, clienteID uint) (bool, error)
 	GetStatus(ctx context.Context, clienteID uint) (string, error)
 	ConverterParaDTO(cliente *models.Cliente) *dto.ClienteDTO
-	ListWithFilters(ctx context.Context, tenantID uint, nome, telefone string, page, limit int) ([]dto.ClienteDTO, int64, error)
 	CountByTenant(ctx context.Context, tenantID uint) (int64, error)
-	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ClienteDTO, int64, error)
 }
 
 type AuthServiceInterface interface {
 	Authenticate(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponseList, error)
 	ValidateToken(tokenString string) (*Claims, error)
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.UserDTO, int64, error)
 }
 
 type TenantServiceInterface interface {
+	// Metodo que todo service deve ter.
+	List(ctx context.Context, limit, offset int, filters map[string]interface{}) ([]dto.TenantDTO, int64, error)
 	GetByID(ctx context.Context, id uint) (*dto.TenantDTO, error)
 	GetByCNPJ(ctx context.Context, cnpj string) (*dto.TenantDTO, error)
 	GetByTelefone(ctx context.Context, telefone string) (*dto.TenantDTO, error)
-	List(ctx context.Context) ([]dto.TenantDTO, error)
 	Create(ctx context.Context, input dto.CreateTenantDTO) (*dto.TenantDTO, error)
 	Update(ctx context.Context, id uint, input dto.UpdateTenantDTO) (*dto.TenantDTO, error)
 	Delete(ctx context.Context, id uint) error
 	GetPromptContext(ctx context.Context, tenantID uint) (nome, segmento string, err error)
 	GetByWhatsAppPhoneID(ctx context.Context, phoneID string) (*dto.TenantDTO, error)
 	GetByVerifyToken(ctx context.Context, token string) (*dto.TenantDTO, error)
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.TenantDTO, int64, error)
 }
 
 type CardapioServiceInterface interface {
@@ -128,4 +138,5 @@ type LLMServiceInterface interface {
 	ResolveItemsByMenu(ctx context.Context, tenantID uint, input dto.MessageInput, cardapio []dto.ProdutoItem) (*dto.IntencaoCliente, error)
 	ClassificarEExtrairKeywords(ctx context.Context, tenantID uint, textoHigienizado string, contextoCarrinho string) (*llm.IntencaoEKeywordsResult, error)
 	ResolverItensByKeyWords(ctx context.Context, tenantID uint, keywords []llm.LLMKeywordItemResult, cardapioReduzido []dto.ProdutoItem) ([]dto.ItemCarrinho, error)
+	FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ProdutoDTO, int64, error)
 }

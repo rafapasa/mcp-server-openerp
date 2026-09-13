@@ -37,6 +37,18 @@ func (s *formaPagamentoService) Listar(ctx context.Context, tenantID uint, apena
 	return result, nil
 }
 
+func (s *formaPagamentoService) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.FormaPagamentoDTO, int64, error) {
+	formas, total, err := s.repo.FindByTenantPaginated(ctx, tenantID, page, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]dto.FormaPagamentoDTO, len(formas))
+	for i := range formas {
+		result[i] = formaPagamentoDTO(&formas[i])
+	}
+	return result, total, nil
+}
+
 func (s *formaPagamentoService) Buscar(ctx context.Context, tenantID, id uint) (*dto.FormaPagamentoDTO, error) {
 	forma, err := s.repo.FindByID(ctx, id)
 	if err != nil {

@@ -2,12 +2,10 @@ package response
 
 import (
 	"errors"
-	"strconv"
 
 	"github.com/etoolstec/gokit/apperror"
 	respfiber "github.com/etoolstec/gokit/response"
 	"github.com/gofiber/fiber/v2"
-	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 )
 
 func OK[T any](c *fiber.Ctx, data T) error {
@@ -107,72 +105,4 @@ func FromError(c *fiber.Ctx, err error) error {
 		}
 		return InternalError(c, msg)
 	}
-}
-
-func ParseIDParam(c *fiber.Ctx, param string) (uint, error) {
-	val := c.Params(param)
-	if val == "" {
-		return 0, fiber.NewError(fiber.StatusBadRequest, "ID é obrigatório")
-	}
-	id, err := strconv.ParseUint(val, 10, 64)
-	if err != nil {
-		return 0, err
-	}
-	return uint(id), nil
-}
-
-func ParseIDParamOrRespond(c *fiber.Ctx, param string) (uint, bool) {
-	id, err := ParseIDParam(c, param)
-	if err != nil {
-		_ = ValidationError(c, "ID deve ser um número válido")
-		return 0, false
-	}
-	return id, true
-}
-
-func GetQueryInt(c *fiber.Ctx, key string, defaultValue int) int {
-	v := c.Query(key)
-	if v == "" {
-		return defaultValue
-	}
-	i, err := strconv.Atoi(v)
-	if err != nil {
-		return defaultValue
-	}
-	return i
-}
-
-func GetQueryString(c *fiber.Ctx, key string, defaultValue string) string {
-	v := c.Query(key)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
-func GetPaginatedRequest(c *fiber.Ctx) dto.PaginatedRequest {
-	r := dto.PaginatedRequest{Page: GetQueryInt(c, "page", 1), Limit: GetQueryInt(c, "limit", 20)}
-	r.Normalize()
-	return r
-}
-
-func GetTenantID(c *fiber.Ctx) (uint, error) {
-	v := c.Get("X-Tenant-ID")
-	if v == "" {
-		return 0, fiber.NewError(fiber.StatusBadRequest, "X-Tenant-ID header é obrigatório")
-	}
-	id, err := strconv.ParseUint(v, 10, 64)
-	if err != nil {
-		return 0, err
-	}
-	return uint(id), nil
-}
-
-func GetTenantIDOrRespond(c *fiber.Ctx) (uint, bool) {
-	id, err := GetTenantID(c)
-	if err != nil {
-		_ = BadRequest(c, err.Error())
-		return 0, false
-	}
-	return id, true
 }

@@ -629,7 +629,7 @@ func TestCarrinhoService_handleSelecaoEndereco(t *testing.T) {
 		svc, redisMock, _, pedidoMock, clienteMock, _, _ := novoCarrinhoServiceMock(t)
 		enderecos := []dto.EnderecoDTO{{ID: 10, Logradouro: "Rua A", Numero: "123"}}
 		clienteMock.EXPECT().ListarEnderecos(testCtx(), uint(5)).Return(enderecos, nil)
-		clienteMock.EXPECT().FindByID(testCtx(), uint(5)).Return(&dto.ClienteDTO{ID: 5, Nome: "João"}, nil)
+		clienteMock.EXPECT().GetByID(testCtx(), uint(5)).Return(&dto.ClienteDTO{ID: 5, Nome: "João"}, nil)
 		clienteMock.EXPECT().AtualizarUltimoPedido(testCtx(), uint(5)).Return(nil)
 		redisMock.EXPECT().SetJSONWithContext(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockRedisCacheHit(t, redisMock, dto.Carrinho{ClienteID: "5", TenantID: "1", Itens: itens})
@@ -686,7 +686,7 @@ func TestCarrinhoService_handleNovoEndereco(t *testing.T) {
 		svc, redisMock, _, pedidoMock, clienteMock, _, _ := novoCarrinhoServiceMock(t)
 		novoEndereco := &dto.EnderecoDTO{ID: 20, Logradouro: "Rua das Flores", Numero: "123", Bairro: "Centro", Cidade: "Pinhalzinho", Estado: "SC"}
 		clienteMock.EXPECT().AdicionarEndereco(testCtx(), uint(5), gomock.Any()).Return(novoEndereco, nil)
-		clienteMock.EXPECT().FindByID(testCtx(), uint(5)).Return(&dto.ClienteDTO{ID: 5, Nome: "João"}, nil)
+		clienteMock.EXPECT().GetByID(testCtx(), uint(5)).Return(&dto.ClienteDTO{ID: 5, Nome: "João"}, nil)
 		clienteMock.EXPECT().AtualizarUltimoPedido(testCtx(), uint(5)).Return(nil)
 		redisMock.EXPECT().SetJSONWithContext(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		mockRedisCacheHit(t, redisMock, dto.Carrinho{ClienteID: "5", TenantID: "1", Itens: itens})
@@ -717,7 +717,7 @@ func TestCarrinhoService_finalizarComEndereco(t *testing.T) {
 
 	t.Run("sucesso", func(t *testing.T) {
 		svc, redisMock, _, pedidoMock, clienteMock, _, _ := novoCarrinhoServiceMock(t)
-		clienteMock.EXPECT().FindByID(testCtx(), uint(5)).Return(&dto.ClienteDTO{ID: 5, Nome: "João"}, nil)
+		clienteMock.EXPECT().GetByID(testCtx(), uint(5)).Return(&dto.ClienteDTO{ID: 5, Nome: "João"}, nil)
 		clienteMock.EXPECT().AtualizarUltimoPedido(testCtx(), uint(5)).Return(nil)
 		redisMock.EXPECT().SetJSONWithContext(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockRedisCacheHit(t, redisMock, dto.Carrinho{ClienteID: "5", TenantID: "1", Itens: itens})
@@ -736,7 +736,7 @@ func TestCarrinhoService_finalizarComEndereco(t *testing.T) {
 
 	t.Run("carrinho vazio", func(t *testing.T) {
 		svc, redisMock, _, _, clienteMock, _, _ := novoCarrinhoServiceMock(t)
-		clienteMock.EXPECT().FindByID(testCtx(), uint(5)).Return(&dto.ClienteDTO{ID: 5, Nome: "João"}, nil)
+		clienteMock.EXPECT().GetByID(testCtx(), uint(5)).Return(&dto.ClienteDTO{ID: 5, Nome: "João"}, nil)
 		redisMock.EXPECT().SetJSONWithContext(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockRedisCacheMiss(redisMock) // FinalizarCarrinhoComEndereco encontra carrinho vazio
 
@@ -748,7 +748,7 @@ func TestCarrinhoService_finalizarComEndereco(t *testing.T) {
 
 	t.Run("erro genérico ao finalizar", func(t *testing.T) {
 		svc, redisMock, _, pedidoMock, clienteMock, _, _ := novoCarrinhoServiceMock(t)
-		clienteMock.EXPECT().FindByID(testCtx(), uint(5)).Return(&dto.ClienteDTO{ID: 5, Nome: "João"}, nil)
+		clienteMock.EXPECT().GetByID(testCtx(), uint(5)).Return(&dto.ClienteDTO{ID: 5, Nome: "João"}, nil)
 		redisMock.EXPECT().SetJSONWithContext(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockRedisCacheHit(t, redisMock, dto.Carrinho{ClienteID: "5", TenantID: "1", Itens: itens})
 		pedidoMock.EXPECT().ProcessarPedidoComEndereco(testCtx(), uint(1), uint(5), "João", gomock.Any(), gomock.Any()).

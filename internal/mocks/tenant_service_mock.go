@@ -70,6 +70,22 @@ func (mr *MockTenantServiceInterfaceMockRecorder) Delete(ctx, id any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockTenantServiceInterface)(nil).Delete), ctx, id)
 }
 
+// FindByTenantPaginated mocks base method.
+func (m *MockTenantServiceInterface) FindByTenantPaginated(ctx context.Context, tenantID uint, page, limit int) ([]dto.TenantDTO, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindByTenantPaginated", ctx, tenantID, page, limit)
+	ret0, _ := ret[0].([]dto.TenantDTO)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// FindByTenantPaginated indicates an expected call of FindByTenantPaginated.
+func (mr *MockTenantServiceInterfaceMockRecorder) FindByTenantPaginated(ctx, tenantID, page, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByTenantPaginated", reflect.TypeOf((*MockTenantServiceInterface)(nil).FindByTenantPaginated), ctx, tenantID, page, limit)
+}
+
 // GetByCNPJ mocks base method.
 func (m *MockTenantServiceInterface) GetByCNPJ(ctx context.Context, cnpj string) (*dto.TenantDTO, error) {
 	m.ctrl.T.Helper()
@@ -162,18 +178,19 @@ func (mr *MockTenantServiceInterfaceMockRecorder) GetPromptContext(ctx, tenantID
 }
 
 // List mocks base method.
-func (m *MockTenantServiceInterface) List(ctx context.Context) ([]dto.TenantDTO, error) {
+func (m *MockTenantServiceInterface) List(ctx context.Context, limit, offset int, filters map[string]any) ([]dto.TenantDTO, int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "List", ctx)
+	ret := m.ctrl.Call(m, "List", ctx, limit, offset, filters)
 	ret0, _ := ret[0].([]dto.TenantDTO)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // List indicates an expected call of List.
-func (mr *MockTenantServiceInterfaceMockRecorder) List(ctx any) *gomock.Call {
+func (mr *MockTenantServiceInterfaceMockRecorder) List(ctx, limit, offset, filters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockTenantServiceInterface)(nil).List), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockTenantServiceInterface)(nil).List), ctx, limit, offset, filters)
 }
 
 // Update mocks base method.

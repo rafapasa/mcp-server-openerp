@@ -121,6 +121,13 @@ func (s *llmService) ClassificarEExtrairKeywords(
 	return result, nil
 }
 
+// FindByTenantPaginated lista produtos de um tenant de forma paginada.
+// O serviço de LLM não possui entidade própria; a listagem paginada de
+// produtos é delegada ao cardapioService, mantendo o contrato da interface.
+func (s *llmService) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ProdutoDTO, int64, error) {
+	return s.cardapioService.FindByTenantPaginated(ctx, tenantID, page, limit)
+}
+
 func (s *llmService) contextoLoja(ctx context.Context, tenantID uint) string {
 	nome := ""
 	segmento := "geral"

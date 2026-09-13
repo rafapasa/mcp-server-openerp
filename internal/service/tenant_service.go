@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"github.com/etoolstec/gokit/apperror"
+	"github.com/etoolstec/gokit/mapper"
 	"github.com/rafapasa/mcp-server-openerp/internal/database"
 	"github.com/rafapasa/mcp-server-openerp/internal/dto"
 	"github.com/rafapasa/mcp-server-openerp/internal/models"
+	"github.com/rafapasa/mcp-server-openerp/internal/observability/logger"
 	"github.com/rafapasa/mcp-server-openerp/internal/repository"
 )
 
@@ -22,7 +24,7 @@ func NewTenantService(repo repository.TenantRepository, cache database.RedisInte
 }
 
 func (s *tenantService) GetByID(ctx context.Context, id uint) (*dto.TenantDTO, error) {
-	m, err := s.repo.FindByID(ctx, id)
+	m, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +32,7 @@ func (s *tenantService) GetByID(ctx context.Context, id uint) (*dto.TenantDTO, e
 }
 
 func (s *tenantService) GetByCNPJ(ctx context.Context, cnpj string) (*dto.TenantDTO, error) {
-	m, err := s.repo.FindByCNPJ(ctx, cnpj)
+	m, err := s.repo.GetByCNPJ(ctx, cnpj)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +40,7 @@ func (s *tenantService) GetByCNPJ(ctx context.Context, cnpj string) (*dto.Tenant
 }
 
 func (s *tenantService) GetByTelefone(ctx context.Context, telefone string) (*dto.TenantDTO, error) {
-	m, err := s.repo.FindByTelefone(ctx, telefone)
+	m, err := s.repo.GetByTelefone(ctx, telefone)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +53,7 @@ func (s *tenantService) GetByWhatsAppPhoneID(ctx context.Context, phoneID string
 	}
 	cacheKey := fmt.Sprintf("tenant:phone:%s", phoneID)
 	tenantDTO, err := database.GetOrSet(s.cache, ctx, cacheKey, 1*time.Hour, func() (*dto.TenantDTO, error) {
-		m, err := s.repo.FindByWhatsAppPhoneID(ctx, phoneID)
+		m, err := s.repo.GetByWhatsAppPhoneID(ctx, phoneID)
 		if err != nil {
 			return nil, err
 		}
@@ -69,7 +71,7 @@ func (s *tenantService) GetByVerifyToken(ctx context.Context, token string) (*dt
 	}
 	cacheKey := fmt.Sprintf("tenant:verify:%s", token)
 	tenantDTO, err := database.GetOrSet(s.cache, ctx, cacheKey, 1*time.Hour, func() (*dto.TenantDTO, error) {
-		m, err := s.repo.FindByVerifyToken(ctx, token)
+		m, err := s.repo.GetByVerifyToken(ctx, token)
 		if err != nil {
 			return nil, err
 		}
@@ -81,16 +83,20 @@ func (s *tenantService) GetByVerifyToken(ctx context.Context, token string) (*dt
 	return tenantDTO, nil
 }
 
-func (s *tenantService) List(ctx context.Context) ([]dto.TenantDTO, error) {
-	list, err := s.repo.List(ctx)
+func (s *tenantService) List(ctx context.Context, limit, offset int, filters map[string]interface{}) ([]dto.TenantDTO, int64, error) {
+	tenants, total, err := s.repo.FindWithFilters(ctx, limit, offset, filters)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	out := make([]dto.TenantDTO, len(list))
-	for i, t := range list {
-		out[i] = *toTenantDTO(&t)
+
+	result := make([]dto.TenantDTO, len(tenants))
+	for i, t := range tenants {
+		if err := mapper.MapToDTO(t, &result[i]); err != nil {
+			logger.Error(ctx, fmt.Sprintf("Erro convertendo Model Tenant para DTO tenant: %v", err))
+			return nil, 0, apperror.NewInternalError("Erro convertendo Model Tenant para DTO tenant", err)
+		}
 	}
-	return out, nil
+	return result, total, nil
 }
 
 func (s *tenantService) Create(ctx context.Context, input dto.CreateTenantDTO) (*dto.TenantDTO, error) {
@@ -112,7 +118,7 @@ func (s *tenantService) Create(ctx context.Context, input dto.CreateTenantDTO) (
 }
 
 func (s *tenantService) Update(ctx context.Context, id uint, input dto.UpdateTenantDTO) (*dto.TenantDTO, error) {
-	existing, err := s.repo.FindByID(ctx, id)
+	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +164,7 @@ func (s *tenantService) Update(ctx context.Context, id uint, input dto.UpdateTen
 }
 
 func (s *tenantService) Delete(ctx context.Context, id uint) error {
-	existing, err := s.repo.FindByID(ctx, id)
+	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -173,7 +179,7 @@ func (s *tenantService) Delete(ctx context.Context, id uint) error {
 }
 
 func (s *tenantService) GetPromptContext(ctx context.Context, tenantID uint) (string, string, error) {
-	m, err := s.repo.FindByID(ctx, tenantID)
+	m, err := s.repo.GetByID(ctx, tenantID)
 	if err != nil {
 		return "", "", err
 	}
@@ -182,6 +188,12 @@ func (s *tenantService) GetPromptContext(ctx context.Context, tenantID uint) (st
 		seg = "geral"
 	}
 	return m.Nome, seg, nil
+}
+
+func (s *tenantService) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.TenantDTO, int64, error) {
+	filters := map[string]any{"tenant_id": tenantID}
+	offset := (page - 1) * limit
+	return s.List(ctx, limit, offset, filters)
 }
 
 func toTenantDTO(m *models.Tenant) *dto.TenantDTO {

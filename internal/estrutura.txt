@@ -1,0 +1,160 @@
+.
+├── config
+│   └── config.go
+├── database
+│   ├── interface.go
+│   ├── migrate.go
+│   ├── mysql.go
+│   ├── redis.go
+│   └── seed.go
+├── di
+│   ├── provider.go
+│   ├── wire_gen.go
+│   └── wire.go
+├── dto
+│   ├── auth.go
+│   ├── carrinho.go
+│   ├── cliente_dto.go
+│   ├── input..go
+│   ├── llm.go
+│   ├── pagamento.go
+│   ├── pedido.go
+│   ├── pedido_test.go
+│   ├── produto.go
+│   ├── response_dto.go
+│   ├── tenant.go
+│   └── whatsapp
+│       └── webhook.go
+├── estrutura.txt
+├── helpers
+│   └── formatter.go
+├── intent
+│   ├── classifier.go
+│   └── classifier_test.go
+├── llm
+│   ├── deepseek.go
+│   ├── factory.go
+│   ├── gemini.go
+│   ├── groq.go
+│   ├── helpers.go
+│   ├── interface.go
+│   ├── openai.go
+│   ├── preprocessor.go
+│   ├── prompts.go
+│   ├── provider.go
+│   └── retry.go
+├── mocks
+│   ├── cardapio_service_mock.go
+│   ├── cliente_repo_mock.go
+│   ├── cliente_service_mock.go
+│   ├── endereco_repo_mock.go
+│   ├── generate.go
+│   ├── llm_service_mock.go
+│   ├── pedido_service_mock.go
+│   ├── produto_repo_mock.go
+│   ├── redis_interface_mock.go
+│   └── tenant_service_mock.go
+├── models
+│   ├── categoria.go
+│   ├── cliente.go
+│   ├── constants.go
+│   ├── forma_pagamento.go
+│   ├── pedido.go
+│   ├── produto.go
+│   ├── tenant.go
+│   ├── types.go
+│   └── users.go
+├── observability
+│   ├── health
+│   │   └── health.go
+│   ├── logger
+│   │   ├── context.go
+│   │   ├── levels.go
+│   │   ├── logger.go
+│   │   └── redact.go
+│   ├── metrics
+│   │   ├── cart.go
+│   │   ├── db.go
+│   │   ├── llm.go
+│   │   ├── metrics.go
+│   │   ├── search.go
+│   │   └── whatsapp.go
+│   ├── middleware
+│   │   ├── logging.go
+│   │   ├── metrics.go
+│   │   ├── ratelimit.go
+│   │   ├── ratelimit_key.go
+│   │   ├── ratelimit_middleware.go
+│   │   ├── security.go
+│   │   └── tracing.go
+│   ├── security
+│   │   ├── sanitize.go
+│   │   ├── sanitize_helpers.go
+│   │   └── validate.go
+│   └── tracing
+│       ├── attributes.go
+│       └── tracer.go
+├── pkg
+│   └── phone
+│       └── normalize.go
+├── repository
+│   ├── cliente_repo.go
+│   ├── endereco_repo.go
+│   ├── endereco_repo_test.go
+│   ├── pagamento_repo.go
+│   ├── pedido_repo.go
+│   ├── produto_repo.go
+│   ├── tenant_repo.go
+│   ├── user_repository.go
+│   └── user_repository_test.go
+├── server
+│   ├── api_handlers.go
+│   ├── http_server.go
+│   ├── icons
+│   │   ├── abacus.png
+│   │   ├── hourglass.png
+│   │   ├── package.png
+│   │   ├── robot.png
+│   │   ├── sun_behind_cloud.png
+│   │   └── waving_hand.png
+│   ├── icons.go
+│   ├── mcp_server.go
+│   ├── middleware
+│   │   └── auth.go
+│   ├── response
+│   │   └── response.go
+│   └── tools
+│       ├── cardapio.go
+│       ├── carrinho.go
+│       ├── helpers.go
+│       ├── pedido.go
+│       ├── registry.go
+│       └── whatsapp.go
+├── service
+│   ├── auth_service.go
+│   ├── auth_service_test.go
+│   ├── cardapio_service.go
+│   ├── cardapio_service_test.go
+│   ├── carrinho_service.go
+│   ├── carrinho_service_test.go
+│   ├── cliente_service.go
+│   ├── cliente_service_test.go
+│   ├── forma_pagamento_service.go
+│   ├── interface.go
+│   ├── llm_service.go
+│   ├── mcp-server-openerp.code-workspace
+│   ├── pagamento_test.go
+│   ├── pedido_service.go
+│   ├── pedido_service_test.go
+│   ├── tenant_service.go
+│   └── tenant_service_test.go
+└── webhook
+    ├── handlers.go
+    ├── handlers_test.go
+    ├── processor.go
+    ├── security.go
+    ├── security_test.go
+    ├── whatsapp_buttons_test.go
+    └── whatsapp.go
+
+27 directories, 130 files

@@ -402,8 +402,7 @@ func (s *cardapioService) ReduzirPorKeywords(ctx context.Context, tenantID uint,
 }
 
 func (s *cardapioService) FindByTenantPaginated(ctx context.Context, tenantID uint, page int, limit int) ([]dto.ProdutoDTO, int64, error) {
-	offset := (page - 1) * limit
-	produtos, total, err := s.produtoRepo.FindByTenantPaginated(ctx, tenantID, limit, offset)
+	produtos, total, err := s.produtoRepo.FindByTenantPaginated(ctx, tenantID, page, limit)
 	if err != nil {
 		return nil, 0, err
 	}
